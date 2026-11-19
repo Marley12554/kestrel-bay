@@ -776,17 +776,17 @@ function buildShell(b){
     guardBeam([x+20,b.y-45,z],[x+20,b.y+45,z]);
    }
    if(floor<b.accessFloors.at(-1)){
-    const ramp={b,floor,x:x+(floor%2===0?35:65),y:b.y,z,w:24,d:130,startY:y,endY:b.y+(floor%2===0?65:-65)};
+    // Flights meet the inner edges of the 36-unit landings, not their centers.
+    // Overlapping the upper platform buried the final treads and caught the player's leading foot corners.
+    const direction=floor%2===0?1:-1,startY=y+direction*18,endY=b.y+direction*47,run=Math.abs(endY-startY),steps=18;
+    const ramp={b,floor,x:x+(floor%2===0?35:65),y:b.y,z,w:24,d:run,startY,endY,steps};
     architecture.stairs.push(indexSurface({...ramp,surface:'stair'}));
-    const steps=14;
     for(let i=0;i<steps;i++){
-     const f=(i+.5)/steps,sy=ramp.startY+(ramp.endY-ramp.startY)*f;
-     worldMesh.box(ramp.x,sy,z+f*44,24,130/steps+1,2,'#61777b');
+     const f=(i+.5)/steps,sy=startY+(endY-startY)*f;
+     // The last tread and the landing share a top face at z + 45.
+     worldMesh.box(ramp.x,sy,z+(i+1)*44/steps-1,24,run/steps,2,'#61777b');
     }
-    for(const side of [-1,1]){
-     const at=sy=>z+clamp((sy-ramp.startY)/(ramp.endY-ramp.startY),0,1)*44;
-     guardBeam([ramp.x+side*13,b.y-45,at(b.y-45)],[ramp.x+side*13,b.y+45,at(b.y+45)]);
-    }
+    for(const side of [-1,1])guardBeam([ramp.x+side*13,startY,z],[ramp.x+side*13,endY,z+44]);
    }
    b.escapeMeshes.set(floor,worldMesh.data.splice(meshStart));
   }

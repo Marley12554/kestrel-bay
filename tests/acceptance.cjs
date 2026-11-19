@@ -4,7 +4,7 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 const root=path.resolve(__dirname,'..');
 const source=fs.readFileSync(path.join(root,'Kestrel Bay.html'),'utf8').split('<script>')[1].split('</script>')[0];
 new vm.Script(source); // syntax-check the shipped source, not a second implementation
-for(const file of (process.argv.length>2?process.argv.slice(2):['geometry.js','response.js','campaign.js','pursuit-regressions.js','water-impacts.js','encounters.js'])){
+for(const file of (process.argv.length>2?process.argv.slice(2):['geometry.js','response.js','campaign.js','pursuit-regressions.js','water-impacts.js','encounters.js','fire-escapes.js'])){
  const noop=()=>{},context=new Proxy({}, {get:()=>noop});
  const element=()=>({getContext:type=>type==='webgl'?null:context,clientWidth:1280,clientHeight:800,addEventListener:noop,
   style:{setProperty:noop},classList:{add:noop,toggle:noop},dataset:{},replaceChildren:noop,append:noop,setAttribute:noop,querySelectorAll:()=>[]});

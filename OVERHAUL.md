@@ -61,3 +61,9 @@ Officers detect exposed suspects at 300 feet, draw weapons for violent threats a
 A burning vehicle's paint pulses red with increasing frequency while smoke, flames and a visible countdown retain the ten-second exit window. H honks while driving using sustained dual tones and harmonics; H still holsters on foot.
 
 `tests/encounters.js` runs exposed one-star approaches, circular and straight sprint gunfights, actual wall cover, driver extraction and interruption, theft success/cancellation, real officer ejection, spawn fairness, warning pulses, and complete update-loop theft and bridge-staging scenarios. Browser captures confirmed the unlocked casebook, timing overlay and officer-ejection stage. The browser encounter run stopped at its retry limit; a dispatch/ejection conflict found there was subsequently reproduced and fixed in deterministic integration tests. Remaining rendered encounter/audio QA is not claimed complete.
+
+## Fire-escape landing repair
+
+The shared stair generator previously ran flights between landing centers, burying the last treads inside the upper landing. The player's leading body corners could then hit the platform underside just before the feet reached it. This reproduced on both city and town buildings. Flights now meet the platform edges, use evenly spaced treads with the top tread flush to the landing, and retain continuous flight rails. No jump or movement-speed workaround is used.
+
+The regression suite walks three clear lateral approaches to every generated upper landing (2,856 flights), and complete representative city/town routes in both directions with landing turns and no jump input. WebGL keyboard checks also cover both alternating directions, upper floors and a complete switchback ascent/descent.
