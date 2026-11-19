@@ -31,15 +31,17 @@ Touch controls are also available. Shotguns, carbines, supplies, bypass tools, r
 - Meridian occupies its own island, joined to the mainland by two elevated bridges. The organized center connects to a diagonal theater district, Civic Circle, public courts, mixed-height shore neighborhoods, the eastern wooded promenade, and working docks. The city and mainland use over 250 generated buildings with direct street or courtyard access.
 - Building rooms stay in the building's footprint and world coordinates. Floors, elevator shafts and moving platforms, door locks, transparent breakable windows, occupied guest rooms, and exterior fire stairs are physical. All generated buildings are enterable; tall buildings have usable floors rather than off-map rooms.
 - Hotels, apartments, offices, cafés, restaurants, shops, garages, warehouses, civic buildings, and prison spaces use different modular layouts. These are procedural low-poly interiors, not individually hand-authored rooms.
-- Normal car profiles restore the pre-nerf values. The striped Interceptor has better steering and an unboosted top speed 1.20× the cruiser. Its boost improves acceleration without raising that speed ceiling. Sprint is 135 world units/s, up from 100.
+- Normal car profiles restore the pre-nerf values. Cruisers have 15% more unboosted top speed than the fastest ordinary car. The striped Interceptor has better steering and remains 20% faster than a cruiser. Its boost improves acceleration without raising that speed ceiling. Sprint is 135 world units/s, up from 100.
 - Drivers and pedestrians report crimes. Reports from the same incident share severity; killing a witness cannot retract an already received report. Cameras, police sight and a dispatched helicopter can maintain contact. A sustained crime-free period outside observation is still necessary to lose heat.
 - Pursuing cruisers can leave roads, reverse out of congestion, deploy officers, and pick their officers back up. Officers traverse exterior stairs and breach room doors. One ground unit can cover an upper-floor escape while others pursue. Faster escapes at higher heat can bring a spotter helicopter and physical spike strips.
 - The hotbar starts unarmed. Drawing a gun near a patrol officer draws attention. Shotguns and carbines are purchasable and have distinct models, ammunition, fire rates, and reloads.
+- Bridge joins preserve pursuit speed, ramps have solid undersides, and bridge/fire escape guardrails prevent walking off. Moderate-speed PIT attempts require physical contact and are disabled on bridges. Reboarded crews can dismount again.
+- Opening the map suspends the audio context, including sirens, engines and sound-effect tails. Closing it resumes audio.
 - Arrest progress recovers while in a vehicle. Evidence interactions are gated to the relevant accepted operation and their markers clear after completion. Seven main operation stage paths remain playable.
 
 ## Hotel route to try
 
-Set a map waypoint to **Mariner Grand** in Meridian. Open its north entrance, walk into reception, and use the elevator in the southwest part of the lobby. Choose a guest floor. Room doors can be unlocked with a key/tools or shot open; guests occupy the suites. Break the east corridor window to reach the external fire escape. The narrow platform beside the wall connects the alternating stair flights at each end. Police can climb the same route and breach the room you entered; ground units can cover the exit below.
+Set a map waypoint to **Mariner Grand** in Meridian. Open its north entrance, walk into reception, and use the elevator in the southwest part of the lobby. Choose a guest floor. Room doors can be unlocked with a key/tools or shot open; guests occupy the suites. Break the east corridor window to reach the external fire escape. The guarded platform beside the wall connects the alternating stair flights at each end. Police can climb the same route and breach the room you entered; ground units can cover the exit below.
 
 ## Checks and publishing
 
@@ -48,7 +50,7 @@ node tests/acceptance.cjs
 node scripts/build.cjs
 ```
 
-The acceptance harness executes the shipped game functions. It checks footprint overlaps and entrances, physical windows/floors, stair pursuit/descent, room breaches, bridge support, vehicle ratios, sprinting, incident deduplication, arrest recovery, officer reboarding, helicopters/spikes, and all seven main mission stage handlers. It does not replace browser/rendering or human playtesting.
+The acceptance harness executes the shipped game functions. It checks footprint overlaps and entrances, physical windows/floors, stair pursuit/descent, room breaches, bridge support, vehicle ratios, sprinting, incident deduplication, arrest recovery, officer reboarding/redeployment, bridge pursuit and barriers, restrained PIT contact, map audio suspension, helicopters/spikes, and all seven main mission stage handlers. It does not replace browser/rendering or human playtesting.
 
 Pushing `main` runs these checks, builds `dist/index.html` from the canonical `Kestrel Bay.html`, and publishes through GitHub Pages. Do not edit the generated `dist` copy.
 
