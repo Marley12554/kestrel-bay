@@ -2713,12 +2713,15 @@ function lightStrength(l,p,occlusion=true){
  if(occlusion&&!lineOfSight({x:l.x,y:l.y,z:l.z-20},p))return 0;
  return clamp((facing-l.cone)/.04,0,1)*(1-d/l.range);
 }
+let illuminationSample=null;
 function illuminationAt(p){
  if(daylight()>.75)return 1;
+ if(p===player&&illuminationSample?.lights===worldLights&&illuminationSample.x===p.x&&illuminationSample.y===p.y&&illuminationSample.z===(p.z||0))return illuminationSample.value;
  let strength=daylight();
  for(const l of worldLights)if(l.owner!==p)strength=Math.max(strength,lightStrength(l,p));
  // Furnished indoor rooms have ceiling fittings; broken power darkens prison interiors.
  const room=physicalContext(p);if(room&&(!inside(p.x,p.y,island)||!L.prisonPower.disabled))strength=Math.max(strength,.65);
+ if(p===player)illuminationSample={lights:worldLights,x:p.x,y:p.y,z:p.z||0,value:strength};
  return strength;
 }
 function visibleRange(observer,range){
@@ -2849,25 +2852,71 @@ function closestSea(p,c,max=18){
   }if(best)return best;
  }return null;
 }
-function seaRoute(c,target){
- if(waterSegment(c,c,target))return [{x:target.x,y:target.y}];
- const start=closestSea(c,c),end=closestSea(target,c);if(!start||!end)return [];
- const open=[{n:start,f:distance(start,end)}],cost=new Map([[start.key,0]]),parent=new Map(),closed=new Set();let found=null;
+/* Navigation jobs share a strict per-update work allowance. A long or unreachable
+   water route must never monopolize the render thread. */
+const marineNavigation={queue:[],maxSteps:40,budgetMs:1.5,lastSteps:0,lastMs:0};
+class SeaFrontier{
+ constructor(){this.items=[];}
+ get length(){return this.items.length;}
+ push(item){const a=this.items;let i=a.length;a.push(item);while(i){const parent=(i-1)>>1;if(a[parent].f<=item.f)break;a[i]=a[parent];i=parent;}a[i]=item;}
+ pop(){const a=this.items,result=a[0],last=a.pop();if(!a.length)return result;let i=0;while(i*2+1<a.length){let child=i*2+1;if(child+1<a.length&&a[child+1].f<a[child].f)child++;if(a[child].f>=last.f)break;a[i]=a[child];i=child;}a[i]=last;return result;}
+}
+const seaEdges=new Map();
+function seaEdge(c,a,b){const key=a.key<b.key?a.key+'|'+b.key:b.key+'|'+a.key;if(!seaEdges.has(key))seaEdges.set(key,waterSegment(c,a,b));return seaEdges.get(key);}
+function* seaSegmentSearch(c,a,b){
+ const d=distance(a,b),steps=Math.max(1,Math.ceil(d/45)),angle=Math.atan2(b.y-a.y,b.x-a.x);
+ for(let i=1;i<=steps;i++){if((i-1)%4===0)yield;if(!waterHullClear(c,a.x+(b.x-a.x)*i/steps,a.y+(b.y-a.y)*i/steps,angle))return false;}return true;
+}
+function* seaNearestSearch(p,c,max=18){
+ const a=Math.round(p.x/WATER_GRID),b=Math.round(p.y/WATER_GRID),inWater=waterHullClear(c,p.x,p.y);let checks=0;
+ for(let r=0;r<=max;r++){
+  let best=null,score=Infinity;
+  for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++){
+   if(Math.max(Math.abs(i),Math.abs(j))!==r)continue;if(checks++%8===0)yield;
+   const n=seaNode(a+i,b+j);if(!n)continue;const d=distance(n,p);
+   if(d<score&&(!inWater||(yield* seaSegmentSearch(c,p,n)))){best=n;score=d;}
+  }if(best)return best;
+ }return null;
+}
+function* seaRouteSearch(c,target){
+ if(yield* seaSegmentSearch(c,c,target))return [{x:target.x,y:target.y}];
+ const start=yield* seaNearestSearch(c,c),end=yield* seaNearestSearch(target,c);if(!start||!end)return [];
+ const open=new SeaFrontier(),cost=new Map([[start.key,0]]),parent=new Map(),closed=new Set();open.push({n:start,f:distance(start,end)});let found=null;
  for(let count=0;open.length&&count<18000;count++){
-  let best=0;for(let i=1;i<open.length;i++)if(open[i].f<open[best].f)best=i;
-  const n=open.splice(best,1)[0].n;if(closed.has(n.key))continue;closed.add(n.key);
-  if(n===end){found=n;break;}
+  yield;
+  const n=open.pop().n;if(closed.has(n.key))continue;closed.add(n.key);if(n===end){found=n;break;}
   for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
    if(!dx&&!dy)continue;const next=seaNode(n.i+dx,n.j+dy);if(!next||closed.has(next.key))continue;
    if(dx&&dy&&(!seaNode(n.i+dx,n.j)||!seaNode(n.i,n.j+dy)))continue;
-   if(!waterSegment(c,n,next))continue;const g=cost.get(n.key)+distance(n,next);
+   if(!seaEdge(c,n,next))continue;const g=cost.get(n.key)+distance(n,next);
    if(g>=(cost.get(next.key)??Infinity))continue;cost.set(next.key,g);parent.set(next.key,n);open.push({n:next,f:g+distance(next,end)});
   }
  }
  if(!found)return [];const path=[];for(let n=found;n&&n!==start;n=parent.get(n.key))path.push(n);path.push(start);path.reverse();
- if(waterHullClear(c,target.x,target.y)&&waterSegment(c,end,target))path.push({...target});
- return path;
+ if(waterHullClear(c,target.x,target.y)&&(yield* seaSegmentSearch(c,end,target)))path.push({...target});return path;
 }
+function seaRoute(c,target){const job=seaRouteSearch({...c},target);let step;do{step=job.next();}while(!step.done);return step.value;}
+function requestSeaRoute(c,goal,responding=c.role!=='marinePatrol'){
+ if(c.routePending)return;
+ const task={car:c,role:c.role,responding,target:{x:goal.x,y:goal.y},search:seaRouteSearch({...c},{x:goal.x,y:goal.y})};
+ c.routePending=task;c.routeAt=time;c.routeGoal={...task.target};marineNavigation.queue.push(task);
+}
+function workMarineNavigation(){
+ const nav=marineNavigation,start=performance.now();let steps=0;
+ while(nav.queue.length&&steps<nav.maxSteps&&performance.now()-start<nav.budgetMs){
+  const task=nav.queue.shift(),c=task.car;
+  if(c.routePending!==task||c.dead||c===player.veh||!cars.includes(c)){if(c.routePending===task)c.routePending=null;continue;}
+  const step=task.search.next();steps++;
+  if(step.done){
+   c.routePending=null;c.routeAt=time;c.route=step.value;
+   // Continue at a reachable nearby waypoint if the boat moved during planning.
+   let nearest=0;for(let i=1;i<Math.min(8,c.route.length);i++)if(distance(c,c.route[i])<distance(c,c.route[nearest])&&waterSegment(c,c,c.route[i]))nearest=i;
+   if(nearest)c.route.splice(0,nearest);
+  }else nav.queue.push(task);
+ }
+ nav.lastSteps=steps;nav.lastMs=performance.now()-start;
+}
+
 function seedMarinePatrols(){
  const routes=[
   [[7900,24400],[6800,24200],[6600,23600]],
@@ -2910,7 +2959,8 @@ function updateMarine(c,dt){
  }else{c.role='marinePatrol';c.lastContact=null;}
  const d=distance(c,goal);
  if(!responding&&d<160){c.patrolIndex=(c.patrolIndex+1)%c.patrol.length;goal=c.patrol[c.patrolIndex];}
- if(time-c.routeAt>(responding?2.5:14)||(!c.route?.length&&time-c.routeAt>3)||distance(goal,c.routeGoal||goal)>360){c.route=seaRoute(c,goal);c.routeGoal={...goal};c.routeAt=time;}
+ if(c.routePending&&(c.routePending.responding!==responding||distance(goal,c.routePending.target)>1200&&time-c.routeAt>1)){c.routePending=null;c.routeAt=-Infinity;}
+ if(!c.routePending&&(time-c.routeAt>(responding?2.5:14)||(!c.route?.length&&time-c.routeAt>3)||distance(goal,c.routeGoal||goal)>360))requestSeaRoute(c,goal,responding);
  while(c.route.length>1&&distance(c,c.route[0])<65)c.route.shift();
  const p=c.route[0],old={x:c.x,y:c.y};
  if(p){
@@ -2924,7 +2974,7 @@ function updateMarine(c,dt){
   if(obstacle)speed=0;
   c.spd+=(speed-c.spd)*Math.min(1,dt*1.6);
   const x=c.x+Math.cos(c.a)*c.spd*dt,y=c.y+Math.sin(c.a)*c.spd*dt;
-  if(waterSegment(c,c,{x,y})){c.x=x;c.y=y;c.blocked=0;}else{c.spd=0;c.blocked=(c.blocked||0)+dt;if(c.blocked>1){c.route=[];c.routeAt=-Infinity;}}
+  if(waterSegment(c,c,{x,y})){c.x=x;c.y=y;c.blocked=0;}else{c.spd=0;c.blocked=(c.blocked||0)+dt;if(c.blocked>1){c.route=[];if(!c.routePending)c.routeAt=Math.min(c.routeAt,time-3);}}
  }
  c.z=WATER_LEVEL-8;c.vx=(c.x-old.x)/dt;c.vy=(c.y-old.y)/dt;
  for(let i=0;i<crew.length;i++){
@@ -3912,6 +3962,7 @@ function spawnSecurity(){
 
 }
 function updGuard(n,dt){
+ if(distance(n,player)>2500)return;
  const zone=n.kind==='troop'?'base':'prison',alert=zone==='base'?baseAlert:prisonAlert;
  const relevant=zone==='base'?covers(baseBounds,player.x,player.y):inside(player.x,player.y,island);
  const d=distance(n,player),facing=Math.abs(angD(Math.atan2(player.y-n.y,player.x-n.x),n.a));
@@ -4028,6 +4079,7 @@ function seedPatrols(){
  }
 }
 function newGame(){
+ marineNavigation.queue=[];
  theft=null;circuit=null;worldLights=[];lightRefresh=-1;worldClock.phase=150;worldClock.locked=false;worldClock.fade=0;prisonAccess.gateOpen=false;prisonAccess.puzzles={};baseAlert=prisonAlert=0;for(const p of securitySites)p.disabled=false;cars=[];npcs=[];bullets=[];parts=[];drops=[];rings=[];toasts=[];floaters=[];skids=[];shells=[];
  ob=null;navTarget=null;finishedJobs.clear();navClock=0;cash=650;heat=wanted=unseen=0;
  for(const b of buildings)for(const p of b.plans.values())p.populated=false;
@@ -4171,6 +4223,7 @@ function update(dt){
  if(state!=='play'){stT+=dt;actQ=false;if((state==='wasted'||state==='busted')&&stT>2.8)respawn()}
  if(started&&state==='play')updPlayer(dt);
  for(const c of cars)updCar(c,dt);
+ workMarineNavigation();
  for(let i=0;i<cars.length;i++)for(let j=i+1;j<cars.length;j++)if(Math.abs((cars[i].z||0)-(cars[j].z||0))<24)carCollide(cars[i],cars[j]);
  if(player.veh){player.x=player.veh.x;player.y=player.veh.y;player.z=player.veh.z||0;player.a=player.veh.a;}
  for(const n of npcs)updNpc(n,dt);
