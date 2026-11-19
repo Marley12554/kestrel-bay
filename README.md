@@ -11,8 +11,8 @@ Open `Kestrel Bay.html` in a desktop browser with WebGL enabled. Click **Enter t
 | Control | Action |
 | --- | --- |
 | WASD / mouse | Move / look; steer in a car |
-| Shift | Sprint; vehicle boost |
-| Space | Jump; vehicle boost |
+| Shift | Hold to sprint on desktop |
+| Space | Jump on foot; hold the handbrake while driving |
 | C | Crouch |
 | Water | WASD swims in the direction you look; look down/up and press W to dive/surface; Space rises and jumps out |
 | E | Open doors, use objects, begin vehicle entry or leave a vehicle |
@@ -21,7 +21,7 @@ Open `Kestrel Bay.html` in a desktop browser with WebGL enabled. Click **Enter t
 | 2 / 3 / 4 / 5 | Pistol / shotgun / carbine / tools |
 | Mouse wheel | Cycle owned equipment |
 | Left click / J / R | Fire / alternate fire key / reload |
-| X | Handbrake |
+| X | Alternate handbrake key; steer while holding to drift |
 | Hold Q in a ground car | Lean out the left window; mouse aims, click/J fires the pistol; R reloads; release Q retracts |
 | M | Map and operations; click the map to set a waypoint |
 | Helicopter | WASD movement; E/Q altitude; mouse heading; F board/exit |
@@ -34,7 +34,7 @@ Touch controls are also available. Shotguns, carbines, supplies, bypass tools, r
 - Meridian occupies its own island, joined to the mainland by two elevated bridges. The organized center connects to a diagonal theater district, Civic Circle, public courts, mixed-height shore neighborhoods, the eastern wooded promenade, and working docks. The city and mainland use over 250 generated buildings with direct street or courtyard access.
 - Building rooms stay in the building's footprint and world coordinates. Floors, elevator shafts and moving platforms, door locks, transparent breakable windows, occupied guest rooms, and exterior fire stairs are physical. All generated buildings are enterable; tall buildings have usable floors rather than off-map rooms.
 - Hotels, apartments, offices, cafés, restaurants, shops, garages, warehouses, civic buildings, and prison spaces use different modular layouts. These are procedural low-poly interiors, not individually hand-authored rooms.
-- Normal car profiles use the pre-nerf values, with regular sports cars and striped Interceptors now reduced 10%. Police top speed and acceleration remain unchanged. The striped Interceptor has better steering and an 8% top-speed advantage over a cruiser. Its boost improves acceleration without raising that speed ceiling. Sprint is 135 world units/s, up from 100.
+- Normal car profiles use the pre-nerf values, with regular sports cars and striped Interceptors now reduced 10%. Police top speed and acceleration remain unchanged. The striped Interceptor has better steering and an 8% top-speed advantage over a cruiser. Sprint is 135 world units/s, up from 100.
 - Drivers and pedestrians report crimes. Reports from the same incident share severity; killing a witness cannot retract an already received report. Cameras, police sight and a dispatched helicopter can maintain contact. A sustained crime-free period outside observation is still necessary to lose heat.
 - Dispatch keeps inbound cruisers alive throughout their road journey and mobilizes available patrols beyond the immediate neighborhood. Nearby patrols still react when distant units are assigned. Both dock approach lanes remain clear of cargo stacks.
 - Pursuing cruisers can leave roads, reverse out of congestion, deploy officers, and pick their officers back up. Officers traverse exterior stairs and breach room doors. One ground unit can cover an upper-floor escape while others pursue. Faster escapes at higher heat can bring a spotter helicopter and physical spike strips.
@@ -78,7 +78,7 @@ Five persistent police launches cover the coasts; two dedicated security launche
 
 The Island Run starts with a safe marina briefing, fades to 10 PM and holds night until completion, failure or abandonment. Dock landing completes by physically arriving on the pier on foot. Surveillance sabotage, service-gate access and cell release are separate actions. Rotate circuit tiles to join IN to OUT while avoiding the alarm terminal, then test the circuit. Each panel has a different route; Escape cancels, progress persists and the world keeps running. Custody cards are separate from office visitor cards. Power cuts cameras and searchlights, without opening doors or granting cards. Escort boarding and mainland arrival complete automatically. Existing delivery and meeting arrival stages also advance without an extra E press.
 
-Cash sits beneath the minimap, wanted stars and response status have their own upper-right panel, and the lower-left meters explicitly label HP, stamina, vehicle health, nitro and oxygen. Sprint exhaustion pulses and names the 20% recovery threshold. The driving camera is 25% closer, with its collision handling preserved, and engine audio is modestly louder without changing its low-frequency character.
+Cash sits beneath the minimap, wanted stars and response status have their own upper-right panel, and the lower-left meters explicitly label HP, stamina, vehicle health, handbrake state and oxygen. Sprint exhaustion pulses and names the 20% recovery threshold. The driving camera is 25% closer, with its collision handling preserved, and engine audio is modestly louder without changing its low-frequency character.
 
 ### Frame-stall fix
 
@@ -115,3 +115,11 @@ Window aiming uses a wider camera orbit, seated hips and a connected leaning tor
 Vehicle headlights and glowing headlamp fixtures operate only at night, including immediate shutdown at dawn. Light positions no longer draw separate floating emissive boxes. Shadowed beams accumulate before a bounded exposure calculation, so several cruisers cannot multiply the ground into white.
 
 The fifteenth acceptance suite, `tests/window-aim.js`, checks actual projectile hits across nine near/far/angled targets, vehicle hit volumes, barrel/reticle agreement, body/window placement, the unarmed model, camera framing, muzzle cover and day/dawn/dusk/night gating. Browser checks cover real Q/weapon/fire/reload input. A rendered-pixel test measured unlit ground at RGB 27/37/51, one headlight at 62/67/71 and seven overlapping lights at 120/124/121; adding a wall restored the unlit value. A ten-second window-aim simulation/raycast sample had no updates above 100 ms (largest sampled update about 1.4 ms on the test machine).
+
+### Handbrake drifting and mobile sprint
+
+Nitro and its fuel meter are removed. Space or X holds the car's handbrake; S/down still brakes and reverses. The HUD shows whether the handbrake is held or the car is drifting, without a fuel/cooldown bar. Handbrake turns retain sideways momentum, then progressively recover grip on release. Rear-wheel paths leave paired, continuous rubber tracks on pavement and bridge decks. Harder slip makes them darker and wider; they fade and are capped to bound rendering work. Stationary cars, lawns and bare wheel rims do not paint rubber tracks.
+
+On mobile, tap SPRINT to toggle it on, then move with the joystick; tap it again to return to jogging. Stamina limits still apply. The button becomes a held HAND BRAKE in cars, with a separate held BRAKE pedal that stops without automatically reversing. The on-foot brake button is now JUMP. Entering/exiting vehicles and opening the map clear latched/held input to avoid carrying sprint or a pedal into the next context. Helicopter controls read UP/DOWN and plane controls THR +/THR −.
+
+`tests/drift-mobile.js` adds actual toggle/run/jog movement, independent pedal fingers, pause/context resets, jumping, drift/regrip, variable track appearance, fading, bridge height, terrain gating and aircraft labels. Native mobile browser checks verified running/jogging speeds, HUD/context labels, held pedals and visible drift tracks. The browser harness stopped afterward on a redundant touch-release cleanup command; no additional browser attempts were made.

@@ -160,3 +160,10 @@ The leaning camera now orbits at a wider distance, keeping the car and seated pe
 Headlights and their physical glowing fixtures are strictly night-only. Retired headlight slots clear at dawn. Generic floating source cubes are removed. Shadowed light contributions are accumulated independently and exposed once with a bounded response, eliminating multiplicative white blowout under overlapping cruisers.
 
 `tests/window-aim.js` adds physical near/far/angled target hits, vehicle volume targeting, muzzle/reticle alignment, seated mesh/weapon selection, camera framing, cover and day/night checks. Native browser checks exercise actual window controls and confirm bounded overlapping light and real wall shadows. The isolated ten-second aim/raycast profile measured a maximum update around 1.4 ms, without 100 ms stalls; this is a sampled result, not a hardware guarantee.
+
+
+## Handbrake and mobile input
+
+Nitro/boost and the nitro meter are removed. Space/X apply the handbrake; the HUD is a held/drifting status rather than a consumable bar. Player-car handbrake turns preserve sideways velocity, with progressive regrip after release. Rear tires record continuous path segments with slip-dependent opacity/width, pavement/deck height, bounded count and gradual fading. Cars at rest, grass and bare rims do not leave rubber marks.
+
+Mobile sprint is a latched tap toggle; release does not cancel it. In cars the same button is a held handbrake, alongside a distinct foot-brake button that cannot auto-reverse. Its on-foot partner becomes Jump. Pedal flags are independently owned by their buttons and cleared at context/pause transitions. Aircraft use altitude or throttle labels. The sixteenth acceptance suite covers these behaviors and actual dynamics. Browser checks reached successful native toggle/run/jog, pedal and visible-drift assertions, then ended on an extra touch-release cleanup event; no further browser retries were made.
