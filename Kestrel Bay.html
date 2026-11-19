@@ -1212,7 +1212,8 @@ function layWorld(){
   if(fitLot(x,y,180,170))building(x,y,180,170,2,'warehouse',i<4?'north':'south','#84918f');
  }
  for(let i=0;i<12;i++){
-  const x=7160+(i%4)*185,y=21900+Math.floor(i/4)*220;
+  // Keep the cargo stacks wholly inside the freight yard, clear of both Drydock Road lanes.
+  const x=7040+(i%3)*175,y=21900+Math.floor(i/3)*220;
   m.box(x,y,0,135,52,52,seededPick(['#8b735c','#5d8191','#9d694f']));
   solidBox(x,y,135,52,52);
  }
@@ -2180,7 +2181,8 @@ function manage(){
   if(c.kind==='player'||c.persistent||c.tag||['boat','heli','plane','tank','armor'].includes(c.type))return true;
   if(c.dead&&c.burn<=0&&c.life<=0)return false;
   if(c.role==='staged'&&time-c.stageTime>9&&distance(c,player)>1350)return false;
-  if(c.kind==='cop'&&wanted&&c.role!=='return')return distance(c,player)<11000;
+  // Inbound units may start beyond the fair-spawn distance. Keep their actual journey alive.
+  if(c.kind==='cop'&&wanted&&c.role!=='return')return true;
   if(c.kind==='cop'&&c.role==='return')return distance(c,player)<3500;
   return c.kind!=='gone'&&hyp(c.x-player.x,c.y-player.y)<2030&&!(c.kind==='traffic'&&c.stuck>11&&hyp(c.x-player.x,c.y-player.y)>850);
  });
@@ -2195,7 +2197,7 @@ function manage(){
 }
 
 /* ---------- witnesses, dispatch and pursuit ---------- */
-let witnessCalls=[],dispatch=null,policeFix=null,blockPlan=null,policeReplan=0,spawnClock=0;
+let witnessCalls=[],dispatch=null,policeFix=null,blockPlan=null,policeReplan=0,spawnClock=0,patrolDispatchAt=0;
 let policeDirector={bridge:null,assignments:[]};
 const distance=(a,b)=>hyp(a.x-b.x,a.y-b.y);
 function seesPlayer(unit,range){
@@ -2224,7 +2226,7 @@ function reportCrime(amount,where,delay=4.2){
  }
 }
 function clearPolice(){
- witnessCalls=[];dispatch=null;policeFix=null;blockPlan=null;policeReplan=0;copT=0;policeDirector={bridge:null,assignments:[]};
+ witnessCalls=[];dispatch=null;policeFix=null;blockPlan=null;policeReplan=0;patrolDispatchAt=0;copT=0;policeDirector={bridge:null,assignments:[]};
  for(const n of npcs)n.witness=false;
 }
 const policeViews=[];
@@ -2265,6 +2267,44 @@ function policeRoadSpawn(where,role){
   if(fairPoliceSpawn(q.p,q.a)&&!carWall({...CT.cop,z:q.p.z},q.p.x,q.p.y,q.a))return q;
  }
  return null;
+}
+const policeRoadComponents=new Map();
+function roadComponent(e){
+ if(!policeRoadComponents.has(e)){
+  const component=e,open=[e.a],seen=new Set();
+  while(open.length){const n=open.pop();if(seen.has(n))continue;seen.add(n);for(const link of n.links){policeRoadComponents.set(link.e,component);if(!seen.has(link.to))open.push(link.to);}}
+ }
+ return policeRoadComponents.get(e);
+}
+function policeTravelDistance(c,where){
+ const a=roadAnchor(c.x,c.y,c.a),b=roadAnchor(where.x,where.y);
+ if(roadComponent(a.e)!==roadComponent(b.e))return Infinity;
+ const route=routeTo(c.x,c.y,where.x,where.y,c.a);let total=0;
+ for(const [i,leg] of route.entries()){
+  const start=i===0?clamp(along(leg.e,c.x,c.y),0,leg.e.len):leg.dir===1?0:leg.e.len;
+  total+=Math.abs((leg.stop??(leg.dir===1?leg.e.len:0))-start);
+ }
+ return total+roadDistance(a.e,c.x,c.y)+roadDistance(b.e,where.x,where.y);
+}
+function mobilizePatrols(where){
+ const responding=cars.filter(c=>c.kind==='cop'&&!c.dead&&c.role!=='patrol'&&c.role!=='return'&&(!c.hasCrew||npcs.some(n=>n.cruiser===c&&n.state!=='dead')));
+ const available=cars.filter(c=>c.kind==='cop'&&!c.dead&&(c.role==='patrol'||c.role==='return'&&distance(c,where)<1800)&&(!c.hasCrew||npcs.some(n=>n.cruiser===c&&n.boarded&&n.state!=='dead')));
+ const escape=bridgeExit(where),priority=available.filter(c=>distance(c,where)<1800||escape&&distance(c,escape)<2400);
+ let needed=Math.max(0,Math.min(4,wanted+1)-responding.filter(c=>c.role==='pursuit').length),room=Math.max(0,6-responding.length);
+ // A local patrol may relieve a remote surplus unit; it must not ignore a visible suspect.
+ if(!room&&priority.some(c=>distance(c,where)<1800)){
+  const relief=responding.filter(c=>c.tactic!=='bridge-exit'&&c.tactic!=='contain'&&distance(c,where)>4000).sort((a,b)=>distance(b,where)-distance(a,where))[0];
+  if(relief){relief.role='return';room=1;}
+ }
+ if(!room||!needed&&!priority.length)return;
+ const ranked=available.map(c=>({c,cost:policeTravelDistance(c,where),priority:priority.includes(c)})).filter(p=>Number.isFinite(p.cost)).sort((a,b)=>Number(b.priority)-Number(a.priority)||a.cost-b.cost);
+ for(const p of ranked){
+  if(!room||!needed&&!p.priority)break;
+  const c=p.c;c.role='pursuit';c.parkedAtPost=false;c.vmax=0;c.dispatchedAt=time;c.responseOrigin={x:c.x,y:c.y};
+  const bridgePost=!!escape&&distance(c,escape)<2400,destination=bridgePost?escape:where;
+  c.tactic=bridgePost?'bridge-exit':null;c.tacticGoal=bridgePost?escape:null;c.cutoff=bridgePost;
+  assignRoute(c,routeTo(c.x,c.y,destination.x,destination.y,c.a));c.goal={x:destination.x,y:destination.y,z:destination.z||0};room--;needed=Math.max(0,needed-1);
+ }
 }
 function cruiserCrew(c){
  c.hasCrew=true;
@@ -2388,6 +2428,15 @@ function coordinatePolice(active){
   }
   policeDirector={bridge:null,assignments:mobile.map(c=>({car:c,tactic:c.tactic,goal:c.tacticGoal}))};return;
  }
+ const building=physicalContext(fix)?.building;
+ if((!player.veh||!fix.seen)&&!building&&!bridgeExit(fix)&&mobile.length){
+  const target=coastalGoal(mobile[0],fix),anchor=roadAnchor(target.x,target.y),sorted=[...mobile].sort((a,b)=>distance(a,target)-distance(b,target));
+  for(const [i,c] of sorted.entries()){
+   const offset=i===0?0:i%2?150*Math.ceil(i/2):-150*Math.ceil(i/2),t=clamp(anchor.t+offset,35,anchor.e.len-35);
+   c.tactic=i===0?'tail':'contain-foot';c.cutoff=i!==0;c.tacticGoal=i===0?null:{...lanePoint(anchor.e,anchor.dir,t,0),z:bridgeHeight(anchor.e,t)};
+  }
+  policeDirector={bridge:null,assignments:mobile.map(c=>({car:c,tactic:c.tactic,goal:c.tacticGoal}))};return;
+ }
  const exit=bridgeExit(fix),ahead=roadAhead(fix,Math.max(1200,(player.veh?.spd||90)*4.5));
  let tail=[...mobile].sort((a,b)=>distance(a,fix)-distance(b,fix))[0];
  const existingTail=mobile.find(c=>c.tactic==='tail'&&distance(c,fix)<2200);
@@ -2460,14 +2509,11 @@ function updWanted(dt){
   wanted=next;
  }
  if(!wanted)return;
- const escape=policeFix&&bridgeExit(policeFix);
- for(const c of cars)if(c.kind==='cop'&&c.role==='patrol'&&!c.dead&&policeFix&&(distance(c,policeFix)<6000||escape&&distance(c,escape)<2400)){
-  c.role='pursuit';c.parkedAtPost=false;c.goal=null;c.vmax=0;
- }
+ if(policeFix&&time>=patrolDispatchAt){patrolDispatchAt=time+.9;mobilizePatrols(policeFix);}
  const active=cars.filter(c=>c.kind==='cop'&&!c.dead&&(!c.hasCrew||npcs.some(n=>n.cruiser===c&&n.state!=='dead'))&&c.role!=='patrol'&&c.role!=='return');
  const foot=npcs.filter(n=>n.kind==='cop'&&!n.boarded&&n.state!=='dead');
  const cameraSeen=cameraTracking();
- const spotted=cameraSeen||(airUnit&&time-airUnit.lastSeen<.25)||active.some(c=>seesPlayer(c,bridgeAt(c.x,c.y)?2400:850))||foot.some(n=>seesPlayer(n,1200));
+ const spotted=cameraSeen||(airUnit&&time-airUnit.lastSeen<.25)||cars.some(c=>c.kind==='cop'&&!c.dead&&seesPlayer(c,bridgeAt(c.x,c.y)?2400:850))||foot.some(n=>seesPlayer(n,1200));
  if(spotted){
   vehicleDescription=player.veh;
   policeFix={x:player.x,y:player.y,z:player.z||0,seen:true,a:player.a};unseen=0;
@@ -2506,7 +2552,8 @@ function updWanted(dt){
  if(copT>0)return;
  copT=wanted>=3?1.6:2.4;
  const carsNeeded=Math.min(4,wanted+1),footNeeded=wanted>=3?4:2;
- const mobile=active.filter(c=>c.role==='pursuit'&&distance(c,policeFix)<3400).length;
+ // Count units already driving in, not only the ones within a short radius.
+ const mobile=active.filter(c=>c.role==='pursuit').length;
  const deployed=npcs.filter(n=>n.kind==='cop'&&!n.boarded&&n.state!=='dead'&&distance(n,policeFix)<920).length;
  if(mobile<carsNeeded&&(deployed<footNeeded||player.veh&&player.veh.spd>75)){
   if(active.length>=6){const far=active.filter(c=>c.tactic!=='bridge-exit'&&c.tactic!=='contain').sort((a,b)=>distance(b,policeFix)-distance(a,policeFix))[0];if(far&&distance(far,player)>4000)far.role='return';}
