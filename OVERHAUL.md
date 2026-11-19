@@ -39,3 +39,13 @@ Acceptance checks exercise mission stage handlers and shared mechanics, not a co
 `Kestrel Bay.html` is the canonical standalone game. `scripts/build.cjs` emits the Pages entry point into ignored `dist/`. `tests/acceptance.cjs` executes source-based regression checks without external dependencies. `.github/workflows/pages.yml` tests, builds and deploys `main` to GitHub Pages.
 
 Opening the map suspends the Web Audio context; closing it resumes the audio timeline. Background tabs also suspend audio. Fixed physics substeps cover up to half a second of elapsed frame time so slow rendering does not produce the previous severe simulation slowdown. Surface support queries use the local spatial index rather than scanning all fire escapes.
+
+## Volumetric water and damage follow-up
+
+The water surface is consistently at world z=-9. A surface swimmer's feet are at z=-24, with the eye three units above the water; looking down/up while moving changes real depth. Releasing input holds underwater depth. Space rises from depth and becomes a ballistic exit jump near the surface. Oxygen is based on submersion, and drowning follows depletion. The seabed slopes away from the shore; piers/causeways are physical slabs, and the land render has lake/basin cutouts. Water is opaque on both sides, with short blue underwater visibility. Shore/bridge observers can reacquire an exposed head, while rays through the surface are occluded.
+
+Bridge spans now participate in reinforcement selection at deck height. Local response counts allow replacement units to approach without counting a distant fleet as a nearby response. Officers use dry bridge/shore positions to follow a swimmer. Physical rescue ladders lead from the sea to the elevated bridge sidewalk; an E interaction animates the ascent and the step over the guardrail.
+
+Collision damage uses normal impact speed and a contact cooldown, with capped damage per hit. Tangential scrapes preserve forward motion. Real damage produces smoke below 55% engine condition and fire below 18%. A burning/wrecked vehicle gives ten seconds to exit before exploding. Emergency exits remain available at speed while burning or flooded. Explosions use three-dimensional distance. Flooded cars extinguish and sink; boats float relative to the same water level.
+
+`tests/water-impacts.js` exercises real dive depth, neutral depth hold, surfacing, water jumps onto a pier, drowning, exposed-head reacquisition, coastal tracking, ladder ascent, bridge dispatch, high-speed glancing contact, damage-free ramp entry, visible engine condition, fire escape time, and vertical blast separation. Browser checks cover the actual shader, input-driven swimming, the opaque water ceiling, warning effects and bailing out.

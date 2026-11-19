@@ -13,7 +13,8 @@ Open `Kestrel Bay.html` in a desktop browser with WebGL enabled. Click **Enter t
 | WASD / mouse | Move / look; steer in a car |
 | Shift | Sprint; vehicle boost |
 | Space | Jump; vehicle boost |
-| C / Q | Crouch / dive when swimming |
+| C | Crouch |
+| Water | WASD swims in the direction you look; look down/up and press W to dive/surface; Space rises and jumps out |
 | E | Open doors, use objects, enter or leave a vehicle |
 | 1 / H | Unarmed / holster |
 | 2 / 3 / 4 / 5 | Pistol / shotgun / carbine / tools |
@@ -34,6 +35,9 @@ Touch controls are also available. Shotguns, carbines, supplies, bypass tools, r
 - Normal car profiles restore the pre-nerf values. Cruisers have 15% more unboosted top speed than the fastest ordinary car. The striped Interceptor has better steering and remains 20% faster than a cruiser. Its boost improves acceleration without raising that speed ceiling. Sprint is 135 world units/s, up from 100.
 - Drivers and pedestrians report crimes. Reports from the same incident share severity; killing a witness cannot retract an already received report. Cameras, police sight and a dispatched helicopter can maintain contact. A sustained crime-free period outside observation is still necessary to lose heat.
 - Pursuing cruisers can leave roads, reverse out of congestion, deploy officers, and pick their officers back up. Officers traverse exterior stairs and breach room doors. One ground unit can cover an upper-floor escape while others pursue. Faster escapes at higher heat can bring a spotter helicopter and physical spike strips.
+- Water uses actual body and camera depth, an opaque surface, a seabed, blue distance fog, and oxygen while submerged. Letting go holds depth; Q no longer fakes a dive. Space provides a water exit jump. Marina piers and causeways have physical slabs, and bridge rescue ladders provide a route back up to the sidewalk.
+- Vehicle collision damage uses velocity into the obstacle, so a glancing scrape does not count as a full-speed crash. Engine damage produces smoke; a critical engine/wreck burns visibly with a ten-second exit window. Burning or flooded vehicles permit an emergency exit. Explosions account for height, and flooded cars sink rather than standing on the water.
+- Police reinforcements can enter long bridge spans at their actual elevation. Surfacing exposes the head again; officers track swimmers from the bridge/shore and cannot see through the water surface.
 - The hotbar starts unarmed. Drawing a gun near a patrol officer draws attention. Shotguns and carbines are purchasable and have distinct models, ammunition, fire rates, and reloads.
 - Bridge joins preserve pursuit speed, ramps have solid undersides, and bridge/fire escape guardrails prevent walking off. Moderate-speed PIT attempts require physical contact and are disabled on bridges. Reboarded crews can dismount again.
 - Opening the map suspends the audio context, including sirens, engines and sound-effect tails. Closing it resumes audio.
@@ -50,7 +54,7 @@ node tests/acceptance.cjs
 node scripts/build.cjs
 ```
 
-The acceptance harness executes the shipped game functions. It checks footprint overlaps and entrances, physical windows/floors, stair pursuit/descent, room breaches, bridge support, vehicle ratios, sprinting, incident deduplication, arrest recovery, officer reboarding/redeployment, bridge pursuit and barriers, restrained PIT contact, map audio suspension, helicopters/spikes, and all seven main mission stage handlers. It does not replace browser/rendering or human playtesting.
+The acceptance harness executes the shipped game functions. It checks footprint overlaps and entrances, physical windows/floors, stair pursuit/descent, room breaches, bridge support, swimming depth and oxygen, opaque-water line of sight, rescue ladders, vehicle ratios, sprinting, incident deduplication, arrest recovery, officer reboarding/redeployment, bridge pursuit and barriers, restrained PIT contact, map audio suspension, helicopters/spikes, directional diving/surfacing and water jumps, bridge reinforcement spawns, glancing impacts and fire escape timing, and all seven main mission stage handlers. It does not replace browser/rendering or human playtesting.
 
 Pushing `main` runs these checks, builds `dist/index.html` from the canonical `Kestrel Bay.html`, and publishes through GitHub Pages. Do not edit the generated `dist` copy.
 
