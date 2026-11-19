@@ -2013,7 +2013,7 @@ function updateTheft(dt){
  if(t.stage==='boarding'){
   t.t-=dt;if(t.t<=0){c.beingStolen=false;theft=null;enterCar(c);}return;
  }
- t.phase+=dt*(2.7+t.round*.65+(t.police?.3:0));
+ t.phase+=dt*.4*(2.7+t.round*.65+(t.police?.3:0));
 }
 function enterCar(c){
  const recognized=cameraTracking()||cars.some(o=>o.kind==='cop'&&seesPlayer(o,1200));
