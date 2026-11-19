@@ -1505,15 +1505,18 @@ function obstacle(c,ignore=null){const L=48+c.spd*.6,cs=Math.cos(c.a),sn=Math.si
 /* ---------- on foot ---------- */
 let navigationZ=0;
 const footBlocked=(x,y,r,z=navigationZ)=>solidFoot(x-r,y-r,z)||solidFoot(x+r,y-r,z)||solidFoot(x-r,y+r,z)||solidFoot(x+r,y+r,z);
+function dryFooting(x,y,z){
+ return !waterAt(x,y)||cellItems(x,y).solids.some(r=>r.surface&&surfaceCovers(r,x,y)&&surfaceHeight(r,x,y)<=z+8);
+}
 function moveFoot(o,dx,dy,r){
  const steps=Math.max(1,Math.ceil(hyp(dx,dy)/2));
  for(let i=0;i<steps;i++){
   const x=o.x+dx/steps,y=o.y+dy/steps,z=o.z||0,step=(o.vz||0)>=-20;
   // Test the body at the height of the next small step, so a landing edge is not mistaken for a ceiling.
   const zx=step?Math.max(z,supportHeight(x,o.y,z)):z;
-  if(!footBlocked(x,o.y,r,zx)&&(o===player||!waterAt(x,o.y))){o.x=x;o.z=zx;}
+  if(!footBlocked(x,o.y,r,zx)&&(o===player||dryFooting(x,o.y,zx))){o.x=x;o.z=zx;}
   const zy=step?Math.max(o.z||0,supportHeight(o.x,y,o.z||0)):o.z||0;
-  if(!footBlocked(o.x,y,r,zy)&&(o===player||!waterAt(o.x,y))){o.y=y;o.z=zy;}
+  if(!footBlocked(o.x,y,r,zy)&&(o===player||dryFooting(o.x,y,zy))){o.y=y;o.z=zy;}
  }
 }
 function los(x1,y1,x2,y2){return lineOfSight({x:x1,y:y1,z:navigationZ},{x:x2,y:y2,z:navigationZ});}
