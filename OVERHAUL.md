@@ -1,51 +1,39 @@
-# Kestrel Bay overhaul
+# Kestrel Bay implementation notes
 
-## World and scale
+The current pass supersedes the original single-island layout and off-map interior plan.
 
-Regenerate the map as one coherent main island with connected harbor, old town, commercial center, apartment districts, residential outskirts, wooded park, military peninsula, and boat access to a separate prison island. Roads follow the terrain outside the organized downtown grid. Generate streets, blocks, parcels, accessible entrances, and appropriate land uses in that order. Buildings require road or connected pedestrian access. Open space has a purpose. Sidewalks, crossings, paths, courtyards, service access, trees, doors, vehicles, and floors share a human scale.
+## World contract
 
-Most buildings have accessible ground floors. Small buildings have complete interiors, while towers provide lobbies and selected usable upper floors. Interiors provide shops, contacts, investigation, cover, or exploration. Harbor Coffee is the café chain.
+Four world units represent one foot. Eye height is 22.5 units; a floor is 44 units (11 feet). Meridian is a separate island east of the original mainland. Founders Suspension Bridge and Harbor Viaduct provide elevated connections. Blackwater remains a separate prison island; Fort Halcyon retains its mainland peninsula and runway.
 
-## Movement and vehicles
+Road nodes and links are generated before parcels. The central city deliberately retains a coherent grid, interrupted by diagonal streets, omitted links/T junctions, Civic Circle, public squares, and the coastal ring. Low- and mid-rise shore frontage forms a transition to the organized center. Reservations protect landmark sites before other parcels are populated. Every footprint and front entrance is checked against other buildings and nearby road access.
 
-Walking uses first person, aiming, a recognizable gun, finite stamina, crouching, and sprinting. Road vehicles use a zoomed-out third-person chase camera with collision protection. Cars accelerate substantially faster than a person and differ in handling and durability. Cars can leave roads on passable ground.
+## Physical architecture
 
-Boats navigate the coastal water. Swimming permits brief submersion with limited breath. Trees and solid objects obstruct sight. Water entry does not erase police knowledge.
+There are no interior coordinate offsets. `player.z`, a building's footprint, floor plans, collision walls, door and window state, elevator platform, and external stairs all use the same world coordinates. Interiors do not change player x/y when opening the entrance. Elevator travel physically boards and moves the platform inside its shaft; a platform on another floor is called to the player first.
 
-Helicopters use WASD translation, E/Q ascent/descent, mouse heading, and F boarding/exit on the ground. Planes use W/S throttle, A/D rudder/taxi steering, mouse-directed coordinated banking and pitch, automatic landing gear, and F boarding/exit on the ground. Aircraft need usable airspace and a proper airfield. Tanks are stealable, durable vehicles with turrets and heavy weapons.
+Floor plans are generated lazily for each building/floor and cached. Nearby floors have actual wall openings, glass, doors and furnishings. Distant/upper/lower shells reduce geometry cost. All generated buildings have entrance geometry; all tower floors can be selected from their lift. Smaller buildings use exterior stairs for upper access. The exterior fire stair alternates between two separate parallel flights; narrow wall-side platforms connect each floor's window to the end landings.
 
-## City life
+Hotel suites contain occupants, beds, desks, wardrobes, lounges and divided bathrooms. Residential lobbies, hotel reception, civic displays, offices, suppliers, restaurants, garages and prison cells use separate modular arrangements. Individual rooms remain procedural, with repeated furniture modules.
 
-Pedestrians follow sidewalks, crossings, and park paths. Drivers can witness and report crimes. Reports already received survive a witness's death. Civilians brake, flee, swerve, honk, pass obstructions safely, reroute, and yield to sirens. Occasional civilian assistance can block an escape at low speed. Traffic avoids entering blocked intersections and recovers from congestion.
+## Movement and equipment
 
-## Police
+Sprint increased from 100 to 135 units/s; regular movement is 64 units/s. Stamina recovery, crouching, jumping, swimming, limited breath, and third-person chase cameras remain. Car max-speed/acceleration profiles restore sedan 780/780, taxi 730/700, sport 1200/1100, muscle 1000/930, van 650/580 and cruiser 1050/1000. The striped Interceptor uses 1260/1200 and improved steering. Its boost does not lift its top-speed limit. These are simulation values, not mph; the HUD converts using the world scale.
 
-Actual witnesses, surveillance cameras, and police observation provide information. Serious collisions produce a significant response. New crimes and renewed tracking reset the escape period. A response must investigate its report before expiry. Cameras have limited range and obstructed coverage. Downtown is better observed than wooded or industrial areas.
+The five-slot hotbar holds unarmed, pistol, shotgun, carbine and tools. Only owned equipment can be selected. The player starts unarmed with a pistol available. Space jumps on foot and boosts in a vehicle; click/J fires the selected gun. Different firearms use different magazines, damage, spread, rates and reloads.
 
-Units approach, coordinate, use cover, deploy roadblocks, pursue on foot, and search last known locations. Arrest attempts precede lethal escalation for an unarmed collision. Firing or attacking police escalates force. Limit simultaneous firing and stage reinforcements. Escaping requires a sustained crime-free period outside observation. Switching vehicles outside observation helps break vehicle tracking.
+## Pursuit contract
 
-Keep navigation markers, the map, and police radar blips. Remove the special ROADBLOCK waypoint and advance deployment toast.
+Crimes feed a shared incident record. Witnesses can corroborate an incident without each adding its full severity; greater injury can upgrade that incident by the unreported difference. Further separate crimes still escalate heat. Tracking comes from cameras, human sight, received reports, and an airborne spotter at higher heat. Sight is height-aware and floor slabs occlude it. Windows admit sight but block bodies/bullets until broken. Searches retain the existing sustained crime-free/unobserved escape requirement.
 
-## Prison and military
+Cruisers use the road graph for long routes and steering/collision for a clear off-road approach. Congested mobile vehicles reverse and rejoin a route. Officers are linked to their cruiser, leave it physically and return to it when a fleeing driver gets away. Interior pursuit uses physical stair routes and door breaches; a second mobile cruiser can cover the lower fire exit. Simultaneous police fire is limited and officers commit to an aim point before firing. Spike strips are visible physical hazards placed by an arrived blocking unit. No predictive ROADBLOCK waypoint or advance deployment toast is exposed.
 
-Prison island has a dock, delivery access, perimeter, staff and utility areas, cellblocks, yards, and extraction routes. Patrols follow sensible routes and fields of view. Noise creates suspicion, investigations lead to local alerts, and confirmed intrusion triggers coordinated search and lockdown. Breakout includes obtaining a boat, approaching the island, disabling exterior security, opening a route, locating the mate, escorting them, and escaping by boat.
+## Missions and regression scope
 
-The military base contains runway, taxiways, hangars, helicopter pads, workshops, fuel, barracks, and perimeter defenses. Trained troops use cover, suppression, and flanking. Gates, quick-response squads, tanks, armored vehicles, and air defenses escalate after a confirmed breach. Radar, patrol gaps, maintenance routes, and sabotage give counterplay. Heavy weapons have visible attack cues.
+Keep the seven explicitly accepted campaign operations, optional recovery/race/aircraft contracts, prison rescue, military facilities, tanks, boats and aircraft. The courier for the later accounts operation starts in Meridian. Evidence is available only for the relevant operation and is marked consumed when that operation completes; a later operation explicitly resets its own evidence availability. Existing saves migrate equipment defaults.
 
-## Campaign
+Acceptance checks exercise mission stage handlers and shared mechanics, not a complete real-time playthrough of every possible mission approach. Browser QA checks actual WebGL startup, controls, door entry, lift menu/travel, hotbar and map layout. Performance and emergent multi-agent behavior still need user playtesting on target hardware.
 
-Seven main operations are deliberately accepted through contacts and the casebook. No automatic quest acceptance.
+## Repository
 
-1. The Missing Shipment — follow a moving freight van to learn its destination, or intercept it and recover its manifest.
-2. After Hours — enter the office, obtain access through service or public areas, find the records floor and payment evidence.
-3. Cut the Convoy — choose an interception point, separate the escort, disable or recover the cargo, escape with damage affecting rewards.
-4. Loose Ends — find and escort a witness through a hostile search and deliver them safely.
-5. The Island Run — obtain a boat and carry out the prison breakout with a stealth approach and rescue sequence.
-6. Follow the Money — identify and follow or intercept a courier, gain office access, and recover final evidence.
-7. Public Record — choose publication, buyback, or leverage, then play the corresponding handoff or exposure operation.
-
-Shared systems include vehicle interception and component damage, restricted building access, discovery and following, escort and extraction, pursuit, and escape. Outcomes affect rewards, preparation, contacts, and security. Failure permits retries and stage checkpoints. Heat and vehicle damage continue across mission completion. Money buys repairs, equipment, vehicles, and supplies. Optional contracts and races use the same playable systems.
-
-## HUD
-
-Top-left minimap. Bottom-left red health, white stamina, and yellow wanted stars. Breath appears while submerged. Vehicle condition and speed appear while driving. Mission information describes known objectives without revealing police plans.
+`Kestrel Bay.html` is the canonical standalone game. `scripts/build.cjs` emits the Pages entry point into ignored `dist/`. `tests/acceptance.cjs` executes source-based regression checks without external dependencies. `.github/workflows/pages.yml` tests, builds and deploys `main` to GitHub Pages.
