@@ -24,9 +24,9 @@ const officer=newNpc('cop',d.x,d.y+18);officer.z=132;npcs=[officer];
 for(let i=0;i<240;i++){time+=1/60;updOfficer(officer,1/60);}
 assert.ok(d.open&&d.broken);assert.ok(officer.y<d.y);console.log('Officer breached and entered occupied guest room');
 // Fire escape descent retains real heights, including the last landing to street.
-const x=h.x+h.w/2+39;Object.assign(player,{x,y:h.y+65,z:132,vz:0});
+const x=h.x+h.w/2+ESCAPE.inner;Object.assign(player,{x,y:h.y+65,z:132,vz:0});
 for(let floor=2;floor>=0;floor--){
- moveFoot(player,h.x+h.w/2+(floor%2===0?35:65)-player.x,0,7);
+ moveFoot(player,h.x+h.w/2+(floor%2===0?ESCAPE.inner:ESCAPE.outer)-player.x,0,7);
  const start=h.y+(floor%2===0?-65:65),end=h.y+(floor%2===0?65:-65),dy=(start-end)/140;
  for(let i=0;i<140;i++){moveFoot(player,0,dy,7);verticalFoot(player,1/60);}
  console.log('Descent',floor,player.x,player.y,player.z);

@@ -29,3 +29,10 @@ for(const name of ['The Mariner Grand','Southbank Garage']){
  for(const r of [...route].reverse()){const dir=Math.sign(r.endY-r.startY);walkTo(r.cx,b.y+dir*65);walkTo(r.cx,b.y-dir*65);assert.ok(Math.abs(player.z-r.z)<1);}
  assert.ok(!keys.Space&&Math.abs(player.z)<1);console.log('Complete no-jump ascent, landing turns and descent',name,route.length,'flights');
 }
+// Sprinting and slower frames still keep the whole foot supported through each turn.
+for(const dt of [1/60,1/30,1/20]){
+ const b=buildingNamed('The Mariner Grand'),edge=b.x+b.w/2;Object.assign(player,{x:edge+ESCAPE.center,y:b.y,z:0,vz:0});
+ const points=[[ESCAPE.center,-65,0],[ESCAPE.inner,-65,0],[ESCAPE.inner,65,44],[ESCAPE.outer,65,44],[ESCAPE.outer,-65,88],[ESCAPE.inner,-65,88],[ESCAPE.inner,65,132]];
+ for(const [offset,offsetY,z] of points){const x=edge+offset,y=b.y+offsetY;for(let i=0;i<120;i++){const d=hyp(x-player.x,y-player.y);if(d<.1)break;const step=Math.min(d,MOVEMENT.sprint*dt);moveFoot(player,(x-player.x)/d*step,(y-player.y)/d*step,7);verticalFoot(player,dt);}assert.ok(hyp(player.x-x,player.y-y)<.1&&Math.abs(player.z-z)<.1,`Sprint stair turn failed at ${1/dt} fps`);}
+ console.log('Sprint ascent and landing turns without jumps at',Math.round(1/dt),'fps');
+}

@@ -369,7 +369,7 @@ function nearestRoad(x,y,list=roads){
 function onRoad(x,y,extra=0){return cellItems(x,y).roads.some(e=>roadDistance(e,x,y)<=e.width/2+extra);}
 const covers=(r,x,y)=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.d;
 let interior=null;
-function solidFoot(x,y,z=0){return physicalSolid(x,y,z,24);}
+function solidFoot(x,y,z=0,maxStep=8){return physicalSolid(x,y,z,24,false,false,maxStep);}
 function solidCar(x,y,z=0){
  return physicalSolid(x,y,z,24,false,true);
 }
@@ -499,7 +499,8 @@ function indexSurface(r){
 function surfaceHeight(r,x,y){
  if(r.surface==='road')return 0;
  if(r.surface==='bridge')return bridgeHeight(r.e,clamp(along(r.e,x,y),0,r.e.len));
- return r.landing?r.z:r.z+clamp((y-r.startY)/(r.endY-r.startY),0,1)*44;
+ if(r.landing)return r.z;
+ const t=clamp((y-r.startY)/(r.endY-r.startY),0,1);return r.z+Math.min(r.steps,Math.floor(t*r.steps)+1)*44/r.steps;
 }
 function surfaceCovers(r,x,y){return covers(r,x,y)&&(!r.e||roadDistance(r.e,x,y)<=r.e.width/2+25);}
 function guardBeam(a,b,{height=14,width=1.5,kind='guardrail'}={}){
@@ -541,6 +542,7 @@ function towerVolume(x,y,z,w,d,h,color,style){
 }
 /* Buildings and their rooms use the same world coordinates and a 44-unit floor height. */
 const FLOOR_HEIGHT=44;
+const ESCAPE={walk:36,center:18,inner:58,outer:94,extent:112,flight:28};
 const architecture={doors:[],windows:[],lifts:[],stairs:[],items:[]};
 const streetNames=['King','Crescent','Mariner','Founders','Lantern','Alder','Market','Union','Crown','Mercer'];
 const houseNames=['Alder Court','Mariner Apartments','King Street Flats','Crescent House','Union Lofts','The Belvedere'];
@@ -552,13 +554,44 @@ function planFor(b,floor=0){
  if(!b.plans.has(floor))b.plans.set(floor,makeFloorPlan(b,floor));
  return b.plans.get(floor);
 }
+function rectOverlap(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.d&&a.y+a.d>b.y;}
+function circulationFor(b,floor){
+ const {x,y,w,d}=b,areas=[];
+ if(b.floors>3){const sx=x-w*.36,sy=y+d*.29;areas.push({x:sx-19,y:sy-23,w:38,d:46},{x:sx-29,y:sy-82,w:58,d:62});
+  const end=Math.max(y,sy-56);areas.push({x:sx-23,y:y-20,w:46,d:end-y+40});}
+ if(b.escape&&floor>0)areas.push({x:x+w/2-64,y:y-20,w:68,d:40});
+ if(floor===0){
+  const front=b.front,offset=front==='east'?b.entryOffset||0:0;
+  if(front==='north'||front==='south'){const ey=y+(front==='north'?-d/2:d/2);areas.push({x:x-26,y:Math.min(y,ey)-2,w:52,d:Math.abs(ey-y)+4});}
+  else{const ex=x+(front==='west'?-w/2:w/2),ey=y+offset;areas.push({x:Math.min(x,ex)-2,y:ey-26,w:Math.abs(ex-x)+4,d:52});if(offset)areas.push({x:x-24,y:Math.min(y,ey)-22,w:48,d:Math.abs(offset)+44});}
+ }
+ return areas;
+}
+function installDecorClearance(plan){
+ const mesh=plan.mesh,box=mesh.box,tube=mesh.tube;
+ const blocked=(x,y,z,w,d,h)=>!plan.structure&&z+h>plan.z+.5&&z<plan.z+34&&
+  [...plan.clearances,...plan.omitted].some(r=>rectOverlap({x:x-w/2,y:y-d/2,w,d},r));
+ mesh.box=function(x,y,z,w,d,h,color,a=0,...rest){const co=Math.abs(Math.cos(a)),si=Math.abs(Math.sin(a));if(!blocked(x,y,z,co*w+si*d,si*w+co*d,h))return box.call(this,x,y,z,w,d,h,color,a,...rest);};
+ mesh.tube=function(x,y,z,r1,r2,h,...rest){const width=Math.max(r1,r2)*2;if(!blocked(x,y,z,width,width,h))return tube.call(this,x,y,z,r1,r2,h,...rest);};
+}
 function roomWall(plan,x,y,w,d,height=40,color='#b9b5a6'){
- const r={x:x-w/2,y:y-d/2,w,d,z:plan.z,height,kind:'wall'};
- plan.walls.push(r);plan.mesh.box(x,y,plan.z,w,d,height,color);
+ const horizontal=w>=d,start=horizontal?x-w/2:y-d/2,end=horizontal?x+w/2:y+d/2;
+ let spans=[[start,end]];
+ if(!plan.core)for(const r of plan.clearances){
+  const crosses=horizontal?y+d/2>r.y&&y-d/2<r.y+r.d:x+w/2>r.x&&x-w/2<r.x+r.w;if(!crosses)continue;
+  const lo=horizontal?r.x:r.y,hi=lo+(horizontal?r.w:r.d);
+  spans=spans.flatMap(([a,b])=>b<=lo||a>=hi?[[a,b]]:[[a,Math.min(b,lo)],[Math.max(a,hi),b]].filter(([u,v])=>v-u>.1));
+ }
+ for(const [a,b] of spans){const cx=horizontal?(a+b)/2:x,cy=horizontal?y:(a+b)/2,rw=horizontal?b-a:w,rd=horizontal?d:b-a;
+  plan.walls.push({x:cx-rw/2,y:cy-rd/2,w:rw,d:rd,z:plan.z,height,kind:'wall'});
+  plan.structure=true;plan.mesh.box(cx,cy,plan.z,rw,rd,height,color);plan.structure=false;
+ }
 }
 function furniture(plan,x,y,w,d,h,color,angle=0){
- plan.mesh.box(x,y,plan.z,w,d,h,color,angle);
- if(Math.abs(angle)<.01)plan.walls.push({x:x-w/2,y:y-d/2,w,d,z:plan.z,height:h,kind:'furniture'});
+ const co=Math.abs(Math.cos(angle)),si=Math.abs(Math.sin(angle)),rw=co*w+si*d,rd=si*w+co*d,r={x:x-rw/2,y:y-rd/2,w:rw,d:rd};
+ if(plan.clearances.some(a=>rectOverlap(a,r))){plan.omitted.push(r);return false;}
+ plan.structure=true;plan.mesh.box(x,y,plan.z,w,d,h,color,angle);plan.structure=false;
+ if(Math.abs(angle)<.01)plan.walls.push({...r,z:plan.z,height:h,kind:'furniture'});return true;
 }
 function addDoor(plan,x,y,axis,width=22,{locked=false,entry=false,label='Door',room=null}={}){
  const d={id:architecture.doors.length,b:plan.b,floor:plan.floor,x,y,z:plan.z,axis,width,locked,entry,label,room,open:false,broken:false,hp:28};
@@ -572,7 +605,7 @@ function wallProfile(b,floor,side){
  const horizontal=side==='north'||side==='south',length=horizontal?b.w:b.d;
  const fixed=horizontal?b.y+(side==='north'?-b.d/2:b.d/2):b.x+(side==='west'?-b.w/2:b.w/2);
  const openings=[],front=b.front===side,entryOffset=side==='east'?b.entryOffset||0:0;
- if(floor===0&&front)openings.push({lo:entryOffset-16,hi:entryOffset+16,door:true});
+ if(floor===0&&front)openings.push({lo:entryOffset-22,hi:entryOffset+22,door:true});
  const count=Math.max(2,Math.floor(length/68)),pitch=length/count;
  for(let i=0;i<count;i++){
   const u=-length/2+(i+.5)*pitch;
@@ -581,8 +614,8 @@ function wallProfile(b,floor,side){
  }
  if(side==='east'&&b.escape&&floor>0){
   const u=0;
-  for(let i=openings.length-1;i>=0;i--)if(openings[i].lo<u+24&&openings[i].hi>u-24)openings.splice(i,1);
-  openings.push({lo:u-24,hi:u+24,window:true,escape:true});
+  for(let i=openings.length-1;i>=0;i--)if(openings[i].lo<u+28&&openings[i].hi>u-28)openings.splice(i,1);
+  openings.push({lo:u-28,hi:u+28,window:true,escape:true});
  }
  openings.sort((a,b)=>a.lo-b.lo);
  return {horizontal,length,fixed,openings};
@@ -618,6 +651,7 @@ function shellWall(plan,side){
 function makeFloorPlan(b,floor){
  const z=floor*44,plan={b,floor,z,mesh:new Mesh(),walls:[],doors:[],windows:[],items:[],people:[],rooms:[]};
  const {x,y,w,d}=b;
+ plan.clearances=circulationFor(b,floor);plan.omitted=[];installDecorClearance(plan);
  const floorColor=b.use==='home'?'#967f67':b.use==='hotel'?'#947e6f':'#9b9b90';
  const sx=x-w*.36,sy=y+d*.29;
  if(b.floors>3){
@@ -627,14 +661,14 @@ function makeFloorPlan(b,floor){
   plan.mesh.box(sx+22+(x+w/2-sx-22)/2,sy,z-.8,x+w/2-sx-22,48,.8,floorColor);
  }else plan.mesh.box(x,y,z-.8,w,d,.8,floorColor);
  // The slab of the floor above is also the ceiling; the shaft remains open.
- for(const side of ['north','south','west','east'])shellWall(plan,side);
+ plan.structure=true;for(const side of ['north','south','west','east'])shellWall(plan,side);plan.structure=false;
  // Real light fittings and windows illuminate distinct furnished spaces.
  for(const u of [-1,1])for(const v of [-1,1])plan.mesh.box(x+u*w*.25,y+v*d*.25,z+41,27,11,1,'#fff2cf');
  const lift={id:'lift',b,floor,x:x-w*.36,y:y+d*.29,z,label:'Elevator'};
  if(b.floors>3){
   b.lift??={b,x:lift.x,y:lift.y,z:0,open:true};
   const sx=lift.x,sy=lift.y;
-  roomWall(plan,sx-22,sy,3,48);roomWall(plan,sx+22,sy,3,48);roomWall(plan,sx,sy+24,46,3);
+  plan.core=true;roomWall(plan,sx-22,sy,3,48);roomWall(plan,sx+22,sy,3,48);roomWall(plan,sx,sy+24,46,3);plan.core=false;
   plan.mesh.box(sx,sy-25,z+35,43,3,5,'#707e80');
   itemFor(plan,'lift',sx,sy-39,'Elevator · choose floor');
   itemFor(plan,'stairs',x+w*.43,y,'Fire exit · break the east window to reach the exterior stair');
@@ -663,12 +697,10 @@ function makeFloorPlan(b,floor){
     // Guest suites include a bathroom, desk, wardrobe and lounge, leaving circulation to the door.
     const bathY=y+side*(d/2-48),bathX=cx+roomW*.25;
     roomWall(plan,cx,bathY,3,80,34,'#b9b6a6');
-    roomWall(plan,cx+roomW*.25,bathY-side*40,roomW*.5,3,34,'#b9b6a6');
-    addDoor(plan,bathX,bathY-side*40,'x',21,{label:'Bathroom'});
+    addDoor(plan,bathX,bathY-side*40,'x',32,{label:'Bathroom'});
     // The wall is split around this bathroom door instead of covering its opening.
-    const wall=plan.walls.pop();plan.mesh.data.splice(plan.mesh.data.length-210,210);
-    roomWall(plan,(cx+bathX-11)/2,bathY-side*40,bathX-11-cx,3,34,'#b9b6a6');
-    roomWall(plan,(bathX+11+right)/2,bathY-side*40,right-bathX-11,3,34,'#b9b6a6');
+    roomWall(plan,(cx+bathX-17)/2,bathY-side*40,bathX-17-cx,3,34,'#b9b6a6');
+    roomWall(plan,(bathX+17+right)/2,bathY-side*40,right-bathX-17,3,34,'#b9b6a6');
     furniture(plan,bathX,bathY+side*13,18,28,5,'#d7d8c7');plan.mesh.box(bathX,bathY+side*13,z+5,13,22,1,'#7ba0a5');
     furniture(plan,bathX,bathY-side*17,11,9,10,'#d9d8c9');
     furniture(plan,cx-roomW*.32,cy+side*60,22,16,31,'#736553');
@@ -693,38 +725,40 @@ function makeFloorPlan(b,floor){
  }else if(b.use==='hotel'){
 
   // A residential lobby contains seating, mailboxes, reception and the circulation core.
-  furniture(plan,x+w*.17,y-d*.22,w*.36,27,14,b.use==='hotel'?'#785f50':'#798674');
+  furniture(plan,x+w*.17,y+(b.front==='north'?1:-1)*d*.22,w*.36,27,14,b.use==='hotel'?'#785f50':'#798674');
   for(const side of [-1,1]){
    furniture(plan,x+side*w*.23,y+d*.05,47,19,9,b.use==='hotel'?'#506d70':'#8b7868');
    plan.mesh.box(x+side*w*.23,y+d*.05+8,z+9,47,4,12,'#77877d');
   }
   furniture(plan,x,y+d*.11,28,24,8,'#a49373');
   for(let i=0;i<6;i++)plan.mesh.box(x-w*.43+i*9,y-d*.44,z+15,7,3,9,'#8a9893');
-  plan.people.push({x:x+w*.17,y:y-d*.31,kind:'staff'});
+  plan.people.push({x:x+w*.17,y:y+(b.front==='north'?1:-1)*d*.31,kind:'staff'});
   for(const side of [-1,1]){furniture(plan,x+side*w*.31,y-d*.05,21,20,9,'#80694f');plan.mesh.box(x+side*w*.31,y-d*.05,z+9,12,8,1,'#d1c7aa');}
   furniture(plan,x-w*.22,y-d*.28,w*.24,18,14,'#7a715e');
   plan.mesh.box(x-w*.22,y-d*.28,z+14,w*.22,13,1,'#a9bcb4');
   for(let i=0;i<5;i++)plan.mesh.tube(x-w*.30+i*w*.04,y-d*.28,z+15,2,2,7,['#9b7256','#6f9179','#b7a978'][i%3],8);
-  if(b.name==='The Mariner Grand')itemFor(plan,'hotelKey',x+w*.17,y-d*.12,'Ask reception for a guest key');
+  if(b.name==='The Mariner Grand')itemFor(plan,'hotelKey',x+w*.17,y+(b.front==='north'?1:-1)*d*.12,'Ask reception for a guest key');
  }else if(b.use==='cafe'||b.use==='restaurant'){
-  furniture(plan,x,y-d*.28,w*.68,22,14,b.use==='cafe'?'#557e6b':'#8a6b57');
+  const back=b.front==='north'?1:-1;
+  furniture(plan,x,y+back*d*.28,w*.68,22,14,b.use==='cafe'?'#557e6b':'#8a6b57');
   for(let i=0;i<3;i++){
-   plan.mesh.box(x-w*.22+i*w*.22,y-d*.28,z+14,10,9,7,'#c5bca2');
+   plan.mesh.box(x-w*.22+i*w*.22,y+back*d*.28,z+14,10,9,7,'#c5bca2');
    const cx=x-w*.27+i*w*.27;
    furniture(plan,cx,y+d*.06,25,25,12,'#a48a67');
    for(const side of [-1,1])furniture(plan,cx+side*23,y+d*.06,11,14,7,'#637d73');
   }
   if(b.use==='restaurant')for(const side of [-1,1])furniture(plan,x+side*w*.39,y+d*.32,27,27,9,'#8d5652');
-  plan.people.push({x,y:y-d*.38,kind:'staff'});
-  itemFor(plan,'shop',x,y-d*.10,b.use==='cafe'?'Buy coffee · $15':'Buy a meal · $30');
+  plan.people.push({x,y:y+back*d*.38,kind:'staff'});
+  itemFor(plan,'shop',x,y+back*d*.10,b.use==='cafe'?'Buy coffee · $15':'Buy a meal · $30');
  }else if(b.use==='shop'||b.use==='garage'||b.use==='warehouse'||b.use==='hangar'){
-  furniture(plan,x,y-d*.28,w*.70,24,16,'#697d78');
+  const back=b.front==='north'?1:-1;
+  furniture(plan,x,y+back*d*.28,w*.70,24,16,'#697d78');
   for(const side of [-1,1])for(let i=0;i<3;i++){
    furniture(plan,x+side*w*.30,y-d*.06+i*d*.16,25,26,b.use==='warehouse'?22:12,'#a18d6a');
   }
   if(b.use==='garage'||b.use==='hangar'){for(const side of [-1,1]){plan.mesh.box(x+side*w*.22,y+d*.22,z+.03,w*.28,d*.34,.03,'#c1b69b');plan.mesh.box(x+side*w*.22,y+d*.22,z+.06,w*.25,d*.30,.03,'#737f7a');}furniture(plan,x-w*.26,y+d*.40,w*.35,14,13,'#526c67');}
-  itemFor(plan,'shop',x,y-d*.10,b.use==='garage'?'Garage · repairs and vehicles':'Supplies and equipment');
-  plan.people.push({x,y:y-d*.39,kind:'staff'});
+  itemFor(plan,'shop',x,y+back*d*.10,b.use==='garage'?'Garage · repairs and vehicles':'Supplies and equipment');
+  plan.people.push({x,y:y+back*d*.39,kind:'staff'});
  }else if(b.use==='prison'){
   for(const side of [-1,1])for(let i=0;i<3;i++){
    const cy=y-d*.29+i*d*.27,cx=x+side*w*.30;
@@ -751,9 +785,9 @@ function makeFloorPlan(b,floor){
   if(b.name==='Public Archive'&&floor===0){itemFor(plan,'records',x,y-d*.22,'Inspect the evidence terminal',{missionOnly:true});}
  }else{
   if(floor===0){
-   furniture(plan,x+w*.15,y-d*.20,w*.40,26,15,'#7b867b');
+   furniture(plan,x+w*.15,y+(b.front==='north'?1:-1)*d*.20,w*.40,26,15,'#7b867b');
    for(const side of [-1,1])furniture(plan,x+side*w*.29,y+d*.07,39,18,9,'#647a7a');
-   plan.people.push({x:x+w*.15,y:y-d*.32,kind:'staff'});
+   plan.people.push({x:x+w*.15,y:y+(b.front==='north'?1:-1)*d*.32,kind:'staff'});
   }else{
    const columns=Math.max(2,Math.min(4,Math.floor(w/85)));
    for(const side of [-1,1])for(let i=0;i<columns;i++){
@@ -787,34 +821,34 @@ function buildShell(b){
   const x=b.x+b.w/2;b.escapeMeshes=new Map();
   for(let floor=0;floor<=b.accessFloors.at(-1);floor++){
    const meshStart=worldMesh.data.length,z=floor*44,y=b.y+(floor%2===0?-65:65);
-   const landing={b,floor,x:x+45,y,z,w:90,d:36};
+   const landing={b,floor,x:x+ESCAPE.extent/2,y,z,w:ESCAPE.extent,d:36};
    architecture.stairs.push(indexSurface({...landing,landing:true,surface:'stair'}));
-   architecture.stairs.push(indexSurface({b,floor,x:x+10,y:b.y,z,w:20,d:170,landing:true,surface:'stair'}));
-   worldMesh.box(x+10,b.y,z-1,20,170,2,'#596e72');
-   worldMesh.box(landing.x,y,z-1,90,36,2,'#596e72');
+   architecture.stairs.push(indexSurface({b,floor,x:x+ESCAPE.center,y:b.y,z,w:ESCAPE.walk,d:170,landing:true,surface:'stair'}));
+   worldMesh.box(x+ESCAPE.center,b.y,z-2,ESCAPE.walk,170,2,'#596e72');
+   worldMesh.box(landing.x,y,z-2,ESCAPE.extent,36,2,'#596e72');
    if(floor>0){
     const far=b.y+(floor%2===0?-83:83);
-    guardBeam([x,far,z],[x+90,far,z]);
-    guardBeam([x+90,y-18,z],[x+90,y+18,z]);
+    guardBeam([x,far,z],[x+ESCAPE.extent,far,z]);
+    guardBeam([x+ESCAPE.extent,y-18,z],[x+ESCAPE.extent,y+18,z]);
     // Leave both end landings open for changing flights; guard the narrow window-side platform.
-    guardBeam([x+20,b.y-45,z],[x+20,b.y+45,z]);
+    guardBeam([x+ESCAPE.walk,b.y-45,z],[x+ESCAPE.walk,b.y+45,z]);
    }
    if(floor<b.accessFloors.at(-1)){
     // Flights meet the inner edges of the 36-unit landings, not their centers.
     // Overlapping the upper platform buried the final treads and caught the player's leading foot corners.
     const direction=floor%2===0?1:-1,startY=y+direction*18,endY=b.y+direction*47,run=Math.abs(endY-startY),steps=18;
-    const ramp={b,floor,x:x+(floor%2===0?35:65),y:b.y,z,w:24,d:run,startY,endY,steps};
+    const ramp={b,floor,x:x+(floor%2===0?ESCAPE.inner:ESCAPE.outer),y:b.y,z,w:ESCAPE.flight,d:run,startY,endY,steps};
     architecture.stairs.push(indexSurface({...ramp,surface:'stair'}));
     for(let i=0;i<steps;i++){
      const f=(i+.5)/steps,sy=startY+(endY-startY)*f;
      // The last tread and the landing share a top face at z + 45.
-     worldMesh.box(ramp.x,sy,z+(i+1)*44/steps-1,24,run/steps,2,'#61777b');
+     worldMesh.box(ramp.x,sy,z+(i+1)*44/steps-2,ESCAPE.flight,run/steps,2,'#61777b');
     }
-    for(const side of [-1,1])guardBeam([ramp.x+side*13,startY,z],[ramp.x+side*13,endY,z+44]);
+    for(const side of [-1,1])guardBeam([ramp.x+side*(ESCAPE.flight/2+1),startY,z],[ramp.x+side*(ESCAPE.flight/2+1),endY,z+44]);
    }
    b.escapeMeshes.set(floor,worldMesh.data.splice(meshStart));
   }
-  for(const side of [-1,1])worldMesh.beam([x+90,b.y+side*65,0],[x+90,b.y+side*65,b.h],2,'#596e72');
+  for(const side of [-1,1])worldMesh.beam([x+ESCAPE.extent,b.y+side*65,0],[x+ESCAPE.extent,b.y+side*65,b.h],2,'#596e72');
  }
 }
 function architectureBlocks(b,x,y,z,height=24,{sight=false}={}){
@@ -837,17 +871,31 @@ function bridgeHeight(e,t){
  const riseA=landA?clamp(t/900,0,1):1,riseB=landB?clamp((e.len-t)/900,0,1):1;
  return route*Math.min(riseA,riseB);
 }
-function supportHeight(x,y,currentZ=0,maxStep=8){
+function supportPointHeight(x,y,currentZ=0,maxStep=8){
  let result=waterAt(x,y)?waterBed(x,y):0;
  for(const r of cellItems(x,y).solids){
   if(r.surface&&surfaceCovers(r,x,y)){const z=surfaceHeight(r,x,y);if(z<=currentZ+maxStep)result=Math.max(result,z);}
   if(!r.building)continue;
-  const b=r.building;if(!pointInBuilding(b,x,y,3))continue;
+  const b=r.building;
+  if(Math.min(Math.abs(Math.abs(x-b.x)-b.w/2),Math.abs(Math.abs(y-b.y)-b.d/2))<10){
+   const floor=Math.floor(Math.max(0,currentZ)/44);if(b.accessFloors.includes(floor))for(const w of planFor(b,floor).windows){
+    if(!w.broken||w.escape||w.z>currentZ+maxStep)continue;
+    const normal=w.axis==='x'?Math.abs(y-w.y):Math.abs(x-w.x),across=w.axis==='x'?Math.abs(x-w.x):Math.abs(y-w.y);
+    if(normal<=2.01&&across<w.width/2-2)result=Math.max(result,w.z);
+   }
+  }
+  if(!pointInBuilding(b,x,y,-.01))continue;
   const shaft=b.lift&&Math.abs(x-b.lift.x)<20&&Math.abs(y-b.lift.y)<23;
   if(!shaft){const floor=Math.min(b.floors-1,Math.floor((currentZ+maxStep)/44));if(floor>=0)result=Math.max(result,floor*44);}
   else if(b.lift.z<=currentZ+maxStep)result=Math.max(result,b.lift.z);
  }
  return result;
+}
+
+function supportHeight(x,y,currentZ=0,maxStep=8,footprint=0){
+ let height=supportPointHeight(x,y,currentZ,maxStep);
+ if(footprint)for(const dx of [-footprint,footprint])for(const dy of [-footprint,footprint])height=Math.max(height,supportPointHeight(x+dx,y+dy,currentZ,maxStep));
+ return height;
 }
 
 function buildingsNear(x,y){
@@ -899,7 +947,7 @@ function showElevator(){
 }
 function interiorAction(){
  const door=worldDoorNear(),item=physicalItemNear();
- if(door&&(!item||distance(door,player)<distance(item,player))){
+ if(door&&(door.entry||!item||distance(door,player)<distance(item,player))){
   if(door.locked&&!door.broken){
    if(door.custody){if(inventory.prisonCard){door.locked=false;door.open=true;}else toast('Custody lock · obtain a guard card, use the cell controls, or shoot the lock.');return true;}
    if(inventory.key||inventory.tools){door.locked=false;door.open=true;toast('Unlocked · '+door.label);}
@@ -1641,22 +1689,31 @@ function obstacle(c,ignore=null){const L=48+c.spd*.6,cs=Math.cos(c.a),sn=Math.si
 
 /* ---------- on foot ---------- */
 let navigationZ=0;
-const footBlocked=(x,y,r,z=navigationZ)=>solidFoot(x-r,y-r,z)||solidFoot(x+r,y-r,z)||solidFoot(x-r,y+r,z)||solidFoot(x+r,y+r,z);
+const footBlocked=(x,y,r,z=navigationZ,maxStep=8)=>solidFoot(x-r,y-r,z,maxStep)||solidFoot(x+r,y-r,z,maxStep)||solidFoot(x-r,y+r,z,maxStep)||solidFoot(x+r,y+r,z,maxStep);
 function dryFooting(x,y,z){
  return !waterAt(x,y)||cellItems(x,y).solids.some(r=>r.surface&&surfaceCovers(r,x,y)&&surfaceHeight(r,x,y)<=z+8);
 }
 function footVehicleBlocked(x,y,r,z){
  return cars.some(c=>!c.dead&&Math.abs((c.z||0)-z)<24&&vehicleBodyAt(c,x,y,r));
 }
+function assistBrokenSill(o,x,y,r){
+ if(o!==player||o.inWater||(o.vz||0)>5||(o.vz||0)<-20||Math.abs((o.z||0)-supportHeight(o.x,o.y,o.z||0,0))>1.5)return;
+ const floor=Math.floor(Math.max(0,o.z||0)/44);
+ for(const b of buildingsNear(x,y))if(b.accessFloors.includes(floor))for(const w of planFor(b,floor).windows){
+  if(!w.broken||w.escape||w.z<=(o.z||0)+.01||w.z-(o.z||0)>12||w.h<25)continue;
+  const normal=w.axis==='x'?Math.abs(y-w.y):Math.abs(x-w.x),across=w.axis==='x'?Math.abs(x-w.x):Math.abs(y-w.y);
+  if(normal<=9&&across<w.width/2-r-2&&!footBlocked(x,y,r,w.z)){o.z=w.z;o.vz=0;return;}
+ }
+}
 function moveFoot(o,dx,dy,r){
  const steps=Math.max(1,Math.ceil(hyp(dx,dy)/2));
  for(let i=0;i<steps;i++){
-  const x=o.x+dx/steps,y=o.y+dy/steps,z=o.z||0,step=(o.vz||0)>=-20&&!o.inWater;
+  const x=o.x+dx/steps,y=o.y+dy/steps;assistBrokenSill(o,x,y,r);const z=o.z||0,step=(o.vz||0)>=-20&&!o.inWater;
   // Test the body at the height of the next small step, so a landing edge is not mistaken for a ceiling.
-  const zx=step?Math.max(z,supportHeight(x,o.y,z)):z;
-  if(!footBlocked(x,o.y,r,zx)&&(!footVehicleBlocked(x,o.y,r,zx)||footVehicleBlocked(o.x,o.y,r,zx))&&(o===player||dryFooting(x,o.y,zx))){o.x=x;o.z=zx;}
-  const zy=step?Math.max(o.z||0,supportHeight(o.x,y,o.z||0)):o.z||0;
-  if(!footBlocked(o.x,y,r,zy)&&(!footVehicleBlocked(o.x,y,r,zy)||footVehicleBlocked(o.x,o.y,r,zy))&&(o===player||dryFooting(o.x,y,zy))){o.y=y;o.z=zy;}
+  const zx=step?Math.max(z,supportHeight(x,o.y,z,8,r)):z;
+  if(!footBlocked(x,o.y,r,zx,step?8:1.5)&&(!footVehicleBlocked(x,o.y,r,zx)||footVehicleBlocked(o.x,o.y,r,zx))&&(o===player||dryFooting(x,o.y,zx))){o.x=x;o.z=zx;}
+  const zy=step?Math.max(o.z||0,supportHeight(o.x,y,o.z||0,8,r)):o.z||0;
+  if(!footBlocked(o.x,y,r,zy,step?8:1.5)&&(!footVehicleBlocked(o.x,y,r,zy)||footVehicleBlocked(o.x,o.y,r,zy))&&(o===player||dryFooting(o.x,y,zy))){o.y=y;o.z=zy;}
  }
 }
 function los(x1,y1,x2,y2){return lineOfSight({x:x1,y:y1,z:navigationZ},{x:x2,y:y2,z:navigationZ});}
@@ -3360,7 +3417,7 @@ function updateArrest(dt){
  else player.bust=Math.max(0,player.bust-dt*1.25);
 }
 function verticalFoot(o,dt){
- const z=o.z||0,support=supportHeight(o.x,o.y,z,(o.vz||0)<-20?0:8),grounded=z<=support+1.5;
+ const z=o.z||0,support=supportHeight(o.x,o.y,z,(o.vz||0)<-20?1.5:8,o===player?7:6),grounded=z<=support+1.5;
  if(o===player&&keys.Space&&grounded&&!o.jumpHeld&&!o.swimming){o.vz=78;o.jumpHeld=true;}
  if(o===player&&!keys.Space)o.jumpHeld=false;
  o.vz=(o.vz||0)-220*dt;
@@ -3379,7 +3436,7 @@ function lineOfSight(a,b){
  for(let i=1;i<steps;i++){const t=i/steps;if(physicalSolid(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,az+(bz-az)*t,0,true))return false;}
  return true;
 }
-function physicalSolid(x,y,z=0,height=24,sight=false,car=false){
+function physicalSolid(x,y,z=0,height=24,sight=false,car=false,maxStep=8){
  const floor=waterAt(x,y)?waterBed(x,y):0;if(z+(height>0?1:0)<floor-.1)return true;
  return cellItems(x,y).solids.some(r=>{
   if(r.active===false)return false;
@@ -3389,7 +3446,7 @@ function physicalSolid(x,y,z=0,height=24,sight=false,car=false){
    const deck=surfaceHeight(r,x,y),thickness=r.thickness||(r.surface==='bridge'?4:2);
    if(height===0)return z>deck-thickness&&z<deck;
    // A small forward rise is a walkable step, while a slab overhead is a ceiling.
-   return deck>z+8&&z+height>deck-thickness&&z+1<deck;
+   return deck>z+maxStep&&z+height>deck-thickness&&z+1<deck;
   }
   let bottom=r.z||0;
   if(r.kind==='guardrail'||r.kind==='bridgeRail'){
@@ -3458,19 +3515,19 @@ function buildingPursuit(n,target,dt){
  let goal;
  if(n.stairRoute?.b!==b||n.stairRoute?.targetFloor!==targetFloor){
   const from=Math.round(z/44),points=[];
-  if(context?.building===b&&from>0){const win=planFor(b,from).windows.find(w=>w.escape);if(win)win.broken=true;points.push({x:x+8,y,z:from*44});points.push({x:x+8,y:y+(from%2===0?-65:65),z:from*44});}
+  if(context?.building===b&&from>0){const win=planFor(b,from).windows.find(w=>w.escape);if(win)win.broken=true;points.push({x:x+ESCAPE.center,y,z:from*44});points.push({x:x+ESCAPE.center,y:y+(from%2===0?-65:65),z:from*44});}
   if(from===0&&targetFloor===0){b.entryDoor.open=true;points.push({x:b.entryDoor.x,y:b.entryDoor.y,z:0});points.push(destination?{x:b.entryDoor.x+(b.x-b.entryDoor.x)*.12,y:b.entryDoor.y+(b.y-b.entryDoor.y)*.12,z:0}:b.door);}
   else{
-   points.push({x:x+40,y:y+(from%2===0?-65:65),z:from*44});
+   points.push({x:x+ESCAPE.inner,y:y+(from%2===0?-65:65),z:from*44});
    const step=targetFloor>from?1:-1;
    for(let f=from;f!==targetFloor;f+=step){
     const flight=step>0?f:f-1,sy=y+(flight%2===0?-65:65),ey=y+(flight%2===0?65:-65);
-    const stairX=x+(flight%2===0?35:65);
+    const stairX=x+(flight%2===0?ESCAPE.inner:ESCAPE.outer);
     points.push({x:stairX,y:step>0?sy:ey,z:f*44});
     points.push({x:stairX,y:step>0?ey:sy,z:(f+step)*44,flight:true});
    }
-   points.push({x:x+8,y:y+(targetFloor%2===0?-65:65),z:targetFloor*44});
-   points.push({x:x+8,y,z:targetFloor*44});
+   points.push({x:x+ESCAPE.center,y:y+(targetFloor%2===0?-65:65),z:targetFloor*44});
+   points.push({x:x+ESCAPE.center,y,z:targetFloor*44});
    if(destination){const win=planFor(b,targetFloor).windows.find(w=>w.escape);if(win)win.broken=true;points.push({x:x-18,y,z:targetFloor*44});}
   }
   n.stairRoute={b,targetFloor,points};n.navCheck=undefined;

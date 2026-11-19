@@ -49,7 +49,7 @@ Object.assign(player,{x:r.x,y:r.y,z:rz});moveFoot(player,ramp.dx*15,ramp.dy*15,7
 const middle=lanePoint(span,1,1200,0);Object.assign(player,{...middle,z:120});moveFoot(player,-span.dy*300,span.dx*300,7);assert.ok(roadDistance(span,player.x,player.y)<span.width/2+25,'Bridge barrier must stop a player from walking off');console.log('Bridge underside, ramp ascent and edge barriers collide');
 // A high landing and its connecting platform have guards; stairs still provide a descent route.
 resetScene();const hotel=buildingNamed('The Mariner Grand'),east=hotel.x+hotel.w/2;
-Object.assign(player,{x:east+45,y:hotel.y+65,z:132});moveFoot(player,160,0,7);assert.ok(player.x<east+90);Object.assign(player,{x:east+10,y:hotel.y,z:132});moveFoot(player,80,0,7);assert.ok(player.x<east+20);assert.ok(player.z===132);console.log('Fire escape landing and window-side platform guards prevent walking off');
+Object.assign(player,{x:east+45,y:hotel.y+65,z:132});moveFoot(player,160,0,7);assert.ok(player.x<east+ESCAPE.extent);Object.assign(player,{x:east+10,y:hotel.y,z:132});moveFoot(player,80,0,7);assert.ok(player.x<east+ESCAPE.walk);assert.ok(player.z===132);console.log('Fire escape landing and window-side platform guards prevent walking off');
 // An actual fall completes in simulation time; it cannot acquire a floor above its feet.
 Object.assign(player,{x:east+180,y:hotel.y,z:132,vz:0});let fall=0;while(player.z>0&&fall<3){verticalFoot(player,1/60);fall+=1/60;}assert.ok(fall<1.3&&player.z===0);console.log('Three-story fall lasts',fall.toFixed(2),'seconds');
 // Pausing the map suspends both loops and one-shot audio timelines; close resumes once.
