@@ -323,7 +323,7 @@ function district(x,y){
  if(x>17200&&y>7400&&y<16100)return 'Halcyon Forest Park';
  if(y>17800)return 'Working Waterfront';
  if(x<10000&&y>10500&&y<17000)return 'Old Harbor';
- if(x>10000&&x<17400&&y>5800&&y<14600)return 'Meridian City';
+ if(x>10000&&x<17400&&y>5800&&y<14600)return 'Gull Point Uplands';
  if(y<6000)return 'Gull Point';
  return 'Southbank';
 }
@@ -338,7 +338,7 @@ const landmarks=[
  {id:'pier',name:'Harbor Marina',short:'MARINA',x:7600,y:23100,label:[7600,23100],color:'#ffa1b4'},
  {id:'archive',name:'Public Archive',short:'ARCHIVE',...pressPlaza,label:[archiveBuilding.x,archiveBuilding.y],color:'#7de7e0'},
  {id:'hotel',name:'The Mariner Grand',short:'MARINER GRAND',...hotelSite,label:[hotelSite.x,hotelSite.y],color:'#eec693'},
- {id:'theater',name:'Lantern Square',short:'LANTERN SQUARE',x:52450,y:10400,label:[52450,10400],color:'#eeb4a5'},
+ {id:'theater',name:'Lantern Square',short:'LANTERN SQUARE',x:52450,y:11600,label:[52450,11600],color:'#eeb4a5'},
  {id:'circle',name:'Civic Circle',short:'CIVIC CIRCLE',x:50500,y:12200,label:[50500,12200],color:'#b5dbb5'},
  {id:'gardens',name:'East Gardens',short:'EAST GARDENS',x:61800,y:12500,label:[61800,12500],color:'#8fceb1'},
  {id:'base',name:'Fort Halcyon',short:'FORT HALCYON',x:28000,y:8200,label:[30000,10000],color:'#edab95'},
@@ -1013,9 +1013,9 @@ function parcelBlocks(xs,ys,zone){
   if(urban&&col===5&&row===4){
    m.box(cx,cy,.2,right-left-165,bottom-top-165,0,'#ae9f8b');
    walkway([[left+65,bottom-65],[right-65,top+65]],95,'#b9b0a1');
-   for(const [sx,sy] of [[left+270,top+240],[right-270,bottom-240]]){
-    if(fitLot(sx,sy,330,310)){const b=building(sx,sy,330,310,18,'office',sy<cy?'north':'south','#647f8f','Exchange Studios '+(sy<cy?'West':'East'));
-     for(let i=0;i<3;i++)m.box(sx,sy+(sy<cy?160:-160),60+i*60,250,5,48,['#edb35e','#789da9','#c16d72'][i]);}
+   for(const [sx,sy] of [[right-320,top+265],[left+310,bottom-265]]){
+    if(fitLot(sx,sy,270,250)){const b=building(sx,sy,270,250,18,'office',sy<cy?'north':'south','#647f8f','Exchange Studios '+(sy<cy?'West':'East'));
+     for(let i=0;i<3;i++){const signY=sy+(sy<cy?160:-160),height=60+i*60;m.box(sx,signY,height,250,5,48,['#edb35e','#789da9','#c16d72'][i]);for(const side of [-1,1])m.beam([sx+side*110,sy+(sy<cy?125:-125),height+40],[sx+side*110,signY,height+40],3,'#5a6970');landmarkSigns.push({x:sx,y:signY,z:height+22,text:['NORTHSTAR RECORDS','BAYLINE','THE EXCHANGE'][i],color:'#fff0b8'});}}
    }
    landmarkSigns.push({x:cx,y:cy,z:75,text:'LANTERN SQUARE',color:'#ffcf8b'});continue;
   }
@@ -1087,7 +1087,7 @@ function layWorld(){
  building(60600,6800,430,350,4,'civic','west','#c2baa1','Maritime Museum');
  building(59100,17900,380,280,3,'restaurant','north','#a88b6d','The Customs House');
  building(47000,10000,360,280,6,'hotel','east','#a78773','The Lantern Inn');
- const square={x:52450,y:10400};
+ const square={x:52450,y:11600};
  landmarkSigns.push({...square,z:90,text:'LANTERN SQUARE',color:'#ffdc92'});
  // Purpose-built city monuments and recognizable silhouettes.
  for(const [x,y,h] of [[50500,12200,115],[55400,16000,70]]){
@@ -1455,7 +1455,7 @@ function stepCar(c,thr,st,hb,bo,dt){
   }
  }
  if(hit>90){c.hp-=(hit-80)*.1;if(c.kind==='player'){shake=Math.max(shake,Math.min(10,hit*.04));sfx.crash()}spark(c.x,c.y)}
- c.z=supportHeight(c.x,c.y,Math.max(c.z||0,150));
+ c.z=supportHeight(c.x,c.y,c.z||0);
  c.spd=hyp(c.vx,c.vy);c.slip=Math.abs(vs);
  if(c.kind==='player'&&c.slip>70&&c.spd>90){const bx=-sn2*c.wid*.4,by=cs2*c.wid*.4,rx=-cs2*c.len*.35,ry=-sn2*c.len*.35;
   skids.push([c.x+rx+bx,c.y+ry+by,c.x+rx-bx,c.y+ry-by,time]);if(skids.length>260)skids.shift()}}
@@ -1851,7 +1851,7 @@ function driveAI(c,dt){
  if(!carWall(c,nx,ny,c.a)||carContacts(c,nx,ny,c.a)<=carContacts(c,c.x,c.y,c.a)){
   c.x=nx;c.y=ny;
  }
- c.vx=(c.x-px)/dt;c.vy=(c.y-py)/dt;c.spd=hyp(c.vx,c.vy);c.z=supportHeight(c.x,c.y,150);
+ c.vx=(c.x-px)/dt;c.vy=(c.y-py)/dt;c.spd=hyp(c.vx,c.vy);c.z=supportHeight(c.x,c.y,c.z||0);
  c.stuck=c.spd<18?c.stuck+dt:0;
  if(mustStop&&hyp(c.x-target.x,c.y-target.y)<13){
   c.aiSpeed=c.vx=c.vy=c.spd=0;c.atStop=true;c.stuck=0;
@@ -2807,7 +2807,7 @@ let lastCrime=-1000,crimeThreat=0,vehicleDescription=null;
 function cameraTracking(){
  if(wanted&&player.veh&&vehicleDescription&&player.veh!==vehicleDescription)return false;
  if(player.submerged||player.veh&&(player.veh.z||0)>180)return false;
- return streetCameras.some(c=>!(c.x>33000&&securitySites.find(s=>s.id==='prisonPower').disabled)&&c.disabledUntil<time&&distance(c,player)<c.r&&lineOfSight(c,player));
+ return streetCameras.some(c=>!(inside(c.x,c.y,island)&&securitySites.find(s=>s.id==='prisonPower').disabled)&&c.disabledUntil<time&&distance(c,player)<c.r&&lineOfSight(c,player));
 }
 function witnessReport(amount,location,serious=false){
  lastCrime=time;unseen=0;

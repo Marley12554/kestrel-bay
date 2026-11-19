@@ -5,8 +5,8 @@ const speeds={};
 for(const type of ['sedan','taxi','van','muscle','sport','cop','interceptor']){
  reset();const c=newCar(type,31000,15000,0,'player');
  // A long unobstructed test road excludes terrain/traffic from the ratio measurement.
- const oldPaved=paved,oldSolid=solidCar;paved=()=>true;solidCar=()=>false;
- tick(25,dt=>stepCar(c,1,0,false,false,dt));paved=oldPaved;solidCar=oldSolid;
+ const oldPaved=paved,oldSolid=solidCar,oldSupport=supportHeight;paved=()=>true;solidCar=()=>false;supportHeight=()=>0;
+ tick(25,dt=>stepCar(c,1,0,false,false,dt));paved=oldPaved;solidCar=oldSolid;supportHeight=oldSupport;
  speeds[type]=c.spd;assert.ok(c.spd>CT[type].maxV*.90);
 }
 assert.ok(speeds.interceptor/speeds.cop>1.15&&speeds.interceptor/speeds.cop<1.25);console.log('Measured mph',Object.fromEntries(Object.entries(speeds).map(([k,v])=>[k,Math.round(v*.17045)])),'sports/cruiser ratio',speeds.interceptor/speeds.cop);
@@ -24,3 +24,5 @@ reset();wanted=3;heat=60;const e=roads.find(e=>e.name.includes('Airfield Road'))
 
 reset();wanted=3;heat=60;Object.assign(player,{x:35460,y:23080,z:0});policeFix={x:player.x,y:player.y,z:0,seen:true};const offroadCop=newCar('cop',35460,23500,-Math.PI/2,'cop');offroadCop.role='pursuit';cars=[offroadCop];const initialDistance=distance(offroadCop,player);tick(1.5,dt=>ramPursuit(offroadCop,dt));assert.ok(distance(offroadCop,player)<initialDistance-180);assert.ok(!onRoad(offroadCop.x,offroadCop.y));console.log('Cruiser crossed passable ground off the road');
 reset();wanted=3;heat=60;const targetHotel=buildingNamed('The Mariner Grand');Object.assign(player,{x:targetHotel.x,y:targetHotel.y,z:132});interior=physicalContext(player);policeFix={x:player.x,y:player.y,z:132,seen:true};const lead=newCar('cop',targetHotel.x-700,targetHotel.y,0,'cop'),cutoff=newCar('cop',targetHotel.x+700,targetHotel.y,Math.PI,'cop');lead.role=cutoff.role='pursuit';cars=[lead,cutoff];pursuitTarget(lead);const interception=pursuitTarget(cutoff);assert.ok(cutoff.cutoff);assert.equal(interception.x,targetHotel.x+targetHotel.w/2+100);assert.equal(interception.z,0);console.log('Second cruiser covers the real lower fire exit');
+
+reset();const cityCamera=streetCameras.find(c=>inside(c.x,c.y,cityIsland)),power=securitySites.find(s=>s.id==='prisonPower');Object.assign(player,{x:cityCamera.x+20,y:cityCamera.y+20,z:0});power.disabled=true;assert.ok(cameraTracking(),'Prison power must not disable Meridian surveillance');power.disabled=false;console.log('Prison sabotage leaves city cameras operational');

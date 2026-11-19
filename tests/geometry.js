@@ -40,3 +40,5 @@ assert.equal(supportHeight(point.x,point.y,z),z);assert.ok(z>80);assert.ok(water
 // Map click coordinates select a normal navigation target; the HUD uses that target on its next draw.
 ob=null;mapProjection={x:0,y:0,s:.01};mapCanvas.getBoundingClientRect=()=>({left:0,top:0});
 setMapWaypoint({clientX:h.x*.01,clientY:h.y*.01});assert.equal(navTarget.title,'The Mariner Grand');updateNav(1);assert.ok(navRoute.length>2);drawHud();assert.ok($('objective-text').textContent.startsWith('Navigate to The Mariner Grand'));console.log('Map click, navigation route and next-frame HUD pass');
+
+const lobbyCar=newCar('sedan',h.x,h.y,0,'parked');stepCar(lobbyCar,0,0,true,false,1/60);assert.equal(lobbyCar.z,0,'Ground-floor cars must not snap to an upper floor');console.log('Ground vehicle floor support stays on its current level');
