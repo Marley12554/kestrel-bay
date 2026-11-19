@@ -26,7 +26,7 @@ Open `Kestrel Bay.html` in a desktop browser with WebGL enabled. Click **Enter t
 | Helicopter | WASD movement; E/Q altitude; mouse heading; F board/exit |
 | Plane | W/S throttle; A/D rudder; mouse heading/pitch; automatic gear; F board/exit |
 
-Touch controls are also available. Shotguns, carbines, supplies, bypass tools, repairs, and vehicle deliveries can be bought at suppliers. The striped Interceptor is also the starter car.
+Touch controls are also available. Shotguns, carbines, supplies, bypass tools, repairs, and vehicle deliveries can be bought at suppliers. The free starter is a slow compact in an off-street café bay. Striped Interceptors must be found or bought.
 
 ## This pass
 
@@ -41,6 +41,8 @@ Touch controls are also available. Shotguns, carbines, supplies, bypass tools, r
 - Persistent patrols occupy the bridge approaches before a chase starts. Dispatch assigns a tail, an intercept, containment and reserve positions. A unit holds the final bridge approach before the road splits, with physical spike strips at high heat. New reinforcements enter from land with at least eight seconds of possible closing time; whole-car camera visibility, free-look and recent views are checked. Helicopters enter from ahead and can keep pace with a fast escape. Surfacing exposes the head again; officers track swimmers from the bridge/shore and cannot see through the water surface.
 - The hotbar starts unarmed. Drawing a gun near a patrol officer draws attention. Shotguns and carbines are purchasable and have distinct models, ammunition, fire rates, and reloads.
 - Bridge joins preserve pursuit speed, ramps have solid undersides, and bridge/fire escape guardrails prevent walking off. Moderate-speed PIT attempts require physical contact and are disabled on bridges. Reboarded crews can dismount again.
+- Engine audio is a quiet, low combustion note with gear changes. Ambient horns are short, local, limited across traffic and used once per direct obstruction. Spike hits give a distinct burst of air, a large alert, persistent tire status, bare gray wheel rims and moving sparks. Repairs restore tires and cabin glass.
+- Civilian traffic passes stationary obstructions when the opposing lane is clear, then merges into a safe gap while keeping its original route. It waits when passing is unsafe. Cruisers pull close around a stopped car before deploying; an officer handles extraction while others cover, and repeated window hits can expose the occupant.
 - Opening the map suspends the audio context, including sirens, engines and sound-effect tails. Closing it resumes audio.
 - Officers notice exposed suspects across open ground and use two simultaneous shooters, observed-motion aiming, short bursts and reloads. Other officers close or flank. A one-star unarmed suspect is approached for arrest. Stationary or creeping vehicles can be approached at a safe door and the driver physically pulled out after a visible, interruptible grab; accelerating breaks the grab.
 - Stealing an unowned vehicle takes three increasingly tight timing rounds while the world keeps running. Successful entry visibly ejects actual occupants before boarding; a stolen cruiser leaves its officers outside and alert. Starter, purchased and already-owned vehicles stay quick to enter. Horns use sustained dual tones.
@@ -62,4 +64,4 @@ The acceptance harness executes the shipped game functions. It checks footprint 
 
 Pushing `main` runs these checks, builds `dist/index.html` from the canonical `Kestrel Bay.html`, and publishes through GitHub Pages. Do not edit the generated `dist` copy.
 
-The renderer uses simplified distant building shells and loads nearby floor details. Traffic recovery and navigation are lightweight sandbox AI; they are not a full driving or tactical simulation. Campaign progress is saved to browser local storage. Local-file and hosted saves belong to different browser origins.
+The renderer caches full-height exterior walls, recessed windows and roofs, then culls offscreen, rear-facing and fully hidden façades. Nearby floors load their furnished interiors; visible towers retain real window geometry across their height. Traffic recovery and navigation are lightweight sandbox AI; they are not a full driving or tactical simulation. Campaign progress is saved to browser local storage. Local-file and hosted saves belong to different browser origins.

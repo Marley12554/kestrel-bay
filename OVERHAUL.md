@@ -67,3 +67,21 @@ A burning vehicle's paint pulses red with increasing frequency while smoke, flam
 The shared stair generator previously ran flights between landing centers, burying the last treads inside the upper landing. The player's leading body corners could then hit the platform underside just before the feet reached it. This reproduced on both city and town buildings. Flights now meet the platform edges, use evenly spaced treads with the top tread flush to the landing, and retain continuous flight rails. No jump or movement-speed workaround is used.
 
 The regression suite walks three clear lateral approaches to every generated upper landing (2,856 flights), and complete representative city/town routes in both directions with landing turns and no jump input. WebGL keyboard checks also cover both alternating directions, upper floors and a complete switchback ascent/descent.
+
+## Driving feedback, traffic, occupied-car response and visibility
+
+The free starter is now an owned, low-speed compact (about 48 mph in the unboosted driving model), parked in a paved bay beside the starting café, outside the road and entrance route. Existing nearby starters are reused. Ordinary cars and striped Interceptors retain their previous speed profiles.
+
+Engine audio uses a quiet low-frequency combustion note and second harmonic, with bounded pitch and gear drops. It no longer increases oscillator pitch directly with unlimited road speed. Traffic horns use a short local two-tone sound, one horn per direct obstruction and a seven-second global ambient spacing; queued followers remain quiet. Manual H honking remains available.
+
+Spikes trigger a one-time hiss/impact, an explicit temporary puncture banner and persistent tire HUD status. Tire rubber disappears, gray rims remain, and moving rims throw sparks. Repeated contact does not replay the alert. Height checks prevent strips on another deck from puncturing a car. Repairs restore tires and cabin glazing.
+
+Civilian recovery no longer reverses direction or abandons a route. A passing maneuver checks road length, approaching traffic, pedestrians and collision clearance, then waits for a safe right-lane merge gap after clearing the obstruction or queue. Unsafe passing means waiting in the original lane. Police retain their separate congestion recovery.
+
+A stationary occupied car gets close containment positions, including bridge-appropriate longitudinal positions. Cruisers remain mounted until near the car, then deploy. One officer approaches the door and maintains the extraction attempt while others cover; breaking a car window with repeated police fire exposes its occupant to further window hits. This preserves a brief protection advantage without making remaining inside an idle car a safe haven.
+
+Full-height exterior meshes share the exact physical window/door profiles with local interior geometry. Recessed window openings, wall returns and roofs are cached in GPU buffers; frustum tests, front-face selection and conservative occlusion by opaque buildings reduce visible work. Complete furnished floors remain local, with live opening/broken-window state invalidating only that building's cached exterior. There is no distant flat tower substitute or five-floor band of exterior detail.
+
+The isolated 1,366 × 850 browser benchmark measured median renderer times of about 6.4/6.9/1.2 ms in three views before the change and 2.4/2.1/0.8 ms after it. Dynamic geometry fell from 78,342/97,776/8,106 vertices to 22,980/24,438/366; cached façade geometry is drawn separately. A brute-force full-interior estimate was 10.2 million vertices (272 MB at the existing vertex format). These are isolated renderer measurements; total game performance also includes simulation and varies by hardware.
+
+`tests/driving-city.js` checks the starter bay and speed, engine pitch, safe overtaking/merging, opposing-lane waiting, horn limits, puncture feedback, close multi-cruiser deployment/extraction, cabin exposure, full-height window meshes and conservative occlusion. Browser checks cover the rendered skyline, starter bay, tire alert/rims, coordinated extraction and actual offline Web Audio output. The tested engine's dominant frequency at sports-car speed was 63 Hz; simultaneous ambient horn requests produced one two-tone horn.
