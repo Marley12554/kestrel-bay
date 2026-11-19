@@ -109,6 +109,15 @@ kbd{color:var(--amber);font-weight:800}
 #hotbar button{background:#172631e8;border:1px solid #71817f;color:#ecebdc;padding:7px 9px;border-radius:4px;font:700 11px system-ui}
 #hotbar button.selected{border:2px solid #ffd180;color:#ffd180}#hotbar button:disabled{opacity:.35}
 #hint{bottom:68px}#notes{bottom:108px}@media(max-width:819px){#hotbar{bottom:145px}#hotbar button{font-size:9px;padding:6px}body.touch #hotbar{bottom:160px}}
+
+#wallet{position:absolute;top:174px;left:20px;display:flex;flex-direction:column;padding:5px 10px;background:#172631e8;border-radius:5px;min-width:138px}#world-clock{font-size:11px;color:#c8d4df;margin-top:2px}
+#wanted-panel{position:absolute;right:18px;top:15px;min-width:208px;padding:9px 14px;text-align:right;background:#172631eb;border:1px solid #e4bd8d65;border-radius:6px}#pursuit{font-size:28px;letter-spacing:3px;line-height:1.15;color:#ffd368;text-shadow:0 0 9px #ffaa3340}#police-state{min-height:15px;font-size:12px;margin-top:3px}#controls{top:96px}
+#vitals{width:246px}.health,.stamina,.breath,.condition,.nitro{position:relative;height:23px;margin-top:7px;overflow:hidden;border-radius:3px;background:#0b1725e8;border:1px solid #ffffff35}.health:before,.stamina:before,.breath:before,.condition:before,.nitro:before{position:absolute;inset:0 auto 0 0;transition:width .09s linear}.health span,.stamina span,.breath span,.condition span,.nitro span{position:relative;display:block;padding:3px 7px;color:#fff;font-size:11px;font-weight:800;letter-spacing:.03em;text-shadow:0 1px 3px #000,1px 0 2px #000}.stamina:before{background:#c5cbd0}.condition:before{background:#d78b35}.nitro:before{background:#367fba}.breath:before{background:#367fa3}
+#stamina-meter.draining{border-color:#fff;box-shadow:0 0 7px #ffffff55}#stamina-meter.exhausted{border-color:#ffac72;animation:exhaustion .75s infinite alternate}#stamina-meter.exhausted:before{background:#d78857}@keyframes exhaustion{to{box-shadow:0 0 10px #fca75a99}}
+#circuit-panel{position:absolute;inset:0;z-index:6;display:grid;place-items:center;background:#07101b88;padding:18px}.circuit-card{max-width:480px;width:100%;background:#182c39f5;border:1px solid #93c6c8;border-radius:10px;padding:22px}.circuit-card h2{margin:0;color:#ffd38c;font-size:22px}.circuit-card p{font-size:14px;line-height:1.45}#circuit-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}#circuit-grid button{height:64px;background:#2a4350;color:#d2eeee;border:2px solid #73969c;border-radius:5px;font:700 34px monospace}#circuit-grid button.live{background:#245f50;border-color:#87e6ad}#circuit-grid button.alarm{color:#ff9a88;border-color:#ce6b60}#circuit-grid button small{display:block;font:700 9px system-ui}#circuit-feedback{min-height:22px;color:#ffcf8b}#night-fade{position:absolute;inset:0;background:#030711;pointer-events:none;opacity:0;z-index:8}
+@media(max-width:819px){#vitals{width:196px}#wanted-panel{min-width:164px;right:12px}#pursuit{font-size:23px}#wallet{top:174px;left:18px}#controls{top:100px}#objective{top:226px}#circuit-grid button{height:52px}.circuit-card{padding:15px}}
+@media(max-width:819px){#wanted-panel{min-width:176px;right:12px;padding:9px}#pursuit{font-size:24px;letter-spacing:2px}#objective{top:238px}#vitals{width:206px}#wallet{top:174px}}
+@media(max-width:519px){#wallet{top:136px}}
 </style>
 </head>
 <body>
@@ -117,16 +126,18 @@ kbd{color:var(--amber);font-weight:800}
 <div id="hud" hidden>
  <div id="vitals">
   <strong id="district"></strong>
-  <div class="vitals-line"><span id="cash"></span><span id="pursuit"></span></div>
-  <div class="health" aria-label="Health"></div>
-<div class="stamina" aria-label="Stamina"></div>
-<div id="breath-meter" class="breath" aria-label="Breath" hidden></div>
+
+  <div class="health" aria-label="Health"><span id="hp-label"></span></div>
+<div class="stamina" id="stamina-meter" aria-label="Stamina"><span id="stamina-label"></span></div>
+<div id="breath-meter" class="breath" aria-label="Breath" hidden><span id="oxygen-label"></span></div>
 <div id="weapon-status"></div>
-  <div id="vehicle-meters" hidden><div class="condition" aria-label="Vehicle condition"></div>
-  <div class="nitro" aria-label="Nitro"></div>
+  <div id="vehicle-meters" hidden><div class="condition" aria-label="Vehicle condition"><span id="condition-label"></span></div>
+  <div class="nitro" aria-label="Nitro"><span id="nitro-label"></span></div>
   <div class="vitals-line"><span id="speed"></span><span id="car-condition"></span></div></div>
-  <div id="police-state"></div>
+
  </div>
+ <div id="wallet"><span id="cash"></span><span id="world-clock"></span></div>
+ <div id="wanted-panel"><div id="pursuit"></div><div id="police-state"></div></div>
  <div id="objective"><div id="objective-title"></div><div id="objective-text"></div><div id="objective-sub"></div></div>
  <div id="hotbar" aria-label="Equipment"><button data-slot="0">1 · Unarmed</button><button data-slot="1">2 · Pistol</button><button data-slot="2">3 · Shotgun</button><button data-slot="3">4 · Carbine</button><button data-slot="4">5 · Tools</button></div><div id="hint" hidden></div>
  <div id="mouse-hint" hidden>Click to capture mouse</div>
@@ -155,6 +166,8 @@ kbd{color:var(--amber);font-weight:800}
   <aside class="casebook"><h3 id="case-title">The Bay Compact</h3><p id="case-text"></p><div id="cases"></div></aside>
  </div>
 </section>
+<div id="night-fade" aria-hidden="true"></div>
+<section id="circuit-panel" hidden aria-label="Security circuit puzzle"><div class="circuit-card"><h2 id="circuit-title"></h2><p>Rotate the wire tiles to connect IN to OUT. Avoid the red alarm terminal. The world keeps moving.</p><div id="circuit-grid"></div><p id="circuit-feedback" role="status"></p><button id="circuit-test" class="chip">Test circuit</button> <button id="circuit-cancel" class="chip">Cancel [Esc]</button></div></section>
 <div id="graphics-warning" role="status" hidden>This version needs WebGL to render the city. Enable browser graphics acceleration and reload.</div>
 
 <script>
@@ -318,9 +331,10 @@ const parkBounds={x:17450,y:8200,w:3500,d:7200};
 const baseBounds={x:25600,y:3700,w:9000,d:9600};
 const prisonBounds={x:35300,y:21700,w:5200,d:3600};
 function district(x,y){
+ if(x>=33100&&x<=35200&&Math.abs(y-23500)<100)return 'Blackwater · Service Dock';
  if(inside(x,y,island))return 'Blackwater Penitentiary';
  if(inside(x,y,cityIsland)){if(y>14900)return 'Meridian · South Quay';if(x<49200)return 'Meridian · Old Exchange';if(y<8500)return 'Meridian · North Bank';if(x>56000)return 'Meridian · East Gardens';return 'Meridian · Crown District';}
- if(x>24700&&x<36000)return 'Fort Halcyon';
+ if(covers(baseBounds,x,y))return 'Fort Halcyon';
  if(x>17200&&y>7400&&y<16100)return 'Halcyon Forest Park';
  if(y>17800)return 'Working Waterfront';
  if(x<10000&&y>10500&&y<17000)return 'Old Harbor';
@@ -468,7 +482,7 @@ class Mesh {
   for(let i=0;i<4;i++){const j=(i+1)%4;this.quad(f[i],g[i],g[j],f[j],color,i===2?1:.76);}
  }
 }
-const worldMesh=new Mesh(),buildings=[],streetCameras=[],parkPaths=[],securitySites=[],landmarkSigns=[],waterExits=[];
+const worldMesh=new Mesh(),buildings=[],streetCameras=[],parkPaths=[],securitySites=[],streetLamps=[],landmarkSigns=[],waterExits=[];
 const buildingCount={n:0};
 let seed=991731;
 function random(){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;}
@@ -507,6 +521,7 @@ function tree(x,y,size){
  solidBox(x,y,size*.082,size*.082,size*.58,{tree:true});
 }
 function lamp(x,y){
+ streetLamps.push({x:x+6,y,z:58});
  worldMesh.tube(x,y,0,2.3,1.6,61,'#505c66',7);
  worldMesh.box(x+6,y,60,17,6,3,'#ffe5ab');
 }
@@ -714,11 +729,15 @@ function makeFloorPlan(b,floor){
   for(const side of [-1,1])for(let i=0;i<3;i++){
    const cy=y-d*.29+i*d*.27,cx=x+side*w*.30;
    roomWall(plan,cx,cy-d*.12,w*.34,3,38,'#a4ada5');
-   for(let j=-2;j<=2;j++)plan.mesh.box(x+side*w*.15,cy+j*6,z,2,2,36,'#637a77');
+   const front=x+side*w*.15,half=d*.135;
+   for(const direction of [-1,1])roomWall(plan,front,cy+direction*(half+16)/2,3,half-16,38,'#8a9995');
+   const door=addDoor(plan,front,cy,'y',32,{locked:true,label:'Custody cell '+(floor*10+i+1)+(side<0?'W':'E')});door.custody=true;
+   if(floor===0&&side===-1&&i===0)plan.eliDoor=door;
    furniture(plan,cx,cy,w*.16,16,8,'#8f9c90');
   }
-  itemFor(plan,'mate',x,y-d*.28,'Release Eli · access card or bypass tools');
-  itemFor(plan,'key',x+w*.35,y+d*.28,'Take the guard access card');
+  if(floor===0)itemFor(plan,'mate',x,y-d*.28,'Release Eli · custody card or circuit override');
+  for(const side of [-1,1])for(let i=0;i<3;i++)plan.people.push({x:x+side*w*.19,y:y-d*.29+i*d*.27,kind:'prisoner'});
+  if(floor===0)itemFor(plan,'prisonCard',x+w*.35,y+d*.28,'Take custody access card');
  }else if(b.use==='civic'){
   for(const side of [-1,1])for(let i=0;i<3;i++){
    const cx=x+side*w*.29,cy=y-d*.28+i*d*.25;
@@ -882,6 +901,7 @@ function interiorAction(){
  const door=worldDoorNear(),item=physicalItemNear();
  if(door&&(!item||distance(door,player)<distance(item,player))){
   if(door.locked&&!door.broken){
+   if(door.custody){if(inventory.prisonCard){door.locked=false;door.open=true;}else toast('Custody lock · obtain a guard card, use the cell controls, or shoot the lock.');return true;}
    if(inventory.key||inventory.tools){door.locked=false;door.open=true;toast('Unlocked · '+door.label);}
    else toast('Locked · use a key, bypass tools, or shoot the lock.');
   }else door.open=!door.open;
@@ -893,6 +913,7 @@ function interiorAction(){
   const b=item.b,level=interior.floor;
   toast('The fire stair is on the east façade. Windows can be broken.');return true;
  }
+ if(item.id==='prisonCard'){inventory.prisonCard=true;item.consumed=true;toast('Custody card acquired · prison gates and cell controls');return true;}
  if(item.id==='key'||item.id==='hotelKey'){
   inventory.key=true;item.consumed=true;toast(item.id==='hotelKey'?'Guest key acquired.':'Visitor card acquired · opens restricted office floors.');
   return true;
@@ -907,8 +928,9 @@ function interiorAction(){
  if(item.id==='records'){if(ob?.stage!=='search')inspectRecords(item.b);return true;}
  if(item.id==='mate'){
   if(ob?.job.id!=='island'){toast('The cell is occupied.');return true;}
-  if(!inventory.key&&!inventory.tools){toast('A guard card or bypass tools can open the cell.');return true;}
-  item.consumed=true;makeFollower('Eli',player.x+20,player.y,true);follower.z=player.z;
+  if(ob.stage!=='cell'){toast('Disable perimeter surveillance and enter through the service gate first.');return true;}
+  if(!inventory.prisonCard){openCircuit('cell',item);return true;}
+  releaseEli(item);
   setObjective('extract',missionPoints.prisonDock,'Escort Eli to your boat');markCheckpoint();return true;
  }
  return false;
@@ -960,7 +982,7 @@ function facadeGeometry(b,side){
     const low=opening.escape?0:floor===0&&['cafe','shop','restaurant','hotel'].includes(b.use)?5:10,top=opening.escape?39:35;
     segment(opening.lo,opening.hi,0,low,'top');segment(opening.lo,opening.hi,top,44-top,'bottom');
     const center=(opening.lo+opening.hi)/2,broken=plan?.windows.some(w=>w.side===side&&Math.abs((horizontal?w.x-b.x:w.y-b.y)-center)<.1&&w.broken);
-    if(!broken)m.quad(point(opening.lo,low,0),point(opening.hi,low,0),point(opening.hi,top,0),point(opening.lo,top,0),'#54717b',shade);
+    if(!broken)m.quad(point(opening.lo,low,0),point(opening.hi,low,0),point(opening.hi,top,0),point(opening.lo,top,0),'#54717b',shade,8.25);
    }
    previous=opening.hi;
   }
@@ -1021,7 +1043,8 @@ function architectureActors(m){
    const escape=b.escapeMeshes?.get(floor);if(escape)m.data.push(...escape);
    for(const d of p.doors){
     if(d.open||d.broken)continue;
-    m.box(d.x,d.y,d.z,d.axis==='x'?d.width:3,d.axis==='x'?3:d.width,35,d.entry?'#536e70':'#8c7258');
+    if(d.custody){for(let j=-2;j<=2;j++)m.box(d.x,d.y+j*6,d.z,2,2,36,'#637a77');m.box(d.x,d.y,d.z+34,3,d.width,2,'#637a77');}
+    else m.box(d.x,d.y,d.z,d.axis==='x'?d.width:3,d.axis==='x'?3:d.width,35,d.entry?'#536e70':'#8c7258');
     m.box(d.x+(d.axis==='x'?d.width*.31:2),d.y+(d.axis==='y'?d.width*.31:2),d.z+19,2,2,2,'#d4c18e');
    }
    for(const w of p.windows){
@@ -1054,9 +1077,9 @@ function updateArchitecture(dt){
     if(p.populated)continue;
     p.populated=true;
     for(const occupant of p.people.slice(0,8)){
-     const n=newNpc(occupant.kind,occupant.x,occupant.y);
+     const n=newNpc(restrictedLand(occupant.x,occupant.y)&&occupant.kind!=='prisoner'?'staff':occupant.kind,occupant.x,occupant.y);n.authorized=restrictedLand(occupant.x,occupant.y);
      n.z=floor*44;n.building=b;n.room=occupant.room;n.home={x:n.x,y:n.y,z:n.z};
-     n.col=occupant.kind==='staff'?'#8aa58d':'#c1a28e';n.persistent=true;n.interior=true;
+     n.col=n.kind==='prisoner'?'#b77d51':occupant.kind==='staff'?'#8aa58d':'#c1a28e';n.persistent=true;n.interior=true;
      npcs.push(n);
     }
    }
@@ -1325,6 +1348,7 @@ function buildFacilities(){
  m.tube(29700,7200,0,40,40,115,'#87998d',12);m.box(29700,7200,118,70,6,28,'#c1c9aa',.4);
  securitySites.push({id:'radar',x:29700,y:7200,name:'Air-defense radar',disabled:false});
  m.box(27000,11600,0,210,170,90,'#737e76');solidBox(27000,11600,210,170,90);
+ securitySites.push({id:'baseGate',x:25520,y:7925,name:'Halcyon access gate',disabled:false});m.box(25520,7960,0,28,20,36,'#84948a');solidBox(25520,7960,28,20,36);
  securitySites.push({id:'fuel',x:27000,y:11480,name:'Fuel control',disabled:false});
  // Prison perimeter, deliveries, staff compound, yards, and cellblock.
  for(const [x,y,w,d] of [[37900,21600,5400,18],[37900,25500,5400,18],[40500,23550,18,3900],
@@ -1333,16 +1357,18 @@ function buildFacilities(){
   m.box(x,y,0,65,65,150,'#939d96');solidBox(x,y,65,65,150);
   m.box(x,y,150,120,120,55,'#657e88');
  }
- building(36300,22200,350,250,2,'prison','south','#aaa99a','Prison Administration');
+ building(36300,22200,350,250,2,'barracks','south','#aaa99a','Prison Administration');
  building(38000,22800,650,340,3,'prison','south','#949b95','Cellblock B');
  building(38800,24600,420,270,2,'warehouse','south','#a09f92','Prison Workshops');
  m.box(37400,24300,.22,900,700,0,'#8f958e');
  for(const x of [37100,37400,37700])m.box(x,24300,.27,8,500,0,'#c5c2b2');
  m.box(34150,23500,-4,2100,120,10,'#a09a89');
  m.box(34900,23500,.2,350,260,0,'#8c928a');
- securitySites.push({id:'prisonPower',x:36000,y:24400,name:'Perimeter power',disabled:false});
- securitySites.push({id:'prisonGate',x:35400,y:23630,name:'Service gate controls',disabled:false});
- m.box(36000,24400,0,70,46,63,'#86978d');solidBox(36000,24400,70,46,63);
+ securitySites.push({id:'prisonPower',x:35040,y:24200,name:'Perimeter power',disabled:false});
+ securitySites.push({id:'prisonGate',x:35100,y:23630,name:'Service gate controls',disabled:false});
+ m.box(35040,24245,0,55,24,46,'#86978d');solidBox(35040,24245,55,24,46);m.box(35040,24232,22,35,2,16,'#364f56');
+ m.box(35100,23662,0,32,22,32,'#7c8f8b');solidBox(35100,23662,32,22,32);
+ m.box(35040,23850,.2,44,780,0,'#9c9d91');
 }
 layWorld();
 
@@ -1380,6 +1406,7 @@ function resetLook(yaw){
  Object.assign(view,{yaw,orbit:0,lastLook:0,resetChase:true,pitch:0,recoil:0});
 }
 addEventListener('keydown',e=>{
+ if(circuit){if(e.code==='Escape'){e.preventDefault();cancelCircuit('Work cancelled');}return;}
  const code=e.code;
  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(code))e.preventDefault();
  if(!started){if(code==='Enter'||code==='Space')startGame();return;}
@@ -1399,7 +1426,7 @@ function showBtns(){
  touchMode=true;document.body.classList.add('touch');$('btns').hidden=!started;$('map').textContent='Map';
 }
 cv.addEventListener('pointerdown',e=>{
- if(!started||mapOpen)return;
+ if(!started||mapOpen||circuit)return;
  if(theft&&e.button!==2){e.preventDefault();theftHit();return;}
  if(e.pointerType==='mouse'){
   if(e.button===2){mouse.drag=true;return;}
@@ -1424,7 +1451,7 @@ cv.addEventListener('pointermove',e=>{
  touchLook.x=x;touchLook.y=y;
 });
 document.addEventListener('mousemove',e=>{
- if(started&&!mapOpen&&(locked()||mouse.drag))look(e.movementX*.0029,-e.movementY*.00265);
+ if(started&&!mapOpen&&!circuit&&(locked()||mouse.drag))look(e.movementX*.0029,-e.movementY*.00265);
 });
 document.addEventListener('pointerlockchange',()=>{
  mouse.down=mouse.drag=false;
@@ -1515,7 +1542,7 @@ function engineSound(c){
  if(!c||c.dead||c.flooded)return {frequency:35,volume:0};
  const speed=Math.abs(c.spd),gear=Math.min(5,Math.floor(speed/275)),load=!!(keys.KeyW||keys.ArrowUp);
  // A low combustion note with gear drops, rather than a speed-proportional siren.
- return {frequency:36+Math.min(310,Math.max(0,speed-gear*275))*.12,volume:(load?.032:.019)+(speed>30?.006:0)};
+ return {frequency:36+Math.min(310,Math.max(0,speed-gear*275))*.12,volume:((load?.032:.019)+(speed>30?.006:0))*1.3};
 }
 function updateEngineAudio(c){
  const sound=engineSound(c),t=AC.currentTime,volume=!mute&&state==='play'?sound.volume:0;
@@ -1540,10 +1567,10 @@ try{best=+localStorage.getItem('kb_best')||0;}catch(_){}
 
 const CT={
  compact:{len:48,wid:26,maxV:280,acc:320,turn:2.6,hp:220,cols:['#b3b9aa','#b39a79','#8eaaad']},
- interceptor:{len:61,wid:29,maxV:1656,acc:1518,turn:3.7,hp:255,cols:['#e4c566','#d45e55','#77bad0']},
+ interceptor:{len:61,wid:29,maxV:1490.4,acc:1518,turn:3.7,hp:255,cols:['#e4c566','#d45e55','#77bad0']},
  sedan:{len:56,wid:30,maxV:780,acc:780,turn:2.7,hp:240,cols:['#4a7bd6','#d6c14a','#3dbd8a','#c9ced9','#8c6bd6','#e0743d']},
  taxi:{len:58,wid:30,maxV:730,acc:700,turn:2.7,hp:240,cols:['#ffc21a']},
- sport:{len:58,wid:28,maxV:1200,acc:1100,turn:3.0,hp:210,cols:['#ff3d81','#27e0ff','#f2f2f2','#b8ff3d']},
+ sport:{len:58,wid:28,maxV:1080,acc:1100,turn:3.0,hp:210,cols:['#ff3d81','#27e0ff','#f2f2f2','#b8ff3d']},
  muscle:{len:62,wid:31,maxV:1000,acc:930,turn:2.6,hp:280,cols:['#c0392b','#2c3e50','#e67e22']},
  van:{len:68,wid:34,maxV:650,acc:580,turn:2.2,hp:320,cols:['#d9dde6','#6b7a8f']},
  cop:{len:60,wid:30,maxV:1380,acc:1265,turn:3.0,hp:260,cols:['#121a2b']}};
@@ -1646,20 +1673,23 @@ function shootAt(n,tx,ty,o,dmg){
 }
 function hurtNpc(n,d,byP){if(n.state==='dead')return;n.hp-=d;if(n.kind==='ped'){n.fleeT=3;n.fa=rnd(0,TAU)}
  if(byP){if(n.kind==='cop')crimeThreat=3;if(n.kind==='troop'||n.kind==='guard')raiseSecurity(n.kind==='troop'?'base':'prison',3);crime(n.kind==='ped'?28:n.kind==='cop'?40:0,n);}if(n.hp<=0)killNpc(n,byP)}
-function killNpc(n,byP){n.state='dead';for(let i=0;i<8;i++)parts.push({x:n.x,y:n.y,vx:rnd(-90,90),vy:rnd(-90,90),life:.5,max:.5,r:rnd(3,6),col:n.col,add:false});
+function killNpc(n,byP){n.state='dead';if(n.kind==='guard')drops.push({x:n.x,y:n.y,z:n.z||0,card:true,v:0,t:300});for(let i=0;i<8;i++)parts.push({x:n.x,y:n.y,vx:rnd(-90,90),vy:rnd(-90,90),life:.5,max:.5,r:rnd(3,6),col:n.col,add:false});
+ if(n.kind==='guard')drops.push({x:n.x,y:n.y,z:n.z||0,card:true,v:0,t:300});
  const v=n.kind==='ped'?(8+Math.random()*30|0):n.kind==='cop'?60:110;drops.push({x:n.x,y:n.y,v,t:25});
  if(byP){if(n.kind==='ped')crime(38,n);else if(n.kind==='cop')crime(45,n)}}
-function hurtPlayer(d){if(state!=='play')return;if(theft)cancelTheft('Entry interrupted');const absorb=Math.min(player.armor||0,d*.65);player.armor=Math.max(0,(player.armor||0)-absorb);player.hp-=d-absorb;player.hurtT=0;shake=Math.max(shake,3);sfx.hurt();if(player.hp<=0)setState('wasted')}
+function hurtPlayer(d){if(state!=='play')return;if(circuit)cancelCircuit('Interrupted by damage');if(theft)cancelTheft('Entry interrupted');const absorb=Math.min(player.armor||0,d*.65);player.armor=Math.max(0,(player.armor||0)-absorb);player.hp-=d-absorb;player.hurtT=0;shake=Math.max(shake,3);sfx.hurt();if(player.hp<=0)setState('wasted')}
 
 function updNpc(n,dt){
  navigationZ=n.z||0;
  if(n.boarded){if(n.cruiser){n.x=n.cruiser.x;n.y=n.cruiser.y;n.z=n.cruiser.z||0;}return;}
+ if(n.kind==='prisoner')return;
  if(n.kind==='resident'||n.kind==='staff'){if(n.fleeT>0){n.fleeT-=dt;n.a=n.fa;moveFoot(n,Math.cos(n.fa)*45*dt,Math.sin(n.fa)*45*dt,6);}return;}
  if(n.state==='dead')return;if(n.hit>0)n.hit-=dt;
  if(n.ejectedUntil>time){moveFoot(n,Math.cos(n.fa)*22*dt,Math.sin(n.fa)*22*dt,6);return;}
 
  const pd=hyp(n.x-player.x,n.y-player.y);
  if(n.witness&&n.fleeT<=0){n.a=Math.atan2(player.y-n.y,player.x-n.x);return}
+ if(n.boardingFrom&&n.boardingFrom.boarder===n)return;
  if(n.kind==='troop'||n.kind==='guard'){updGuard(n,dt);return;}
  if(n.kind==='friend')return;
  if(n.kind==='ped'){sidewalkPed(n,dt);return;}
@@ -1828,23 +1858,24 @@ function observedAim(n,dt){
  const turn=clamp((n.turnRate||0)*lead,-.65,.65),co=Math.cos(turn*.5),si=Math.sin(turn*.5);
  return {x:player.x+(vx*co-vy*si)*lead,y:player.y+(vy*co+vx*si)*lead};
 }
-function officerCombat(n,dt,d,seen){
+function armedResponder(n){return ['cop','guard','troop'].includes(n.kind);}
+function officerCombat(n,dt,d,seen,hostile=crimeThreat>=2){
  n.fire=(n.fire||0)-dt;n.firingT=Math.max(0,(n.firingT||0)-dt);
- n.weaponDrawn=crimeThreat>=2;
+ n.weaponDrawn=hostile;
  if(!seen){n.aim=null;n.exposure=0;n.observation=null;n.burst=0;return false;}
  n.exposure=Math.min(3,(n.exposure||0)+dt);
  const point=observedAim(n,dt);
  if(n.reloadUntil>time){n.aim=null;return false;}
- const shooters=npcs.filter(o=>o!==n&&o.kind==='cop'&&!o.boarded&&o.state!=='dead'&&(o.aim||o.burst>0)&&(o.reloadUntil||0)<=time);
+ const shooters=npcs.filter(o=>o!==n&&armedResponder(o)&&(!o.boarded||o.marine)&&o.state!=='dead'&&(o.aim||o.burst>0)&&(o.reloadUntil||0)<=time);
  // Two officers fire controlled bursts; the remaining squad closes or takes a flank.
- if(crimeThreat<2||d>1050||shooters.length>=2&&!n.aim){n.aim=null;return false;}
+ if(!hostile||d>1050||shooters.length>=2&&!n.aim){n.aim=null;return false;}
  if(!n.aim&&n.fire<=0){n.aim={...point,t:n.burst>0?.13:.30};n.burst=n.burst||3;}
  if(!n.aim)return false;
  if(n.aim.t>.065){n.aim.x=point.x;n.aim.y=point.y;}
  n.aim.t-=dt;n.a=Math.atan2(n.aim.y-n.y,n.aim.x-n.x);
  if(n.aim.t<=0&&state==='play'){
   n.spread=.024-.017*clamp(n.exposure/2,0,1);
-  shootAt(n,n.aim.x,n.aim.y,'c',6+wanted);n.firingT=.11;n.ammo=(n.ammo??12)-1;n.burst--;n.aim=null;
+  shootAt(n,n.aim.x,n.aim.y,'c',n.kind==='troop'?14:n.kind==='guard'?11:6+wanted);n.firingT=.11;n.ammo=(n.ammo??12)-1;n.burst--;n.aim=null;
   if(n.ammo<=0){n.reloadUntil=time+2.1;n.ammo=12;n.burst=0;n.fire=2.1;}
   else n.fire=n.burst>0?.02:rnd(.85,1.3);
  }
@@ -1969,7 +2000,7 @@ function attemptVehicleEntry(c){
  if(c.dead||c.onFire||c.flooded){toast('That vehicle is unsafe.');return;}
  if(c.owned){enterCar(c);return;}
  if(c.spd>95){toast('Wait for the vehicle to slow down.');return;}
- const police=c.kind==='cop';
+ const police=c.kind==='cop'||!!c.marine;
  theft={car:c,round:0,phase:0,center:.5,width:police?.22:.28,police,stage:'timing',hp:player.hp};
  c.beingStolen=true;mouse.down=tFire=false;
  if(police){crimeThreat=Math.max(crimeThreat,1);reportCrime(18,c,.5);}
@@ -2002,7 +2033,7 @@ function ejectOccupants(c){
   Object.assign(n,{...point,z:c.z||0,boarded:false,state:'walk',cruiser:null,reboarding:false,aim:null,navCheck:undefined,ejectedUntil:time+.8,a:c.a,weaponDrawn:n.kind==='cop',alert:n.kind!=='ped'});
   n.fa=Math.atan2(n.y-c.y,n.x-c.x);n.fleeT=n.kind==='ped'?5:0;
  }
- if(kind==='cop'){crimeThreat=Math.max(2,crimeThreat);reportCrime(35,c,.3);}
+ if(kind==='cop'||c.marine){crimeThreat=Math.max(2,crimeThreat);if(c.prisonLaunch)raiseSecurity('prison',3);else reportCrime(35,c,.3);}
  else if(kind==='military')raiseSecurity('base',3);
  else crime(15,c);
  c.kind='parked';c.role=null;c.vx=c.vy=c.spd=c.aiSpeed=0;c.route=[];c.next=null;return passengers.length;
@@ -2019,7 +2050,7 @@ function updateTheft(dt){
 function enterCar(c){
  const recognized=cameraTracking()||cars.some(o=>o.kind==='cop'&&seesPlayer(o,1200));
  if(!c.owned&&!c.beingStolen)ejectOccupants(c);
- if(follower&&!interior&&distance(follower,player)<130)follower.boarded=true;
+ if(follower&&!interior&&distance(follower,player)<130&&ob?.job.id!=='island')follower.boarded=true;
  if(recognized)vehicleDescription=c;
  resetLook(c.a);player.veh=c;c.owned=true;c.beingStolen=false;c.kind='player';c.role=null;c.rev=0;c.persistent=true;
  if(c.tag==='target')onTargetStolen();
@@ -2040,8 +2071,10 @@ function roadCar(type,e,dir,t,kind) {
  c.z=bridgeHeight(e,t);c.leg={e,dir};c.route=[];c.aiSpeed=0;c.laneOffset=25;c.cruise=170;c.helper=Math.random()<.012;
  return c;
 }
+function restrictedLand(x,y){return inside(x,y,island)||covers(baseBounds,x,y);}
+function publicRoad(e){return !restrictedLand(e.a.x,e.a.y)&&!restrictedLand(e.b.x,e.b.y);}
 function carSample(min,max,origin=player,reference=null){
- const candidates=roads.filter(e=>!e.bridge&&roadDistance(e,origin.x,origin.y)<max&&
+ const candidates=roads.filter(e=>!e.bridge&&publicRoad(e)&&roadDistance(e,origin.x,origin.y)<max&&
   (!reference||roadDistance(e,reference.x,reference.y)>min*.7));
  for(let i=0;i<50&&candidates.length;i++){
   const e=pick(candidates),t=rnd(47,e.len-47),dir=Math.random()<.5?1:-1,p=lanePoint(e,dir,t);
@@ -2054,8 +2087,9 @@ function nextLeg(c){
  if(c.route.length) return c.route[0];
  if(c.kind==='cop'&&c.role!=='patrol') return null;
  const {e,dir}=c.leg,end=dir===1?e.b:e.a;
- const choices=end.links.filter(l=>l.e!==e);
+ const choices=end.links.filter(l=>l.e!==e&&(c.kind!=='traffic'||publicRoad(l.e)));
  if(!choices.length) return {e,dir:-dir};
+ if(c.kind==='service')return choices.find(l=>l.e.name===e.name)||choices[0];
  // Keep through traffic on named arterials while still letting it turn off.
  return (Math.random()<.73&&choices.find(l=>l.e.name===e.name))||pick(choices);
 }
@@ -2168,10 +2202,10 @@ function spawnPed(init){
  for(let i=0;i<24;i++){
   const a=rnd(0,TAU),d=rnd(init?110:660,init?850:1340);
   const q=roadAnchor(player.x+Math.cos(a)*d,player.y+Math.sin(a)*d);
-  if(q.e.bridge||q.e.len<145)continue;
+  if(q.e.bridge||q.e.len<145||!publicRoad(q.e))continue;
   const p=lanePoint(q.e,pick([-1,1]),clamp(q.t,60,q.e.len-60),q.e.width/2+13);
   const pd=hyp(p.x-player.x,p.y-player.y);
-  if(pd<(init?105:550)||pd>1500||footBlocked(p.x,p.y,9)||npcs.some(n=>hyp(n.x-p.x,n.y-p.y)<26))continue;
+  if(restrictedLand(p.x,p.y)||pd<(init?105:550)||pd>1500||footBlocked(p.x,p.y,9)||npcs.some(n=>hyp(n.x-p.x,n.y-p.y)<26))continue;
   const n=newNpc('ped',p.x,p.y);n.a=Math.atan2(q.e.dy,q.e.dx);
   n.dir=(Math.round(n.a/(Math.PI/2))+4)&3;npcs.push(n);return;
  }
@@ -2202,7 +2236,7 @@ let policeDirector={bridge:null,assignments:[]};
 const distance=(a,b)=>hyp(a.x-b.x,a.y-b.y);
 function seesPlayer(unit,range){
  if(unit.boarded||unit.hasCrew&&!npcs.some(n=>n.cruiser===unit&&n.boarded&&n.state!=='dead'))return false;
- return distance(unit,player)<range&&lineOfSight(unit,player);
+ return distance(unit,player)<visibleRange(unit,range)&&lineOfSight(unit,player);
 }
 function copsNear(r){
  return cars.some(c=>c.kind==='cop'&&!c.dead&&distance(c,player)<r)||
@@ -2632,6 +2666,280 @@ function updBullets(dt){
  }
 }
 
+/* Ten real-time minutes: five daylight minutes and five nighttime minutes.
+   Gameplay time continues during security puzzles and the operation's night lock. */
+const worldClock={phase:150,cycle:600,locked:false,fade:0};
+let worldLights=[],lightRefresh=-1,circuit=null;
+const prisonAccess={gateOpen:false,puzzles:{}};
+function isNight(){return worldClock.phase>=300;}
+function daylight(){const p=worldClock.phase;return p>=300?0:Math.min(1,p/22,(300-p)/22);}
+function clockLabel(){const mins=Math.floor(((worldClock.phase/600*24+6)%24)*60);return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0');}
+function lockPrisonNight(){worldClock.phase=400;worldClock.locked=true;worldClock.fade=1.8;inventory.tools=true;hotbar.owned[4]=true;toast('22:00 · Blackwater night shift. Bypass kit supplied.');}
+function updateWorldClock(dt){
+ if(started&&state==='play'&&!worldClock.locked)worldClock.phase=(worldClock.phase+dt)%600;
+ worldClock.fade=Math.max(0,worldClock.fade-dt);
+ $('night-fade').style.opacity=worldClock.fade>1.15?1:clamp(worldClock.fade/1.15,0,1);
+}
+function makeLight(x,y,z,a,pitch,range,cone,color,owner){
+ const cp=Math.cos(pitch),dir=[Math.cos(a)*cp,Math.sin(a)*cp,Math.sin(pitch)];
+ return {x,y,z,a,pitch,range,cone:Math.cos(cone),color,dir,owner};
+}
+const watchPosts=[[35300,21700],[40400,21700],[40400,25400],[35300,25400]];
+function updateWorldLights(force=false){
+ if(!force&&time-lightRefresh<.08)return;lightRefresh=time;
+ const lights=[];
+ if(daylight()<.55){
+  for(const p of streetLamps)if(distance(p,player)<700&&!inside(p.x,p.y,island))lights.push(makeLight(p.x,p.y,p.z,0,-1.45,330,.85,[1,.82,.57],p));
+  const room=physicalContext(player);if(room&&(!inside(player.x,player.y,island)||!L.prisonPower.disabled)){const b=room.building;for(const u of [-1,1])for(const v of [-1,1])lights.push(makeLight(b.x+u*b.w*.25,b.y+v*b.d*.25,room.floor*44+39,0,-1.45,300,1.05,[1,.89,.71],b));}
+  for(const c of cars)if(!c.dead&&!c.flooded&&distance(c,player)<2300&&(c.kind==='player'||c.kind==='traffic'||c.kind==='cop'||c.marine)){
+   const bow=c.len*.54;lights.push(makeLight(c.x+Math.cos(c.a)*bow,c.y+Math.sin(c.a)*bow,(c.z||0)+(c.type==='boat'?32:11),c.a,c.type==='boat'?-.045:-.045,c.type==='boat'?1450:900,.42,[1,.88,.65],c));
+  }
+  for(const n of npcs)if(armedResponder(n)&&!n.boarded&&n.state!=='dead'&&distance(n,player)<2000){
+   const a=n.aim?Math.atan2(n.aim.y-n.y,n.aim.x-n.x):n.a;
+   lights.push(makeLight(n.x+Math.cos(a)*10,n.y+Math.sin(a)*10,(n.z||0)+18,a,-.02,820,.28,[.86,.91,1],n));
+  }
+  if(!L.prisonPower.disabled)for(let i=0;i<watchPosts.length;i++){
+   const [x,y]=watchPosts[i],outward=Math.atan2(y-23550,x-37900),a=outward+Math.sin(time*.12+i*1.8)*.65;
+   lights.push(makeLight(x+Math.cos(a)*76,y+Math.sin(a)*76,202,a,-.14,2400,.18,[.86,.91,1],{tower:i}));
+  }
+ }
+ worldLights=lights;
+}
+function lightStrength(l,p,occlusion=true){
+ const dx=p.x-l.x,dy=p.y-l.y,dz=(p.z||0)+15-l.z,d=hyp(dx,dy,dz);
+ if(d>l.range||d<1)return 0;
+ const facing=(dx*l.dir[0]+dy*l.dir[1]+dz*l.dir[2])/d;
+ if(facing<l.cone)return 0;
+ if(occlusion&&!lineOfSight({x:l.x,y:l.y,z:l.z-20},p))return 0;
+ return clamp((facing-l.cone)/.04,0,1)*(1-d/l.range);
+}
+function illuminationAt(p){
+ if(daylight()>.75)return 1;
+ let strength=daylight();
+ for(const l of worldLights)if(l.owner!==p)strength=Math.max(strength,lightStrength(l,p));
+ // Furnished indoor rooms have ceiling fittings; broken power darkens prison interiors.
+ const room=physicalContext(p);if(room&&(!inside(p.x,p.y,island)||!L.prisonPower.disabled))strength=Math.max(strength,.65);
+ return strength;
+}
+function visibleRange(observer,range){
+ if(daylight()>.75)return range;
+ const light=Math.max(illuminationAt(player),player.veh&&!player.veh.dead&&!player.veh.flooded?.45:0),close=player.crouching?115:185;
+ return Math.min(range,close+(range-close)*clamp(light*2,0,1));
+}
+/* Circuit masks: N=1, E=2, S=4, W=8. The source enters tile 0 from W;
+   OUT is the east edge of tile 11. Tile 3 is a live alarm terminal. */
+function rotateWire(mask){return ((mask<<1)&15)|(mask>>3);}
+function circuitState(tiles){
+ const live=new Set(),todo=(tiles[0]&8)?[0]:[];let alarm=false,complete=false;
+ while(todo.length){const i=todo.pop();if(live.has(i))continue;live.add(i);if(i===3)alarm=true;
+  if(i===11&&(tiles[i]&2))complete=true;
+  for(let k=0;k<4;k++)if(tiles[i]&(1<<k)){
+   const x=i%4+DX[k===0?3:k===1?0:k===2?1:2],y=Math.floor(i/4)+DY[k===0?3:k===1?0:k===2?1:2];
+   if(x<0||x>3||y<0||y>2)continue;const j=y*4+x;
+   if(tiles[j]&(1<<((k+2)%4)))todo.push(j);
+  }
+ }
+ return {live,alarm,complete:complete&&!alarm};
+}
+function circuitLayout(kind){
+ const path=kind==='gate'||kind==='baseGate'?[0,4,8,9,5,6,10,11]:kind==='cell'?[0,1,2,6,5,9,10,11]:[0,1,5,6,10,11];
+ const tiles=Array.from({length:12},(_,i)=>[3,5,6,9,10,12][i%6]);for(const i of path)tiles[i]=0;
+ tiles[0]|=8;tiles[11]|=2;
+ for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],d=b-a,k=d===1?1:d===-1?3:d===4?2:0;tiles[a]|=1<<k;tiles[b]|=1<<((k+2)%4);}
+ return tiles;
+}
+const circuitSolution=circuitLayout('power');
+function openCircuit(kind,target){
+ if(circuit||player.veh)return;
+ if((kind==='gate'||kind==='cell'||kind==='baseGate')&&!inventory.tools){toast('Find a custody card or bring bypass tools.');return;}
+ const solution=circuitLayout(kind);let saved=prisonAccess.puzzles[kind];
+ if(!saved){saved={tiles:solution.map((mask,i)=>{for(let j=0;j<(i%3)+1;j++)mask=rotateWire(mask);return mask;}),warning:0};prisonAccess.puzzles[kind]=saved;}
+ circuit={...saved,solution,kind,target,origin:{x:player.x,y:player.y,z:player.z||0},warning:saved.warning||0};
+ resetInput();if(locked())document.exitPointerLock();$('circuit-panel').hidden=false;
+ setText('circuit-title',kind==='power'?'Perimeter surveillance relay':kind==='gate'?'Service gate override':kind==='baseGate'?'Fort Halcyon gate override':'Cell release override');
+ setText('circuit-feedback','IN enters the left of tile 1. OUT leaves the right of tile 12.');drawCircuit();
+}
+function drawCircuit(){
+ if(!circuit)return;const grid=$('circuit-grid');grid.replaceChildren();const status=circuitState(circuit.tiles);
+ const glyph=['·','╵','╶','└','╷','│','┌','├','╴','┘','─','┴','┐','┤','┬','┼'];
+ circuit.tiles.forEach((mask,i)=>{const b=document.createElement('button');b.type='button';b.textContent=glyph[mask];b.setAttribute('aria-label','Wire '+(i+1)+' · rotate clockwise');
+  b.classList.toggle('live',status.live.has(i));b.classList.toggle('alarm',i===3);
+  const label=document.createElement('small');label.textContent=i===0?'IN':i===11?'OUT':i===3?'ALARM':String(i+1);b.append(label);
+  b.onclick=()=>{if(!circuit)return;circuit.tiles[i]=rotateWire(circuit.tiles[i]);drawCircuit();};grid.append(b);
+ });
+}
+function cancelCircuit(message=''){
+ if(!circuit)return;prisonAccess.puzzles[circuit.kind]={tiles:circuit.tiles.slice(),warning:circuit.warning};circuit=null;$('circuit-panel').hidden=true;resetInput();if(message)toast(message);saveCampaign();
+}
+function testCircuit(){
+ if(!circuit)return;const status=circuitState(circuit.tiles);
+ if(!status.complete){
+  circuit.warning++;prisonAccess.puzzles[circuit.kind].warning=circuit.warning;
+  setText('circuit-feedback',status.alarm?'Alarm circuit energized! Disconnect the red terminal.':'No connection to OUT. Trace the connected green tiles.');
+  noise(.12,.08,1200);for(const n of npcs)if(n.kind===(circuit.kind==='baseGate'?'troop':'guard')&&distance(n,circuit.target)<1800){n.investigate={...circuit.target,z:0};n.lastSeen=time;}
+  if(status.alarm||circuit.warning>=3){raiseSecurity(circuit.kind==='baseGate'?'base':'prison',2);toast('Tamper alarm · guards investigating','#ffc19b');}
+  return;
+ }
+ const {kind,target}=circuit;cancelCircuit();
+ if(kind==='baseGate'){target.disabled=true;toast('Halcyon access gate unlocked');}
+ else if(kind==='power'){
+  L.prisonPower.disabled=true;toast('Cameras and searchlights offline · doors remain secured');
+  if(ob?.job.id==='island'){setObjective('gate',L.prisonGate,'Open the service gate · custody card or circuit override');markCheckpoint();}
+ }else if(kind==='gate'){
+  prisonAccess.gateOpen=true;L.prisonGate.disabled=true;toast('Service gate unlocked');
+  if(ob?.job.id==='island'){setObjective('cell',L.cellblock,'Enter Cellblock B · find the cell release controls');markCheckpoint();}
+ }else{
+  releaseEli(target);
+  if(ob?.job.id==='island'){setObjective('extract',L.prisonDock,'Escort Eli to a stopped boat at the service dock');markCheckpoint();}
+ }
+ updateWorldLights(true);
+}
+function releaseEli(item){
+ item.consumed=true;const b=item.b,plan=planFor(b,0),door=plan.eliDoor;
+ if(door){door.open=true;door.locked=false;}
+ const point={x:b.x-b.w*.19,y:b.y-b.d*.29};
+ const resident=npcs.find(n=>n.kind==='prisoner'&&n.state!=='dead'&&Math.abs(n.z||0)<1&&distance(n,point)<18);
+ if(resident){follower=resident;Object.assign(follower,{kind:'friend',name:'Eli',hp:140,col:'#c6aa79',interior:true});}
+ else{makeFollower('Eli',point.x,point.y,true);follower.z=0;}
+}
+function updateCircuit(dt){if(!circuit)return;if(state!=='play'||player.veh||distance(player,circuit.origin)>45||Math.abs((player.z||0)-circuit.origin.z)>15)cancelCircuit('Moved away · work cancelled');}
+$('circuit-test').addEventListener('click',testCircuit);$('circuit-cancel').addEventListener('click',()=>cancelCircuit('Work cancelled'));
+function prisonInteraction(){
+ const baseGate=securitySites.find(s=>s.id==='baseGate');if(distance(player,baseGate)<65&&!baseGate.disabled){openCircuit('baseGate',baseGate);return true;}
+ const card=drops.find(d=>d.card&&distance(d,player)<32&&Math.abs((d.z||0)-(player.z||0))<20);
+ if(card){inventory.prisonCard=true;drops.splice(drops.indexOf(card),1);toast('Custody card acquired');return true;}
+ if(distance(player,L.prisonGate)<70&&!prisonAccess.gateOpen){
+  if(inventory.prisonCard){prisonAccess.gateOpen=true;L.prisonGate.disabled=true;if(ob?.job.id==='island'&&ob.stage==='gate'){setObjective('cell',L.cellblock,'Enter Cellblock B · locate the cell controls');markCheckpoint();}toast('Custody card accepted');}
+  else openCircuit('gate',L.prisonGate);return true;
+ }
+ if(distance(player,L.prisonPower)<65&&!L.prisonPower.disabled){if(ob?.job.id!=='island'||ob.stage==='power')openCircuit('power',L.prisonPower);else toast('Land on the service dock before proceeding.');return true;}
+ return false;
+}
+function prisonHint(){
+ if(drops.some(d=>d.card&&distance(d,player)<32))return 'Take custody card';
+ if(distance(player,L.prisonGate)<70&&!prisonAccess.gateOpen)return inventory.prisonCard?'Use custody card':'Open gate override panel';
+ if(distance(player,L.prisonPower)<65&&!L.prisonPower.disabled)return 'Open surveillance relay panel';
+ return '';
+}
+
+/* Persistent marine units navigate an eight-connected water graph. Every edge
+   checks the swept hull; routes cannot cross an island, pier, or bridge support. */
+const WATER_GRID=240,waterNodes=new Map();
+function waterHullClear(c,x,y,a=c.a){
+ const cs=Math.cos(a),sn=Math.sin(a),hl=c.len*.48,hw=c.wid*.55;
+ for(const [u,v] of [[0,0],[1,1],[1,-1],[-1,1],[-1,-1]])if(!waterAt(x+cs*hl*u-sn*hw*v,y+sn*hl*u+cs*hw*v))return false;
+ return !carWall(c,x,y,a);
+}
+function waterSegment(c,a,b){
+ const d=distance(a,b),steps=Math.max(1,Math.ceil(d/45)),angle=Math.atan2(b.y-a.y,b.x-a.x);
+ for(let i=1;i<=steps;i++)if(!waterHullClear(c,a.x+(b.x-a.x)*i/steps,a.y+(b.y-a.y)*i/steps,angle))return false;return true;
+}
+function seaNode(i,j){
+ if(i<1||j<1||i>=Math.floor(WORLD_W/WATER_GRID)||j>=Math.floor(WORLD_H/WATER_GRID))return null;
+ const key=i+','+j;if(waterNodes.has(key))return waterNodes.get(key);
+ const x=i*WATER_GRID,y=j*WATER_GRID,c={len:106,wid:34,z:WATER_LEVEL-8,a:0};
+ const node=waterHullClear(c,x,y,0)&&waterHullClear(c,x,y,Math.PI/2)?{i,j,x,y,key}:null;waterNodes.set(key,node);return node;
+}
+function closestSea(p,c,max=18){
+ const a=Math.round(p.x/WATER_GRID),b=Math.round(p.y/WATER_GRID);let best=null,score=Infinity;
+ for(let r=0;r<=max;r++){
+  for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++){
+   if(Math.max(Math.abs(i),Math.abs(j))!==r)continue;const n=seaNode(a+i,b+j);if(!n)continue;
+   const d=distance(n,p);if(d<score&&(!waterHullClear(c,p.x,p.y)||waterSegment(c,p,n))){best=n;score=d;}
+  }if(best)return best;
+ }return null;
+}
+function seaRoute(c,target){
+ if(waterSegment(c,c,target))return [{x:target.x,y:target.y}];
+ const start=closestSea(c,c),end=closestSea(target,c);if(!start||!end)return [];
+ const open=[{n:start,f:distance(start,end)}],cost=new Map([[start.key,0]]),parent=new Map(),closed=new Set();let found=null;
+ for(let count=0;open.length&&count<18000;count++){
+  let best=0;for(let i=1;i<open.length;i++)if(open[i].f<open[best].f)best=i;
+  const n=open.splice(best,1)[0].n;if(closed.has(n.key))continue;closed.add(n.key);
+  if(n===end){found=n;break;}
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+   if(!dx&&!dy)continue;const next=seaNode(n.i+dx,n.j+dy);if(!next||closed.has(next.key))continue;
+   if(dx&&dy&&(!seaNode(n.i+dx,n.j)||!seaNode(n.i,n.j+dy)))continue;
+   if(!waterSegment(c,n,next))continue;const g=cost.get(n.key)+distance(n,next);
+   if(g>=(cost.get(next.key)??Infinity))continue;cost.set(next.key,g);parent.set(next.key,n);open.push({n:next,f:g+distance(next,end)});
+  }
+ }
+ if(!found)return [];const path=[];for(let n=found;n&&n!==start;n=parent.get(n.key))path.push(n);path.push(start);path.reverse();
+ if(waterHullClear(c,target.x,target.y)&&waterSegment(c,end,target))path.push({...target});
+ return path;
+}
+function seedMarinePatrols(){
+ const routes=[
+  [[7900,24400],[6800,24200],[6600,23600]],
+  [[4300,19500],[3700,20600],[5300,22900]],
+  [[13000,25800],[17800,25700],[21000,24200]],
+  [[48800,19700],[53000,21100],[57500,20000]],
+  [[65000,11000],[65000,15500],[63300,18700]],
+  [[32700,23400],[33500,20900],[35500,19400]],
+  [[42200,24500],[42000,21200],[40500,20000]]
+ ];
+ routes.forEach((route,i)=>{
+  const spec={len:106,wid:34,z:WATER_LEVEL-8,a:0},p=closestSea({x:route[0][0],y:route[0][1]},spec);if(!p)return;
+  const c=specialVehicle('boat',p.x,p.y,0,'marinePolice');c.marine=true;c.prisonLaunch=i>=5;c.persistent=true;c.role='marinePatrol';c.col=i>=5?'#4e6875':'#284b75';c.patrol=route.map(([x,y])=>closestSea({x,y},spec)).filter(Boolean);c.patrolIndex=c.patrol.length>1?1:0;c.route=[];c.routeAt=-Infinity;c.hasCrew=true;
+  c.crew=[];for(let j=0;j<2;j++){const n=newNpc(c.prisonLaunch?'guard':'cop',c.x,c.y);n.boarded=true;n.marine=true;n.cruiser=c;n.z=c.z+18;n.patrol=[{x:c.x,y:c.y}];n.patrolIndex=0;n.suspicion=1;n.persistent=true;n.fire=.4+j*.7;c.crew.push(n);npcs.push(n);}
+ });
+}
+function marineContact(c){
+ const target=player.veh;
+ return (c.prisonLaunch?prisonAlert>=2&&distance(c,player)<9500:wanted>0)&&
+  (player.inWater||target?.type==='boat'||distance(closestSea(player,c,6)||{x:-99999,y:0},player)<700);
+}
+function updateMarine(c,dt){
+ if(c.boarder?.state==='dead'){c.boarder=null;c.boarding=0;}
+ if(c.beingStolen){c.spd=c.vx=c.vy=0;return;}
+ const crew=c.crew.filter(n=>n.state!=='dead'&&(n.boarded&&n.cruiser===c||c.boarder===n));if(!crew.length){c.spd=c.vx=c.vy=0;return;}
+ const candidates=cars.filter(o=>o.marine&&o.prisonLaunch===c.prisonLaunch&&!o.dead&&o.crew?.some(n=>n.boarded&&n.state!=='dead')).sort((a,b)=>distance(a,policeFix||player)-distance(b,policeFix||player));
+ const slot=candidates.indexOf(c),responding=marineContact(c)&&slot<(c.prisonLaunch?2:3),seen=responding&&distance(c,player)<visibleRange(c,1600)&&lineOfSight(c,player);
+ if(seen){c.lastContact={x:player.x,y:player.y,z:player.z||0,time};if(!c.prisonLaunch){policeFix={...c.lastContact,seen:true,a:player.a};unseen=0;}}
+ let goal=c.patrol[c.patrolIndex],intercept=false;
+ if(responding){
+  const fix=seen?player:c.lastContact||policeFix;
+  if(fix){
+   const boat=seen&&player.veh?.type==='boat'?player.veh:null;
+   const lead=boat?clamp(distance(c,boat)/850,.4,2.4)+(slot===1?1.2:0):0;
+   const side=boat&&Math.abs(boat.spd)>45&&slot>0?(slot===1?1:-1)*160:0;
+   const projected={x:fix.x+(boat?boat.vx*lead-Math.sin(boat.a)*side:0),y:fix.y+(boat?boat.vy*lead+Math.cos(boat.a)*side:0)};
+   const station=closestSea(projected,c);goal=waterHullClear(c,projected.x,projected.y)?projected:station||goal;
+   c.role=boat?'marineIntercept':'shoreContainment';intercept=!!boat;
+  }
+ }else{c.role='marinePatrol';c.lastContact=null;}
+ const d=distance(c,goal);
+ if(!responding&&d<160){c.patrolIndex=(c.patrolIndex+1)%c.patrol.length;goal=c.patrol[c.patrolIndex];}
+ if(time-c.routeAt>(responding?2.5:14)||(!c.route?.length&&time-c.routeAt>3)||distance(goal,c.routeGoal||goal)>360){c.route=seaRoute(c,goal);c.routeGoal={...goal};c.routeAt=time;}
+ while(c.route.length>1&&distance(c,c.route[0])<65)c.route.shift();
+ const p=c.route[0],old={x:c.x,y:c.y};
+ if(p){
+  const angle=Math.atan2(p.y-c.y,p.x-c.x),turn=angD(angle,c.a);c.a+=clamp(turn,-dt*1.3,dt*1.3);
+  let speed=responding?810:170;
+  if(Math.abs(turn)>.35)speed=Math.min(speed,120);
+  speed=Math.min(speed,Math.max(0,(distance(c,p)-35)*1.8));
+  if(responding&&d<(player.veh?.type==='boat'?115:120))speed=0;
+  // Yield around other launches rather than stack hulls at a landing.
+  const obstacle=cars.find(o=>o!==c&&o.type==='boat'&&!o.dead&&o!==player.veh&&distance(o,c)<150&&Math.cos(Math.atan2(o.y-c.y,o.x-c.x)-c.a)>.65);
+  if(obstacle)speed=0;
+  c.spd+=(speed-c.spd)*Math.min(1,dt*1.6);
+  const x=c.x+Math.cos(c.a)*c.spd*dt,y=c.y+Math.sin(c.a)*c.spd*dt;
+  if(waterSegment(c,c,{x,y})){c.x=x;c.y=y;c.blocked=0;}else{c.spd=0;c.blocked=(c.blocked||0)+dt;if(c.blocked>1){c.route=[];c.routeAt=-Infinity;}}
+ }
+ c.z=WATER_LEVEL-8;c.vx=(c.x-old.x)/dt;c.vy=(c.y-old.y)/dt;
+ for(let i=0;i<crew.length;i++){
+  const n=crew[i];n.x=c.x-Math.cos(c.a)*(i*18);n.y=c.y-Math.sin(c.a)*(i*18);n.z=c.z+18;n.a=seen?Math.atan2(player.y-n.y,player.x-n.x):c.a;
+  if(i===1)officerCombat(n,dt,distance(n,player),seen,c.prisonLaunch?prisonAlert>=2:crimeThreat>=2);
+ }
+ const boat=player.veh;
+ if(responding&&seen&&boat?.type==='boat'&&Math.abs(boat.spd)<45&&distance(c,boat)<120){
+  c.boarding=(c.boarding||0)+dt;
+  if(!c.boarder){const n=crew[0];n.boarded=false;n.cruiser=null;n.boardingFrom=c;c.boarder=n;}
+  const n=c.boarder,step=clamp(c.boarding/1.6,0,1);n.x=c.x+(boat.x-c.x)*step;n.y=c.y+(boat.y-c.y)*step;n.z=boat.z+17;n.a=Math.atan2(boat.y-c.y,boat.x-c.x);
+  if(c.boarding>2.5){player.veh=null;boat.kind='parked';player.x=boat.x-Math.sin(boat.a)*42;player.y=boat.y+Math.cos(boat.a)*42;player.z=SWIM_FEET;refreshWaterState();toast('Marine officer boarded · forced overboard','#ffc49c');c.boarding=0;n.boarded=true;n.cruiser=c;c.boarder=null;}
+ }else if(c.boarder){const n=c.boarder;n.boarded=true;n.cruiser=c;c.boarder=null;c.boarding=0;}
+}
+
 /* Operations are accepted explicitly from the casebook. */
 const buildingNamed=name=>buildings.find(b=>b.name===name);
 const missionPoints={
@@ -2643,6 +2951,7 @@ const missionPoints={
  witness:buildings.find(b=>b.use==='home'&&b.x>11000).door,
  prisonDock:{x:33300,y:23500,name:'Prison landing'},
  prisonPower:securitySites.find(s=>s.id==='prisonPower'),
+ prisonGate:securitySites.find(s=>s.id==='prisonGate'),
  cellblock:buildingNamed('Cellblock B').door,
  safe:{x:7870,y:24000,name:'Harbor Marina'},
  archive:buildingNamed('Public Archive').door,
@@ -2715,11 +3024,13 @@ function refreshCases(){
 function setMap(open){
  if(!started)return;
  if(open&&theft)cancelTheft('Entry cancelled');
+ if(open&&circuit)cancelCircuit('Work cancelled');
  mapOpen=open;$('map-panel').hidden=!open;resetInput();syncAudioState();
  if(open){
   if(locked())document.exitPointerLock();
   if(ob?.stage==='choose'){showFinalChoices();return;}
   refreshCases();
+  if(ob){const abandon=document.createElement('button');abandon.className='case-row';abandon.textContent='Abandon operation';abandon.onclick=()=>{failJob('Operation abandoned');setMap(false);};cases.append(abandon);}
   caseTitle.textContent=ob?.job.title||'Operations';
   caseText.textContent=ob?.job.summary||'Choose an available operation to review and accept it. Your contacts wait until you are ready.';
  }else grabMouse();
@@ -2730,7 +3041,7 @@ function setObjective(stage,target,text){
 }
 function markCheckpoint(){
  if(!ob)return;
- checkpoint={id:ob.job.id,stage:ob.stage,x:(player).x,y:(player).y};saveCampaign();
+ checkpoint={id:ob.job.id,stage:ob.stage,x:player.x,y:player.y,z:player.z||0,prison:ob.job.id==='island'?{power:L.prisonPower.disabled,gate:prisonAccess.gateOpen,puzzles:prisonAccess.puzzles}:null};saveCampaign();
 }
 function routeCar(type,from,to,tag,speed){
  const q=roadAnchor(from.x,from.y),c=roadCar(type,q.e,q.dir,q.t,'traffic');
@@ -2767,7 +3078,8 @@ function startJob(job){
    if(!solidFoot(p.x,p.y)){const n=newNpc('gang',p.x,p.y);n.tag='foe';npcs.push(n);}
   }
  }else if(job.id==='island'){
-  setObjective('boat',L.marina,'Take a boat from Harbor Marina');
+  if(!retry){L.prisonPower.disabled=false;L.prisonGate.disabled=false;prisonAccess.gateOpen=false;prisonAccess.puzzles={};inventory.prisonCard=false;for(const b of buildings.filter(b=>b.use==='prison'))for(const plan of b.plans.values())for(const i of plan.items)if(i.id==='mate'||i.id==='prisonCard')i.consumed=false;for(const b of buildings.filter(b=>b.use==='prison'))for(const plan of b.plans.values())for(const d of plan.doors)if(d.custody){d.open=d.broken=false;d.locked=true;d.hp=28;}}
+  setObjective('briefing',L.marina,'Reach Harbor Marina for the night launch briefing · lose any pursuit');
 
  }else if(job.id==='finale'){
   ob.stage='choose';ob.text='Choose how to use the evidence in your casebook';setMap(true);showFinalChoices();
@@ -2783,14 +3095,16 @@ function startJob(job){
  if(retry){
   if(job.id==='convoy'&&retry==='cargo'){ob.cargoCondition=.65;setObjective('cargo',L.garage,'Deliver the recovered equipment');}
   if(job.id==='witness'&&retry==='escort'){makeFollower('Mara',checkpoint.x+18,checkpoint.y);setObjective('escort',L.garage,'Escort Mara to Southbank');}
-  if(job.id==='island'&&['power','cell','extract','escape'].includes(retry)){
-   const boat=cars.find(c=>c.type==='boat'&&!c.dead&&c.x>30000);
+  if(job.id==='island'&&['landing','power','gate','cell','extract','escape'].includes(retry)){
+   lockPrisonNight();if(checkpoint.prison){L.prisonPower.disabled=checkpoint.prison.power;prisonAccess.gateOpen=checkpoint.prison.gate;prisonAccess.puzzles=checkpoint.prison.puzzles||{};}
+   const boat=cars.find(c=>c.type==='boat'&&!c.marine&&!c.dead&&c.x>30000);
+   if(boat)boat.owned=true;
    if(retry==='extract'||retry==='escape'){
     makeFollower('Eli',checkpoint.x+18,checkpoint.y);
     setObjective('extract',L.prisonDock,'Escort Eli to your boat');
-   }else setObjective(retry,retry==='cell'?L.cellblock:L.prisonPower,retry==='cell'?'Enter Cellblock B':'Disable perimeter security');
+   }else setObjective(retry,retry==='cell'?L.cellblock:retry==='gate'?L.prisonGate:retry==='landing'?L.prisonDock:L.prisonPower,retry==='cell'?'Enter Cellblock B':retry==='gate'?'Open the service gate · card or circuit override':retry==='landing'?'Land on the service dock on foot':'Disable perimeter surveillance · solve the circuit');
   }
-  if(checkpoint.x&&retry!=='records'){player.x=checkpoint.x;player.y=checkpoint.y;}
+  if(checkpoint.x&&retry!=='records'){player.x=checkpoint.x;player.y=checkpoint.y;player.z=checkpoint.z||0;}
  }
 }
 function showFinalChoices(){
@@ -2808,6 +3122,7 @@ function showFinalChoices(){
  }
 }
 function cleanupJob(){
+ worldClock.locked=false;if(circuit)cancelCircuit();
  for(const c of cars)if(['objective','cargo','escort','recover'].includes(c.tag))c.tag='';
  npcs=npcs.filter(n=>n.tag!=='foe'&&n!==follower);follower=null;
 }
@@ -2883,15 +3198,11 @@ function actOnObjective(){
  }
  if(ob.stage==='cargo'&&near(L.garage)){completeJob();return true;}
  if(ob.stage==='escort'&&near(L.garage)&&follower&&distance(follower,player)<120){completeJob();return true;}
- if(ob.stage==='power'&&near(L.prisonPower)){
-  const power=L.prisonPower;
-  power.disabled=true;inventory.key=true;toast('Perimeter cameras disabled · service access unlocked');
-  setObjective('cell',L.cellblock,'Slip past the patrols and enter Cellblock B');markCheckpoint();return true;
- }
+ if(ob.stage==='power'&&near(L.prisonPower)){openCircuit('power',L.prisonPower);return true;}
  if(ob.stage==='recover'&&ob.car===player.veh){setObjective('deliver',L.garage,'Bring the sports car to Southbank');return false;}
  if(ob.stage==='deliver'&&near(L.garage)&&ob.car===player.veh){completeJob();return true;}
- if(ob.stage==='extract'&&distance(player,L.prisonDock)<240&&follower&&distance(follower,player)<160&&player.veh?.type==='boat'){
-  follower.boarded=true;setObjective('escape',L.safe,'Escape to the mainland with Eli');markCheckpoint();return true;
+ if(ob.stage==='extract'&&distance(player,L.prisonDock)<260&&follower&&distance(follower,player)<135&&player.veh?.type==='boat'&&Math.abs(player.veh.spd)<45){
+  ob.boarding=(ob.boarding||0)+frameDt;if(ob.boarding<1.2)return false;follower.boarded=true;setObjective('escape',L.safe,'Escape to the mainland with Eli');markCheckpoint();return true;
  }
  if(ob.stage==='escape'&&near(L.safe)&&player.veh?.type==='boat'&&prisonAlert<3){completeJob();return true;}
  if(ob.stage==='buyback'&&near(L.meeting)){
@@ -2904,8 +3215,8 @@ function objectiveHint(){
  if(!ob)return '';
  const p=ob.target;
  if(p&&distance(player,p)<75){
-  const labels={tail:'Recover manifest',intercept:'Recover equipment',cargo:'Deliver equipment',escort:'Deliver witness',power:'Cut perimeter power',deliver:'Finish recovery',extract:'Board Eli',escape:'Land with Eli',buyback:'Begin the handoff'};
-  return labels[ob.stage]||'';
+  const labels={tail:'Recover manifest',intercept:'Recover equipment',cargo:'Deliver equipment',escort:'Deliver witness',power:'Open surveillance circuit panel',deliver:'Finish recovery',extract:'Board Eli',escape:'Land with Eli',buyback:'Begin the handoff'};
+  return ['cargo','escort','deliver','extract','escape','buyback'].includes(ob.stage)?'':labels[ob.stage]||'';
  }
  return '';
 }
@@ -2916,6 +3227,7 @@ function spawnAmbush(p){
 }
 function updFollower(dt){
  if(!follower)return;
+ navigationZ=follower.z||0;
  if(follower.state==='dead'||follower.hp<=0){failJob('Your companion was killed');return;}
  if(follower.boarded){follower.x=player.x;follower.y=player.y;return;}
  if(buildingPursuit(follower,player,dt))return;
@@ -2929,6 +3241,9 @@ function updFollower(dt){
 function updJob(dt){
  if(!ob||state!=='play')return;
  const id=ob.job.id,stage=ob.stage;
+ if(['cargo','escort','deliver','extract','escape','buyback'].includes(stage)&&actOnObjective())return;
+ if(stage==='briefing'&&distance(player,L.marina)<180&&!player.veh&&wanted===0){lockPrisonNight();setObjective('boat',L.marina,'Night launch · board a boat at Harbor Marina');markCheckpoint();return;}
+ if(stage==='landing'&&!player.veh&&!player.inWater&&Math.abs((player.z||0)-6)<10&&player.x>33130&&player.x<35070&&Math.abs(player.y-23500)<58){setObjective('power',L.prisonPower,'Disable perimeter surveillance · locate the circuit cabinet');markCheckpoint();return;}
  if(ob.timer!==null){ob.timer-=dt;if(ob.timer<=0){failJob('Time ran out');return;}}
  if(stage==='tail'){
   const c=ob.car;ob.target=c;
@@ -2961,7 +3276,7 @@ function updJob(dt){
    completeJob();
   }
  }else if(stage==='boat'&&player.veh?.type==='boat'){
-  setObjective('power',L.prisonPower,'Sail to Blackwater · land at the service dock');markCheckpoint();
+  ob.boat=player.veh;setObjective('landing',L.prisonDock,'Sail to Blackwater · disembark onto the service dock');markCheckpoint();
  }else if(stage==='cell'&&interior?.building.name==='Cellblock B'){
   ob.text='Reach the cell controls and release Eli';
  }else if(stage==='escape'&&player.veh?.type==='boat'){
@@ -2977,7 +3292,7 @@ function updJob(dt){
  }else if(stage==='landAir'&&player.veh&&(player.veh.z||0)<12&&distance(player,L.marina)<650)completeJob();
 }
 let interiorReturn=null;
-const inventory={key:false,disguise:false,tools:false,armor:false,weapon:true,ammo:96,mag:12};
+const inventory={prisonCard:false,key:false,disguise:false,tools:false,armor:false,weapon:true,ammo:96,mag:12};
 
 /* Equipment is explicit: walking around starts unarmed. */
 const hotbar={slot:0,owned:[true,true,false,false,false],ammo:[0,96,0,0,0],mags:[0,12,0,0,0]};
@@ -3382,6 +3697,7 @@ function aircraft(c){return c.type==='heli'||c.type==='plane';}
 function specialMotion(c,dt){
  if(c.dead)return false;
  if(c.kind==='airPolice')return true;
+ if(c.marine&&c!==player.veh){updateMarine(c,dt);return true;}
  const own=c===player.veh;
  if(c.type==='tank'&&c.kind==='military'){militaryTank(c,dt);return true;}
  if(!['boat','heli','plane','tank','armor'].includes(c.type))return false;
@@ -3471,7 +3787,7 @@ let lastCrime=-1000,crimeThreat=0,vehicleDescription=null;
 function cameraTracking(){
  if(wanted&&player.veh&&vehicleDescription&&player.veh!==vehicleDescription)return false;
  if(player.veh&&(player.veh.z||0)>180)return false;
- return streetCameras.some(c=>!(inside(c.x,c.y,island)&&securitySites.find(s=>s.id==='prisonPower').disabled)&&c.disabledUntil<time&&distance(c,player)<c.r&&lineOfSight(c,player));
+ return streetCameras.some(c=>!(inside(c.x,c.y,island)&&securitySites.find(s=>s.id==='prisonPower').disabled)&&c.disabledUntil<time&&distance(c,player)<visibleRange(c,c.r)&&lineOfSight(c,player));
 }
 function witnessReport(amount,location,serious=false){
  lastCrime=time;unseen=0;
@@ -3581,39 +3897,42 @@ function spawnSecurity(){
   const x=26100+(i%4)*1900,y=5600+Math.floor(i/4)*2900;
   guard('troop',x,y,[{x,y},{x:x+600,y},{x:x+600,y:y+900},{x,y:y+900}]);
  }
- for(const [x,y] of [[35600,23500],[36000,22100],[37600,22100],[39800,23500],[37700,24700],[35900,24800]]){
-  guard('guard',x,y,[{x,y},{x:x+500,y},{x:x+500,y:y+500},{x,y:y+500}]);
- }
+ const patrols=[
+  [[35300,23500],[35800,23500],[35800,23000],[35350,23000]],
+  [[35800,22450],[36550,22450],[36550,23000],[35800,23000]],
+  [[37300,23050],[38350,23050],[38350,23700],[37300,23700]],
+  [[39600,22000],[40100,22000],[40100,23500],[39600,23500]],
+  [[39600,24800],[39600,25150],[37900,25150],[37900,24800]],
+  [[35700,24100],[35700,25100],[36700,25100],[36700,24100]]
+ ];
+ for(const path of patrols){const route=path.map(([x,y])=>({x,y})),n=guard('guard',route[0].x,route[0].y,route);n.a=Math.atan2(route[1].y-n.y,route[1].x-n.x);}
+ for(const floor of [0,1]){const path=[{x:38000,y:22745},{x:38000,y:22905}];const n=guard('guard',path[0].x,path[0].y,path);n.z=floor*44;n.a=floor?Math.PI/2:-Math.PI/2;n.post='cellblock';}
+ const p=roadNodes.get('prisonSE'),link=p.links.find(l=>l.e.name==='Prison Service Road');
+ if(link){const c=roadCar('van',link.e,link.dir,link.dir===1?120:link.e.len-120,'service');c.persistent=true;c.authorized=true;c.cruise=c.vmax=85;cars.push(c);}
+
 }
 function updGuard(n,dt){
  const zone=n.kind==='troop'?'base':'prison',alert=zone==='base'?baseAlert:prisonAlert;
- const actual=player;
- const relevant=zone==='base'?covers(baseBounds,actual.x,actual.y):covers(prisonBounds,actual.x,actual.y);
- if(!relevant&&distance(n,actual)>1700)return;
- const dx=actual.x-n.x,dy=actual.y-n.y,d=hyp(dx,dy),facing=Math.abs(angD(Math.atan2(dy,dx),n.a));
- const sees=relevant&&d<(player.crouching?260:520)&&
-  (alert>=2||facing<.65)&&lineOfSight(n,actual);
- if(sees)n.suspicion=Math.min(1,n.suspicion+dt*(inventory.disguise&&alert<2?.18:.72));
- else n.suspicion=Math.max(0,n.suspicion-dt*.18);
- if(n.suspicion>=1){
-  raiseSecurity(zone,2);n.investigate={x:actual.x,y:actual.y,z:actual.z||0};n.lastSeen=time;
+ const relevant=zone==='base'?covers(baseBounds,player.x,player.y):inside(player.x,player.y,island);
+ const d=distance(n,player),facing=Math.abs(angD(Math.atan2(player.y-n.y,player.x-n.x),n.a));
+ const seen=relevant&&d<visibleRange(n,alert>=2?1050:620)&&(alert>=2||facing<.85)&&lineOfSight(n,player);
+ n.alert=alert>=2;
+ if(seen)n.suspicion=Math.min(1,n.suspicion+dt*(inventory.disguise&&alert<2?.22:1.1));
+ else n.suspicion=Math.max(0,n.suspicion-dt*.15);
+ if(seen&&(n.suspicion>=1||alert>=2)){
+  if(alert<2)raiseSecurity(zone,2);
+  for(const o of npcs)if(o.kind===n.kind&&o.state!=='dead'&&distance(o,n)<2400){o.investigate={x:player.x,y:player.y,z:player.z||0};o.lastSeen=time;}
  }
- if(sees&&alert>=2)n.investigate={x:actual.x,y:actual.y,z:actual.z||0};
- const target=n.investigate||n.patrol[n.patrolIndex];
- if(n.investigate&&buildingPursuit(n,target,dt))return;
+ const hostile=(zone==='base'?baseAlert:prisonAlert)>=2;
+ if(hostile&&n.investigate&&buildingPursuit(n,n.investigate,dt))return;
+ if(officerCombat(n,dt,d,seen,hostile))return;
+ const target=n.investigate||n.patrol?.[n.patrolIndex];if(!target)return;
  const length=distance(n,target);
- n.a=Math.atan2(target.y-n.y,target.x-n.x);
- if(length>15){
-  const step=dt*(alert>=2?68:31),way=walkClear(n.x,n.y,target.x,target.y)?target:officerWaypoint(n,target);
-  if(way){const a=Math.atan2(way.y-n.y,way.x-n.x);moveFoot(n,Math.cos(a)*step,Math.sin(a)*step,6);n.step+=step*.15;}
+ if(length>16){
+  const way=walkClear(n.x,n.y,target.x,target.y)?target:officerWaypoint(n,target);
+  if(way){const a=Math.atan2(way.y-n.y,way.x-n.x),step=Math.min(distance(n,way),dt*(hostile?92:35));n.a=a;moveFoot(n,Math.cos(a)*step,Math.sin(a)*step,6);n.step+=step*.15;verticalFoot(n,dt);}
  }else if(!n.investigate)n.patrolIndex=(n.patrolIndex+1)%n.patrol.length;
- else if(time-(n.lastSeen||0)>13){n.investigate=null;n.suspicion=.35;}
- n.fire-=dt;
- const activeShots=bullets.filter(b=>b.o==='m').length;
- if(alert>=2&&sees&&d<500&&n.fire<=0&&activeShots<4){
-  n.fire=n.kind==='troop'?.72:1.15;
-  shootAt(n,player.x,player.y,'m',n.kind==='troop'?19:12);
- }
+ else if(time-(n.lastSeen||0)>25){n.investigate=null;n.suspicion=.35;}
 }
 function militaryTank(c,dt){
  if(baseAlert<2||!covers(baseBounds,player.x,player.y)){c.spd=c.vx=c.vy=0;return;}
@@ -3633,13 +3952,14 @@ function militaryTank(c,dt){
 function updSecurity(dt){
  if(!started||state!=='play')return;
  const actual=player;
+ if(isNight()&&!L.prisonPower.disabled)for(const l of worldLights)if(l.owner?.tower!==undefined&&lightStrength(l,player)>.08){raiseSecurity('prison',2);for(const n of npcs)if(n.kind==='guard'&&!n.marine){n.investigate={x:player.x,y:player.y,z:player.z||0};n.lastSeen=time;}}
  if(covers(baseBounds,actual.x,actual.y)&&baseAlert<1&&!inventory.disguise)baseAlert=1;
  if(covers(prisonBounds,actual.x,actual.y)&&prisonAlert<1&&!inventory.disguise)prisonAlert=1;
  militaryCooldown-=dt;
  if(baseAlert>=2&&militaryCooldown<=0){
   militaryCooldown=13;
   const alive=npcs.filter(n=>n.kind==='troop'&&n.state!=='dead').length;
-  if(alive<17)for(let i=0;i<3;i++)guard('troop',27900+i*32,10500,[{x:28000,y:10000},{x:actual.x,y:actual.y}]);
+  if(alive<17&&distance(player,{x:27900,y:10500})>1800&&!lineOfSight({x:27900,y:10500,z:0},player))for(let i=0;i<3;i++)guard('troop',27900+i*32,10500,[{x:28000,y:10000},{x:actual.x,y:actual.y}]);
  }
 }
 
@@ -3656,7 +3976,7 @@ let missiles=[];
 function updDefenses(dt){
  if(!started||state!=='play')return;
  const power=securitySites.find(s=>s.id==='prisonPower');
- for(const g of facilityGates)g.active=g.zone==='base'?baseAlert>=2:prisonAlert>=2&&!power.disabled;
+ for(const g of facilityGates)g.active=g.zone==='base'?!securitySites.find(s=>s.id==='baseGate').disabled&&!(inventory.disguise&&baseAlert<2):!prisonAccess.gateOpen;
  const radar=securitySites.find(s=>s.id==='radar'),c=player.veh;
  const tracked=c&&aircraft(c)&&c.z>100&&baseAlert>=2&&!radar.disabled&&
   covers({x:24500,y:2300,w:11500,d:12500},player.x,player.y);
@@ -3708,18 +4028,20 @@ function seedPatrols(){
  }
 }
 function newGame(){
- theft=null;cars=[];npcs=[];bullets=[];parts=[];drops=[];rings=[];toasts=[];floaters=[];skids=[];shells=[];
+ theft=null;circuit=null;worldLights=[];lightRefresh=-1;worldClock.phase=150;worldClock.locked=false;worldClock.fade=0;prisonAccess.gateOpen=false;prisonAccess.puzzles={};baseAlert=prisonAlert=0;for(const p of securitySites)p.disabled=false;cars=[];npcs=[];bullets=[];parts=[];drops=[];rings=[];toasts=[];floaters=[];skids=[];shells=[];
  ob=null;navTarget=null;finishedJobs.clear();navClock=0;cash=650;heat=wanted=unseen=0;
  for(const b of buildings)for(const p of b.plans.values())p.populated=false;
  waterClimb=null;won=false;clearPolice();interior=null;airUnit=null;spikes=[];incidentLedger.clear();hotbar.slot=0;interiorReturn=null;
  Object.assign(player,{z:0,vz:0,x:START.x,y:START.y,hp:100,veh:null,bust:0,a:0,stamina:100,exhausted:false,breath:100,armor:0,inWater:false,waterJump:false,swimming:false,submerged:false});
  resetLook(Math.PI/2);player.a=view.yaw;
- parkStarter();spawnVehicles();spawnSecurity();seedPatrols();
+ parkStarter();spawnVehicles();spawnSecurity();seedMarinePatrols();seedPatrols();
  for(let i=0;i<30;i++)spawnTraffic(true);
  for(let i=0;i<45;i++)spawnPed(true);
 }
 /* ---------- player + world update ---------- */
 function contextAction(){
+ if(circuit)return;
+ if(prisonInteraction())return;
  if(theft){theftHit();return;}
  if(waterClimb){waterClimb=null;return;}
  const ladder=nearbyWaterExit();if(ladder){useWaterExit(ladder);return;}
@@ -3728,7 +4050,7 @@ function contextAction(){
   const b=nearEntrance();
   if(b){enterBuilding(b);return;}
   const security=securitySites.find(s=>distance(s,player)<65);
-  if(security&&inventory.tools){
+  if(security&&inventory.tools&&!security.id.startsWith('prison')&&security.id!=='baseGate'){
    security.disabled=true;toast(security.name+' disabled','#a8e6c7');return;
   }
  }
@@ -3748,11 +4070,12 @@ function updPlayer(dt){
  player.crouching=!!keys.KeyC;
  if(actQ){actQ=false;contextAction();}
  updateTheft(dt);
+ if(circuit){updateCircuit(dt);return;}
  if(elevatorTrip)return;
  if(waterClimb){updateWaterClimb(dt);return;}
  if(player.veh){
   const c=player.veh;player.x=c.x;player.y=c.y;player.a=c.a;player.stamina=Math.min(100,player.stamina+dt*14);
-  player.swimming=player.submerged=player.inWater=false;player.z=c.z||0;updateBreath(dt);return;
+  player.sprinting=false;player.swimming=player.submerged=player.inWater=false;player.z=c.z||0;updateBreath(dt);return;
  }
  const [ix,iy]=inputVec(),mag=hyp(ix,iy),a=view.yaw;
  if(keys.ArrowLeft||keys.ArrowRight)look((Number(!!keys.ArrowRight)-Number(!!keys.ArrowLeft))*dt*1.5,0);
@@ -3762,6 +4085,8 @@ function updPlayer(dt){
  if(player.stamina<=1)player.exhausted=true;
  if(player.stamina>=20)player.exhausted=false;
  const run=!!(keys.ShiftLeft||keys.ShiftRight||tSpr)&&!player.exhausted&&!player.crouching;
+ player.sprinting=run&&mag>.05;
+ if(player.exhausted&&!player.exhaustionCue){noise(.45,.09,520);player.exhaustionCue=true;}if(!player.exhausted)player.exhaustionCue=false;
  let swam=false;
  if(player.swimming)swam=swimPlayer(dt,ix,iy,run);
  if(!swam){
@@ -3794,7 +4119,7 @@ function updPlayer(dt){
  }
 
  for(let i=drops.length-1;i>=0;i--){
-  const p=drops[i];p.t-=dt;
+  const p=drops[i];p.t-=dt;if(p.card){if(p.t<=0)drops.splice(i,1);continue;}
   if(p.t<=0)drops.splice(i,1);
   else if(distance(p,player)<24){cash+=p.v;drops.splice(i,1);sfx.cash();}
  }
@@ -3840,7 +4165,7 @@ function gunMesh(m){
 }
 
 function update(dt){
- time+=dt;frameDt=dt;
+ time+=dt;frameDt=dt;updateWorldClock(dt);updateWorldLights();
  for(const c of cars)if(c.grabbed&&(player.veh!==c||c.spd>30||c.grabbed.officer.state==='dead'||distance(c.grabbed.officer,vehicleDoor(c,c.grabbed.side))>24||!safeDoor(c,vehicleDoor(c,c.grabbed.side)))){c.grabbed.officer.grabbing=null;c.grabbed=null;}
  updateArchitecture(dt);if(started&&state==='play'){updateArrest(dt);armedReaction(dt);updateAirAndSpikes(dt);}
  if(state!=='play'){stT+=dt;actQ=false;if((state==='wasted'||state==='busted')&&stT>2.8)respawn()}
@@ -3883,8 +4208,8 @@ function chaseCamera(car){
  if(fresh){chase.car=car;chase.yaw=wantedYaw;chase.arm=1;view.resetChase=false;}
  else chase.yaw+=angD(wantedYaw,chase.yaw)*(1-Math.exp(-frameDt*(Math.abs(view.orbit)>.03?17:9)));
  const speed=clamp(car.spd/380,0,1),portrait=clamp(H/W-1,0,1);
- const reach=350+speed*120+portrait*125;
- const elevation=155+speed*45+portrait*62;
+ const reach=(350+speed*120+portrait*125)*.75;
+ const elevation=(155+speed*45+portrait*62)*.75;
  const dx=Math.cos(chase.yaw),dy=Math.sin(chase.yaw),base=39+(car.z||0);
  // Retract before a building intersects the camera arm and extend gradually when clear.
  let clear=1;
@@ -3974,14 +4299,57 @@ function makeRenderer(){
  uniform vec2 lens;
  uniform float pitch;
  uniform float underwater;
+ uniform float daylight;
+ uniform float shadowPass;
+ uniform float shadowRange;
+ uniform sampler2D shadowAtlas;
+ uniform vec4 lightPos[8];
+ uniform vec4 lightDir[8];
+ uniform vec3 lightColor[8];
  varying vec3 tint;
  varying vec3 position;
  varying float distanceToEye;
  varying float material;
  float hash(vec2 p){return fract(sin(dot(p,vec2(34.7,73.9)))*18883.418);}
  ${waterHoleShader()}
+ float beamShadow(int i,vec3 delta,vec3 direction,float range,float cone){
+  float horizontal=max(.001,length(direction.xy));
+  vec3 right=vec3(-direction.y/horizontal,direction.x/horizontal,0.);
+  vec3 up=cross(direction,right);
+  float forward=dot(delta,direction),extent=forward*sqrt(1.-cone*cone)/cone;
+  if(forward<2.2||extent<.001)return 0.;
+  vec2 local=vec2(dot(delta,right),dot(delta,up))/extent*.5+.5;
+  if(local.x<.002||local.x>.998||local.y<.002||local.y>.998)return 0.;
+  vec2 origin=vec2(mod(float(i),4.),floor(float(i)/4.));
+  vec2 uv=(local+origin)/vec2(4.,2.);
+  float visibility=0.;
+  for(int k=0;k<4;k++){
+   vec2 offset=vec2(mod(float(k),2.)-.5,floor(float(k)/2.)-.5)/vec2(1024.,512.);
+   vec2 encodedDepth=texture2D(shadowAtlas,uv+offset).rg;
+   float stored=dot(encodedDepth,vec2(1.,1./255.));
+   visibility+=step(forward/range-.0035,stored)*.25;
+  }
+  return visibility;
+ }
+ vec3 illuminate(vec3 c){
+  c*=mix(vec3(.22,.28,.39),vec3(1.),daylight);
+  for(int i=0;i<8;i++){
+   if(lightPos[i].w<1.)continue;
+   vec3 delta=position-lightPos[i].xyz;float d=length(delta);
+   float cone=lightDir[i].w,alignment=dot(delta/max(d,.001),lightDir[i].xyz);
+   float power=smoothstep(cone,cone+.035,alignment)*max(0.,1.-d/lightPos[i].w);
+   if(power>.001)c+=c*lightColor[i]*power*1.8*beamShadow(i,delta,lightDir[i].xyz,lightPos[i].w,cone);
+  }
+  return c;
+ }
  void main(){
-  vec3 haze=vec3(.57,.65,.71);
+  if(shadowPass>.5){
+   if(material>8.1||material<-.5)discard;
+   float d=clamp(distanceToEye/shadowRange,0.,.99999);
+   vec2 encodedDepth=fract(d*vec2(1.,255.));encodedDepth.x-=encodedDepth.y/255.;
+   gl_FragColor=vec4(encodedDepth,0.,1.);return;
+  }
+  vec3 haze=mix(vec3(.024,.046,.081),vec3(.57,.65,.71),daylight);
   if(abs(position.z)<.005&&material>-.5&&(lakeHole(position.xy)||basinHole(position.xy)))discard;
   if(underwater>.5){
    if(material>-.5&&position.z>-8.95)discard;
@@ -3993,18 +4361,21 @@ function makeRenderer(){
   }
   if(material>9.5){
    float ripple=sin(position.x*.055+position.y*.032)*.012;
-   gl_FragColor=vec4(mix(tint+vec3(ripple),haze,smoothstep(1600.,18000.,distanceToEye)*.65),1.);return;
+   gl_FragColor=vec4(mix(illuminate(tint+vec3(ripple)),haze,smoothstep(1600.,18000.,distanceToEye)*.65),1.);return;
   }
   if(material<-.5){
    float elevation=atan(position.y/lens.y)+pitch;
-   vec3 sky=mix(haze,vec3(.23,.38,.54),smoothstep(0.,.69,elevation));
-   sky+=vec3(.09,.038,.008)*exp(-5.3*abs(elevation));
+   vec3 sky=mix(haze,mix(vec3(.006,.014,.039),vec3(.23,.38,.54),daylight),smoothstep(0.,.69,elevation));
+   float stars=step(.9985,hash(floor(position.xy*vec2(420.,260.))))*step(.15,elevation);sky+=vec3(stars*.5*(1.-daylight));
+   sky+=vec3(.09,.038,.008)*daylight*exp(-5.3*abs(elevation));
    gl_FragColor=vec4(sky,1.);return;
   }
   vec3 c=tint;
-  if(material>.5){
+  if(material>8.3&&material<8.5){gl_FragColor=vec4(tint,1.);return;}
+  if(material>8.1&&material<8.5){c=mix(tint,tint*vec3(1.5,1.25,.8),step(.88,hash(floor(position.xy/18.)+floor(position.z/44.)))*(1.-daylight));}
+  else if(material>.5){
    // Recover the integer code after perspective-correct interpolation.
-   if(material>8.5){gl_FragColor=vec4(mix(tint,vec3(.65,.78,.82),.18),.24);return;}
+   if(material>8.5){gl_FragColor=vec4(mix(tint,vec3(.65,.78,.82),.18)*mix(vec3(.3,.4,.56),vec3(1.),daylight),.24);return;}
    float face=floor(material+.5);
    bool acrossX=mod(face,2.)>.5;
    float kind=ceil(face*.5);
@@ -4025,6 +4396,7 @@ function makeRenderer(){
   }else if(position.z<1.&&distanceToEye<650.){
    c+=vec3(.012)*(hash(floor(position.xy*.88))-.5);
   }
+  c=illuminate(c);
   float fog=smoothstep(1200.,15500.,distanceToEye)*.83;
   gl_FragColor=vec4(mix(c,haze,fog),1.);
  }`;
@@ -4041,7 +4413,7 @@ function makeRenderer(){
  if(!gpu.getProgramParameter(program,gpu.LINK_STATUS))throw new Error(gpu.getProgramInfoLog(program));
  gpu.useProgram(program);
  const attrs=['p','color','surface'].map(k=>gpu.getAttribLocation(program,k));
- const uniforms=Object.fromEntries(['eye','lens','depth','pitch','underwater','cameraRight','cameraUp','cameraForward'].map(k=>[k,gpu.getUniformLocation(program,k)]));
+ const uniforms=Object.fromEntries(['eye','lens','depth','pitch','underwater','cameraRight','cameraUp','cameraForward','daylight','shadowPass','shadowRange','shadowAtlas','lightPos','lightDir','lightColor'].map(k=>[k,gpu.getUniformLocation(program,k)]));
  attrs.forEach(a=>gpu.enableVertexAttribArray(a));
  gpu.enable(gpu.DEPTH_TEST);gpu.depthFunc(gpu.LEQUAL);
  gpu.clearColor(.57,.65,.71,1);
@@ -4081,6 +4453,17 @@ function makeRenderer(){
  const dynamic=build(0,gpu.DYNAMIC_DRAW);
  const sky=build(new Float32Array([[-1,-1],[3,-1],[-1,3]].flatMap(([x,y])=>[x,y,0,0,0,0,-1])),gpu.STATIC_DRAW);
  worldMesh.data=[];
+ // Eight nearby real shadowed beams share a small, reusable RG depth atlas.
+ const atlas=gpu.createTexture();gpu.bindTexture(gpu.TEXTURE_2D,atlas);
+ gpu.texImage2D(gpu.TEXTURE_2D,0,gpu.RGBA,1024,512,0,gpu.RGBA,gpu.UNSIGNED_BYTE,null);
+ gpu.texParameteri(gpu.TEXTURE_2D,gpu.TEXTURE_MIN_FILTER,gpu.NEAREST);gpu.texParameteri(gpu.TEXTURE_2D,gpu.TEXTURE_MAG_FILTER,gpu.NEAREST);
+ gpu.texParameteri(gpu.TEXTURE_2D,gpu.TEXTURE_WRAP_S,gpu.CLAMP_TO_EDGE);gpu.texParameteri(gpu.TEXTURE_2D,gpu.TEXTURE_WRAP_T,gpu.CLAMP_TO_EDGE);
+ const shadowBuffer=gpu.createFramebuffer(),shadowDepth=gpu.createRenderbuffer();gpu.bindFramebuffer(gpu.FRAMEBUFFER,shadowBuffer);
+ gpu.framebufferTexture2D(gpu.FRAMEBUFFER,gpu.COLOR_ATTACHMENT0,gpu.TEXTURE_2D,atlas,0);
+ gpu.bindRenderbuffer(gpu.RENDERBUFFER,shadowDepth);gpu.renderbufferStorage(gpu.RENDERBUFFER,gpu.DEPTH_COMPONENT16,1024,512);
+ gpu.framebufferRenderbuffer(gpu.FRAMEBUFFER,gpu.DEPTH_ATTACHMENT,gpu.RENDERBUFFER,shadowDepth);
+ if(gpu.checkFramebufferStatus(gpu.FRAMEBUFFER)!==gpu.FRAMEBUFFER_COMPLETE)throw Error('Light atlas incomplete');
+ gpu.bindFramebuffer(gpu.FRAMEBUFFER,null);
  const draw=(buf,count,first=0)=>{
   gpu.bindBuffer(gpu.ARRAY_BUFFER,buf);
   gpu.vertexAttribPointer(attrs[0],3,gpu.FLOAT,false,28,0);
@@ -4089,6 +4472,37 @@ function makeRenderer(){
   gpu.drawArrays(gpu.TRIANGLES,first,count);
  };
  return actors=>{
+  const active=worldLights.filter(l=>distance(l,eye)<l.range+450).sort((a,b)=>
+   (distance(a,eye)-(a.owner===player.veh?3000:0))-(distance(b,eye)-(b.owner===player.veh?3000:0))).slice(0,8);
+  const positions=new Float32Array(32),directions=new Float32Array(32),colors=new Float32Array(24);
+  gpu.uniform1f(uniforms.daylight,daylight());gpu.uniform1i(uniforms.shadowAtlas,0);
+  gpu.uniform1f(uniforms.underwater,0);
+  gpu.bindBuffer(gpu.ARRAY_BUFFER,dynamic);gpu.bufferData(gpu.ARRAY_BUFFER,new Float32Array(actors.data),gpu.DYNAMIC_DRAW);
+  if(active.length){
+   gpu.bindTexture(gpu.TEXTURE_2D,null);gpu.bindFramebuffer(gpu.FRAMEBUFFER,shadowBuffer);
+   gpu.clearColor(1,1,1,1);gpu.clear(gpu.COLOR_BUFFER_BIT|gpu.DEPTH_BUFFER_BIT);gpu.uniform1f(uniforms.shadowPass,1);
+   for(let i=0;i<active.length;i++){
+    const l=active[i],cp=Math.cos(l.pitch),sp=Math.sin(l.pitch),fx=Math.cos(l.a),fy=Math.sin(l.a),lens=l.cone/Math.sqrt(1-l.cone*l.cone);
+    positions.set([l.x,l.y,l.z,l.range],i*4);directions.set([...l.dir,l.cone],i*4);colors.set(l.color,i*3);
+    gpu.viewport(i%4*256,Math.floor(i/4)*256,256,256);
+    gpu.uniform3f(uniforms.eye,l.x,l.y,l.z);gpu.uniform3f(uniforms.cameraRight,-fy,fx,0);
+    gpu.uniform3f(uniforms.cameraUp,-fx*sp,-fy*sp,cp);gpu.uniform3f(uniforms.cameraForward,...l.dir);
+    gpu.uniform2f(uniforms.lens,lens,lens);gpu.uniform1f(uniforms.shadowRange,l.range);
+    gpu.uniform2f(uniforms.depth,(l.range+NEAR)/(l.range-NEAR),-2*l.range*NEAR/(l.range-NEAR));
+    draw(plain.buffer,plain.count);
+    for(const c of tiles)if(distance(c,l)<l.range+c.r)draw(c.buffer,c.count);
+    for(const b of buildings)if(distance(b,l)<l.range+Math.max(b.w,b.d)){
+     let cached=facadeBuffers.get(b.id);if(cached.stamp!==facadeStamp(b))cached=refreshFacade(b);
+     const lo=Math.max(0,Math.floor((l.z-l.range*.5)/44)),hi=Math.min(b.floors-1,Math.ceil((l.z+l.range*.5)/44));
+     for(const side of ['north','south','west','east']){const f=cached.sides[side];if(lo<=hi)draw(f.buffer,f.offsets[hi+1]-f.offsets[lo],f.offsets[lo]);}
+     if(b.h<l.z+l.range*.5)draw(cached.roof.buffer,cached.roof.count);
+    }
+    draw(dynamic,actors.data.length/stride);
+   }
+   gpu.bindFramebuffer(gpu.FRAMEBUFFER,null);gpu.bindTexture(gpu.TEXTURE_2D,atlas);
+  }
+  gpu.uniform1f(uniforms.shadowPass,0);gpu.uniform4fv(uniforms.lightPos,positions);gpu.uniform4fv(uniforms.lightDir,directions);gpu.uniform3fv(uniforms.lightColor,colors);
+  gpu.clearColor(.024,.046,.081,1);
   gpu.viewport(0,0,scene.width,scene.height);
   gpu.clear(gpu.COLOR_BUFFER_BIT|gpu.DEPTH_BUFFER_BIT);
   gpu.uniform3f(uniforms.eye,eye.x,eye.y,eye.z);
@@ -4132,6 +4546,8 @@ function drawSpecial(m,c){
   local.box(-12,0,14,39,27,11,'#b5c6c2');
   local.box(-10,0,25,33,22,8,'#3c626e');
   local.box(-32,0,13,10,32,2,'#a5b5ab');
+  if(c.marine){local.box(10,0,23,7,16,3,Math.sin(time*12)>0?'#8acfff':'#3c6aab');for(const u of [-22,-38]){local.box(u,0,16,8,10,12,'#345978');local.box(u,0,28,6,6,6,'#c7a07d');}}
+  local.box(49,0,12,2,12,4,'#fff0be');
   for(const side of [-1,1])local.beam([-50,side*16,15],[49,side*16,15],2,'#b6c8c3');
  }else if(c.type==='heli'){
   local.box(0,0,16,74,30,29,color);
@@ -4221,7 +4637,7 @@ function drawPerson(m,n){
  m.box(x,y,8,9,12,12,color,a);
  m.tube(x,y,20,4.8,4.1,7,'#e5b397',7,'#574c51');
  if(n.grabbing)m.box(x+co*9,y+si*9,14,15,8,4,color,a);
- if(n.kind==='cop'&&(n.weaponDrawn||n.aim||n.firingT>0)){
+ if(armedResponder(n)&&(n.weaponDrawn||n.aim||n.firingT>0)){
   m.box(x+co*7,y+si*7,14,12,4,4,color,a);
   m.box(x+co*14,y+si*14,18,8,2.5,2.5,'#303b43',a);
   if(n.firingT>.06)m.box(x+co*19,y+si*19,18,3,3,3,'#ffe1a0');
@@ -4263,6 +4679,10 @@ function actorMesh(){
  if(won){
   m.tube(archiveBuilding.x,archiveBuilding.y,82,10,9,5,'#8df7d3',10);
   m.tube(archiveBuilding.x,archiveBuilding.y,87,3,3,22,'#e0fff0',6);
+ }
+ for(const l of worldLights)if(close(l)){
+  const start=m.data.length;m.box(l.x,l.y,l.z-1,3,4,2,'#f4e8c4',l.a);
+  for(let i=start+6;i<m.data.length;i+=7)m.data[i]=8.35;
  }
  return m;
 }
@@ -4429,7 +4849,7 @@ function minimap(){
  };
  const target=activeTarget();
  if(target)b(target,true,ob?'#a4f2d9':'#ffd08f',3.8);
- if(wanted){for(const c of cars)if((c.kind==='cop'||c.kind==='airPolice')&&!c.dead)b(c,false,'#8bc1ff',2.8);for(const n of npcs)if(n.kind==='cop'&&!n.boarded&&n.state!=='dead')b(n,false,'#8bc1ff',2);}
+ if(wanted){for(const c of cars)if((c.kind==='cop'||c.kind==='airPolice'||c.marine)&&!c.dead)b(c,false,'#8bc1ff',2.8);for(const n of npcs)if(n.kind==='cop'&&!n.boarded&&n.state!=='dead')b(n,false,'#8bc1ff',2);}
 
  if(ob?.stage==='yard')for(const c of cars)if(c.tag==='rival'&&!c.dead)b(c,true,'#ff9a81',3.5);
  const heading=started?eye.yaw:player.a;
@@ -4462,7 +4882,7 @@ function fullMap(){
   const a=m.at;
   mapDot(mc,x+a.x*s,y+a.y*s,navTarget===m?5:3.1,m.side?'#c7b9e4':'#ffd08f');
  }
- if(wanted){for(const c of cars)if((c.kind==='cop'||c.kind==='airPolice')&&!c.dead)mapDot(mc,x+c.x*s,y+c.y*s,3,'#8bc1ff');for(const n of npcs)if(n.kind==='cop'&&!n.boarded&&n.state!=='dead')mapDot(mc,x+n.x*s,y+n.y*s,2,'#8bc1ff');}
+ if(wanted){for(const c of cars)if((c.kind==='cop'||c.kind==='airPolice'||c.marine)&&!c.dead)mapDot(mc,x+c.x*s,y+c.y*s,3,'#8bc1ff');for(const n of npcs)if(n.kind==='cop'&&!n.boarded&&n.state!=='dead')mapDot(mc,x+n.x*s,y+n.y*s,2,'#8bc1ff');}
  const t=activeTarget();if(t&&ob)mapDot(mc,x+t.x*s,y+t.y*s,4.5,'#a4f2d9');
 
  mapPlayer(mc,x+(player).x*s,y+(player).y*s);
@@ -4474,6 +4894,13 @@ function drawHud(){
  setText('district',interior?interior.building.name+' · '+(interior.floor||'lobby'):district(player.x,player.y));
  setText('cash','$'+cash.toLocaleString());
  setText('pursuit','★'.repeat(wanted)+'☆'.repeat(5-wanted));
+ setText('world-clock',clockLabel()+(worldClock.locked?' · Operation night':''));
+ setText('hp-label','HP '+Math.max(0,Math.ceil(player.hp))+' / 100');
+ setText('stamina-label',player.exhausted?'EXHAUSTED · '+Math.ceil(player.stamina)+'% · ready at 20%':'STAMINA '+Math.ceil(player.stamina)+'%');
+ $('stamina-meter').classList.toggle('exhausted',!!player.exhausted);$('stamina-meter').classList.toggle('draining',!!player.sprinting);
+ setText('oxygen-label','OXYGEN '+Math.ceil(player.breath)+'%');
+ setText('condition-label','VEHICLE HEALTH '+(v?Math.max(0,Math.ceil(v.hp/v.maxHp*100)):0)+'%');
+ setText('nitro-label','NITRO '+(v?Math.round(v.nitro*100):0)+'%');
  setText('weapon-status',v?aircraft(v)?'F exit · '+Math.round((v.z||0)/4)+' ft altitude':v.type==='tank'?'Mouse aims · click fires':'H honk · E exit':player.inWater?'W + look to swim · Space to jump · '+Math.ceil(player.breath)+'% oxygen':(player.reloadT>0?'Reloading':weapon()?weapon().name+' · '+inventory.mag+' / '+inventory.ammo+' · R reload':hotbar.slot===4?'Bypass tools · E to use':'Unarmed · 2 draw pistol · H holster')+(player.crouching?' · Crouched':''));
  setText('police-state',witnessCalls.length?'Witness calling dispatch':
   wanted?(dispatch&&!dispatch.confirmed?'Dispatch assigning units':unseen>7?'Police searching':dispatch?.onFoot?'Officers on foot':'Police responding'):'');
@@ -4498,12 +4925,14 @@ function drawHud(){
  const item=nearInteriorItem(),door=nearEntrance(),security=securitySites.find(p=>distance(p,player)<65);
  const nearbyDoor=worldDoorNear();
  const waterExit=nearbyWaterExit();
- const action=theft?(theft.stage==='boarding'?'Boarding vehicle':'Time the marker in green · '+(theft.round+1)+'/3'):(waterExit?(player.z>waterExit.z-8?'Climb down rescue ladder':'Climb rescue ladder'):null)||(player.inWater&&nearestCar()?'Board '+nearestCar().type.toUpperCase():null)||(player.swimming?'Jump out of water':null)||(nearbyDoor?(nearbyDoor.locked?'Locked · ':'Open / close · ')+nearbyDoor.label:null)||item?.text||objectiveHint()||(!v&&door?'Enter '+door.name:!v&&security?'Sabotage '+security.name+' · tools required':v?(v.onFire?'Exit burning vehicle':v.flooded?'Exit sinking vehicle':'Exit vehicle'):nearestCar()?'Enter vehicle':'');
+ const action=prisonHint()||(theft?(theft.stage==='boarding'?'Boarding vehicle':'Time the marker in green · '+(theft.round+1)+'/3'):(waterExit?(player.z>waterExit.z-8?'Climb down rescue ladder':'Climb rescue ladder'):null)||(player.inWater&&nearestCar()?'Board '+nearestCar().type.toUpperCase():null)||(player.swimming?'Jump out of water':null)||(nearbyDoor?(nearbyDoor.locked?'Locked · ':'Open / close · ')+nearbyDoor.label:null)||item?.text||objectiveHint()||(!v&&door?'Enter '+door.name:!v&&security?'Sabotage '+security.name+' · tools required':v?(v.onFire?'Exit burning vehicle':v.flooded?'Exit sinking vehicle':'Exit vehicle'):nearestCar()?'Enter vehicle':''));
  setText('hint',action?(touchMode?'ACT':waterExit||player.inWater&&nearestCar()?'E':player.swimming?'Space':aircraft(v||{})?'F':'E')+' · '+action:'');
  const mouseHint=!touchMode&&!locked()&&state==='play'&&cv.requestPointerLock;
  $('mouse-hint').hidden=!mouseHint;
  if(mouseHint)setText('mouse-hint',mouse.captureFailed?'Drag to look · Click to fire':'Click to capture mouse');
  $('hint').hidden=!action;
+ const boardingLaunch=cars.find(c=>c.marine&&c.boarder&&player.veh?.type==='boat'&&distance(c,player)<160);
+ if(boardingLaunch){ctx.fillStyle='#172936';ctx.fillRect(W/2-160,H*.71,320,42);ctx.fillStyle='#ffc18e';ctx.textAlign='center';ctx.font='700 14px system-ui';ctx.fillText('MARINE OFFICER BOARDING · ACCELERATE',W/2,H*.71+18);ctx.fillRect(W/2-150,H*.71+30,300*clamp(boardingLaunch.boarding/2.5,0,1),4);}
  if(player.veh?.grabbed){
   const progress=clamp(player.veh.grabbed.t/1.15,0,1);
   ctx.fillStyle='#172936';ctx.fillRect(W/2-145,H*.71,290,36);ctx.fillStyle='#f4ac78';ctx.fillRect(W/2-138,H*.71+27,276*progress,3);
@@ -4599,6 +5028,7 @@ window.__kb={
  look:(yaw,pitch=0)=>{resetLook(yaw);view.pitch=pitch;},get clock(){return time;},
  get architecture(){return architecture;},get equipment(){return hotbar;},get npcs(){return npcs;},
  get police(){return {fix:policeFix,dispatch,airUnit,spikes,heat,director:policeDirector};},
+ get environment(){return {phase:worldClock.phase,night:isNight(),locked:worldClock.locked,lights:worldLights.length};},get marine(){return cars.filter(c=>c.marine);},get circuit(){return circuit?{kind:circuit.kind,tiles:circuit.tiles,warning:circuit.warning}:null;},
  get theft(){return theft;},get operations(){return missionList.map(m=>({id:m.id,available:available(m),complete:finishedJobs.has(m.id)}));},
  get world(){return {roads,cityIsland,landmarks};},
  get water(){return {level:WATER_LEVEL,surfaceFeet:SWIM_FEET,exits:waterExits};},

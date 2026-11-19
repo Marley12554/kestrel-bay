@@ -9,7 +9,7 @@ for(const type of ['sedan','taxi','van','muscle','sport','cop','interceptor']){
  tick(25,dt=>stepCar(c,1,0,false,false,dt));paved=oldPaved;solidCar=oldSolid;supportHeight=oldSupport;
  speeds[type]=c.spd;assert.ok(c.spd>CT[type].maxV*.90);
 }
-assert.ok(speeds.interceptor/speeds.cop>1.15&&speeds.interceptor/speeds.cop<1.25);console.log('Measured mph',Object.fromEntries(Object.entries(speeds).map(([k,v])=>[k,Math.round(v*.17045)])),'sports/cruiser ratio',speeds.interceptor/speeds.cop);
+assert.ok(speeds.interceptor/speeds.cop>1.07&&speeds.interceptor/speeds.cop<1.09);console.log('Measured mph',Object.fromEntries(Object.entries(speeds).map(([k,v])=>[k,Math.round(v*.17045)])),'sports/cruiser ratio',speeds.interceptor/speeds.cop);
 reset();const victim=newNpc('ped',player.x+10,player.y);const inc=incidentFor(38,victim);for(let i=0;i<3;i++)reportCrime(38,{x:victim.x,y:victim.y,incident:inc});assert.equal(heat,38);const inc2=incidentFor(45,victim);reportCrime(45,{x:victim.x,y:victim.y,incident:inc2});assert.equal(heat,45);console.log('Incident dedupe',heat);
 reset();wanted=3;heat=60;player.bust=.7;player.veh=newCar('sedan',player.x,player.y,0,'player');tick(.5,dt=>{updateArrest(dt);updPlayer(dt);});assert.ok(player.bust<.1);console.log('Arrest decays in vehicle');
 reset();wanted=3;heat=60;

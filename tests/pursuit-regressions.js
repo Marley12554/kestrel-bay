@@ -4,9 +4,9 @@ function resetScene(){
 }
 function ticks(seconds,fn){for(let i=0;i<Math.ceil(seconds*60);i++){time+=1/60;fn(1/60,i);}}
 const close=(a,b,epsilon=.005)=>assert.ok(Math.abs(a-b)<epsilon,`${a} != ${b}`);
-close(CT.cop.maxV/Math.max(...['sedan','taxi','van','muscle','sport'].map(t=>CT[t].maxV)),1.15);
-close(CT.interceptor.maxV/CT.cop.maxV,1.2);
-console.log('Cruiser 15% faster than fastest ordinary car; striped car retains 20% lead');
+close(CT.cop.maxV,1380);close(CT.sport.maxV,1080);close(CT.interceptor.maxV,1490.4);
+close(CT.interceptor.maxV/CT.cop.maxV,1.08);
+console.log('Both performance top speeds reduced 10%; cruiser unchanged; striped car retains 8% lead');
 // Real bridge routing over a slightly angled segment join, at full civilian speed.
 resetScene();const span=roads.find(e=>e.bridge&&e.a.id==='bridgeN1'),after=roads.find(e=>e.bridge&&e.a===span.b);
 assert.ok(span&&after);const route=[span,after,...roads.filter(e=>e.bridge&&e.a===after.b)];
