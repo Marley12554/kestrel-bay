@@ -1428,6 +1428,7 @@ let started=false,actQ=false,tFire=false,tHb=false,tSpr=false,touchMode=false;
 const coarse=!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches);
 const buzz=ms=>{try{if(touchMode&&navigator.vibrate)navigator.vibrate(ms);}catch(_){}};
 const view={yaw:-1.40,pitch:0,orbit:0,lastLook:0,resetChase:false,recoil:0};
+let cameraSample=-1;
 const stick={id:null,ox:0,oy:0,x:0,y:0};
 const touchLook={id:null,x:0,y:0};
 const mouse={down:false,drag:false,captureFailed:false};
@@ -1443,6 +1444,7 @@ function resetInput(){
  stick.id=touchLook.id=null;
 }
 function look(yaw,pitch){
+ cameraSample=-1;
  if(leaning()){view.yaw+=yaw;view.pitch+=pitch;clampWindowAim(player.veh);return;}
  if(player.veh){
   if(aircraft(player.veh)||player.veh.type==='tank'){
@@ -1454,6 +1456,7 @@ function look(yaw,pitch){
  view.pitch=clamp(view.pitch+pitch,-1.38,1.40);
 }
 function resetLook(yaw){
+ cameraSample=-1;windowAimSample=null;
  Object.assign(view,{yaw,orbit:0,lastLook:0,resetChase:true,pitch:0,recoil:0,lean:0,wasLeaning:false});
 }
 addEventListener('keydown',e=>{
@@ -2795,7 +2798,7 @@ function projectileAt(b,x,y,z=12){
  if(architectureHit(x,y,z,b.dmg,b.o==='p'))return true;
  if(solidAtHeight(x,y,z)){spark(x,y);return true;}
  if(b.o!=='p'){
-  if(groundCar()&&(view.lean||0)>.15){const torso=windowMuzzle();if(hyp(x-torso.x,y-torso.y)<10&&Math.abs(z-torso.z)<9){hurtPlayer(b.dmg);return true;}}
+  if(groundCar()&&(view.lean||0)>.15){const {shoulder,head}=windowPose();if(hyp(x-shoulder.x,y-shoulder.y)<7&&Math.abs(z-shoulder.z)<6||hyp(x-head.x,y-head.y)<4.5&&Math.abs(z-head.z)<3.5){hurtPlayer(b.dmg);return true;}}
   if(follower&&!follower.boarded&&z<27&&distance(follower,{x,y})<10){hurtNpc(follower,b.dmg,false);return true;}
   if(z>=(player.z||0)&&z<(player.z||0)+(player.veh?32:27)&&hyp(player.x-x,player.y-y)<(player.veh?23:11)){
    if(player.veh){
@@ -2878,8 +2881,8 @@ function updateWorldLights(force=false){
  lightRefresh=time;const lights=[];
  if(daylight()<.55){
   const room=physicalContext(player);if(room&&(!inside(player.x,player.y,island)||!L.prisonPower.disabled)){const b=room.building;for(const u of [-1,1])for(const v of [-1,1])lights.push(makeLight(b.x+u*b.w*.25,b.y+v*b.d*.25,room.floor*44+39,0,-1.45,300,1.05,[1,.89,.71],b,'room-'+b.id+'-'+room.floor+'-'+u+'-'+v));}
-  for(const c of cars)if(!c.dead&&!c.flooded&&distance(c,player)<2300&&(c.kind==='player'||c.kind==='traffic'||c.kind==='cop'||c.marine)){
-   const bow=c.len*.54;lights.push(makeLight(c.x+Math.cos(c.a)*bow,c.y+Math.sin(c.a)*bow,(c.z||0)+(c.type==='boat'?32:11),c.a,-.045,c.type==='boat'?1450:900,.42,[1,.88,.65],c));
+  for(const c of cars)if(isNight()&&!c.dead&&!c.flooded&&distance(c,player)<2300&&(c.kind==='player'||c.kind==='traffic'||c.kind==='cop'||c.marine)){
+   const bow=c.len*.54,beam=makeLight(c.x+Math.cos(c.a)*bow,c.y+Math.sin(c.a)*bow,(c.z||0)+(c.type==='boat'?32:11),c.a,-.065,c.type==='boat'?1450:900,.42,[1,.88,.65],c);beam.kind='headlight';lights.push(beam);
   }
   for(const n of npcs)if(armedResponder(n)&&!n.boarded&&n.state!=='dead'&&distance(n,player)<2000){
    const a=n.aim?Math.atan2(n.aim.y-n.y,n.aim.x-n.x):n.a;
@@ -2899,6 +2902,7 @@ function selectShadowLights(dt=frameDt){
  const score=l=>distance(l,eye)-((l.owner===player.veh)?8000:l.owner===airUnit?6500:0);
  candidates.sort((a,b)=>score(a)-score(b));const used=new Set();
  // Keep incumbent sources unless a materially closer light deserves the slot.
+ for(const slot of beamSlots)if(slot.light?.kind==='headlight'&&!isNight()){slot.light=null;slot.weight=0;}
  for(const slot of beamSlots)if(slot.light&&byId.has(slot.light.id)){slot.light=byId.get(slot.light.id);used.add(slot.light.id);}
  for(const slot of beamSlots){
   const current=slot.light,challenger=candidates.find(l=>!used.has(l.id));
@@ -4354,7 +4358,48 @@ function contextAction(){
 /* Ground-car window shooting keeps the muzzle and exposed torso in world space. */
 function groundCar(c=player.veh){return !!c&&!['boat','heli','plane','tank','armor'].includes(c.type);}
 function leaning(){return groundCar()&&!!keys.KeyQ&&state==='play';}
-function windowMuzzle(c=player.veh){const side=c.wid/2+9;return {x:c.x+Math.sin(c.a)*side,y:c.y-Math.cos(c.a)*side,z:(c.z||0)+23};}
+function windowPose(c=player.veh){
+ const co=Math.cos(c.a),si=Math.sin(c.a),amount=clamp(view.lean||0,0,1),lift=c.type==='van'?6:0;
+ const point=(u,v,z)=>({x:c.x+co*u-si*v,y:c.y+si*u+co*v,z:(c.z||0)+z});
+ const hip=point(-5,-c.wid*.23,12+lift*.5),shoulder=point(-3,-c.wid*(.28+.22*amount)-amount*2,18+3*amount+lift);
+ const head=point(-2,-c.wid*(.26+.24*amount)-amount*4,20+7*amount+lift),grip=point(0,-c.wid/2-4*amount,20+2*amount+lift);
+ const cp=Math.cos(view.pitch),direction=windowAimSample?.car===c&&hotbar.slot===1?windowAimSample.dir:{x:Math.cos(view.yaw)*cp,y:Math.sin(view.yaw)*cp,z:Math.sin(view.pitch)};
+ const muzzle={x:grip.x+direction.x*11,y:grip.y+direction.y*11,z:grip.z+direction.z*11};
+ return {hip,shoulder,head,grip,muzzle,direction};
+}
+function windowMuzzle(c=player.veh){return windowPose(c).muzzle;}
+function rayBoxDistance(origin,dir,lo,hi,limit){
+ let near=0,far=limit;
+ for(const axis of ['x','y','z']){if(Math.abs(dir[axis])<1e-8){if(origin[axis]<lo[axis]||origin[axis]>hi[axis])return Infinity;continue;}
+  let a=(lo[axis]-origin[axis])/dir[axis],b=(hi[axis]-origin[axis])/dir[axis];if(a>b)[a,b]=[b,a];near=Math.max(near,a);far=Math.min(far,b);if(near>far)return Infinity;}
+ return near;
+}
+function traceWeaponRay(origin,dir,limit=2200){
+ let nearest=limit,kind=null;
+ // Match the actual projectile hit volumes; query each moving object once per ray.
+ for(const c of cars){if(c.dead||c===player.veh||c.kind==='player')continue;const co=Math.cos(c.a),si=Math.sin(c.a),dx=origin.x-c.x,dy=origin.y-c.y;
+  const o={x:dx*co+dy*si,y:-dx*si+dy*co,z:origin.z-(c.z||0)},v={x:dir.x*co+dir.y*si,y:-dir.x*si+dir.y*co,z:dir.z},van=c.type==='van',center=van?-7:-3,half=c.len*(van?.335:.23);
+  const d=Math.min(rayBoxDistance(o,v,{x:-c.len/2,y:-c.wid/2,z:0},{x:c.len/2,y:c.wid/2,z:15},nearest),rayBoxDistance(o,v,{x:center-half,y:-c.wid*.42,z:15},{x:center+half,y:c.wid*.42,z:van?30:24},nearest));
+  if(d<nearest){nearest=d;kind='vehicle';}
+ }
+ for(const n of npcs){if(n.state==='dead'||n.boarded)continue;const dx=origin.x-n.x,dy=origin.y-n.y,a=dir.x*dir.x+dir.y*dir.y,b=dx*dir.x+dy*dir.y,c=dx*dx+dy*dy-100,disc=b*b-a*c;if(disc<0||a<1e-8)continue;
+  const root=Math.sqrt(disc),lo=Math.max(0,(-b-root)/a),hi=Math.min(nearest,(-b+root)/a);if(lo>hi)continue;
+  const d=rayBoxDistance(origin,dir,{x:-Infinity,y:-Infinity,z:n.z||0},{x:Infinity,y:Infinity,z:(n.z||0)+27},hi);const hit=Math.max(lo,d);if(hit<=hi&&hit<nearest){nearest=hit;kind='npc';}
+ }
+ const point=t=>({x:origin.x+dir.x*t,y:origin.y+dir.y*t,z:origin.z+dir.z*t});
+ const blocked=p=>waterAt(p.x,p.y)&&p.z<WATER_LEVEL||solidAtHeight(p.x,p.y,p.z);
+ for(let i=0,steps=Math.max(1,Math.ceil(nearest/3));i<=steps;i++){const t=nearest*i/steps,p=point(t);if(!blocked(p))continue;let lo=Math.max(0,t-3),hi=t;for(let i=0;i<5;i++){const mid=(lo+hi)/2;if(blocked(point(mid)))hi=mid;else lo=mid;}nearest=hi;kind='world';break;}
+ return {...point(nearest),distance:nearest,kind};
+}
+let windowAimSample=null;
+function windowAim(force=false){
+ if(!force&&windowAimSample?.car===player.veh&&time-windowAimSample.time<.05)return windowAimSample;
+ const grip=windowPose().grip,cameraDir={x:eye.fx*eye.cp,y:eye.fy*eye.cp,z:eye.sp},target=traceWeaponRay(eye,cameraDir);
+ const dx=target.x-grip.x,dy=target.y-grip.y,dz=target.z-grip.z,length=Math.max(.001,hyp(dx,dy,dz)),dir={x:dx/length,y:dy/length,z:dz/length};
+ const origin={x:grip.x+dir.x*11,y:grip.y+dir.y*11,z:grip.z+dir.z*11},range=Math.max(0,length-11);
+ const impact=traceWeaponRay(origin,dir,range),blocked=impact.distance<range-4;
+ return windowAimSample={time,car:player.veh,origin,dir,target,impact,blocked};
+}
 function clampWindowAim(c){view.yaw=c.a+clamp(angD(view.yaw,c.a),-Math.PI+.16,.12);view.pitch=clamp(view.pitch,-.65,.6);}
 function updateLean(dt){
  const active=leaning();
@@ -4369,13 +4414,15 @@ function updateWeapon(dt,inCar=false){
  if(theft||!fireHeld()||player.fireT>0||!gun||player.submerged||inCar&&(!leaning()||hotbar.slot!==1))return;
  player.fireT=gun.delay;if(!inventory.mag){reloadWeapon();return;}if(player.reloadT>0)return;
  inventory.mag--;crimeThreat=Math.max(2,crimeThreat);
- const origin=inCar?windowMuzzle():{x:player.x,y:player.y,z:footEye()};
+ let origin=inCar?windowMuzzle():{x:player.x,y:player.y,z:footEye()};
  // Converge the physical window muzzle with the camera reticle, without firing through the cabin.
- let aim=view.yaw,pitch=view.pitch;
- if(inCar){clampWindowAim(player.veh);const target={x:eye.x+eye.fx*eye.cp*1800,y:eye.y+eye.fy*eye.cp*1800,z:eye.z+eye.sp*1800};aim=Math.atan2(target.y-origin.y,target.x-origin.x);pitch=Math.atan2(target.z-origin.z,distance(origin,target));}
+ let aim=view.yaw,pitch=view.pitch,spread=gun.spread;
+ if(inCar){clampWindowAim(player.veh);if(cameraSample!==time)camera();const shot=windowAim(true);origin=shot.origin;aim=Math.atan2(shot.dir.y,shot.dir.x);pitch=Math.asin(shot.dir.z);
+  // Preserve the reticle-sized spread when the offset camera is closer than the barrel.
+  spread*=Math.min(1,shot.target.distance/Math.max(1,hyp(shot.target.x-origin.x,shot.target.y-origin.y,shot.target.z-origin.z)));}
  for(let i=0;i<gun.pellets;i++){
-  const p=pitch+rnd(-gun.spread,gun.spread),a=aim+rnd(-gun.spread,gun.spread),v=1600,vx=Math.cos(a)*Math.cos(p),vy=Math.sin(a)*Math.cos(p),vz=Math.sin(p);
-  bullets.push({x:origin.x+vx*11,y:origin.y+vy*11,z:origin.z+vz*11,vx:vx*v,vy:vy*v,vz:vz*v,life:1.4,o:'p',dmg:gun.damage});
+  const p=pitch+rnd(-spread,spread),a=aim+rnd(-spread,spread),v=1600,vx=Math.cos(a)*Math.cos(p),vy=Math.sin(a)*Math.cos(p),vz=Math.sin(p);
+  const offset=inCar?0:11;bullets.push({x:origin.x+vx*offset,y:origin.y+vy*offset,z:origin.z+vz*offset,vx:vx*v,vy:vy*v,vz:vz*v,life:1.4,o:'p',dmg:gun.damage});
  }
  view.recoil=1;sfx.shot();crime(12,player);fear(player.x,player.y,650);reportNoise(player.x,player.y,700);
  if(covers(baseBounds,player.x,player.y))raiseSecurity('base',2);
@@ -4531,6 +4578,7 @@ function chaseCamera(car){
 }
 
 function camera(){
+ cameraSample=time;
  const car=player.veh;
  if(!started){
   // The skyline is visible from the west approach to Gull Bridge.
@@ -4540,8 +4588,8 @@ function camera(){
   if(aircraft(car)){view.orbit=0;chase.yaw=car.a;}
   chaseCamera(car);
   if(groundCar(car)&&(view.lean||0)>.01){
-   const amount=view.lean,co=Math.cos(car.a),si=Math.sin(car.a),origin=windowMuzzle(car);
-   const target={x:origin.x-co*52+si*15,y:origin.y-si*52-co*15,z:origin.z+13};
+   const amount=view.lean,co=Math.cos(view.yaw),si=Math.sin(view.yaw),origin=windowPose(car).shoulder;
+   const target={x:origin.x-co*150+si*25,y:origin.y-si*150-co*25,z:origin.z+45};
    // Keep the shoulder camera on this side of walls and bridge barriers.
    let arm=1;for(let i=1;i<=12;i++){const t=i/12;if(solidAtHeight(origin.x+(target.x-origin.x)*t,origin.y+(target.y-origin.y)*t,origin.z+(target.z-origin.z)*t)){arm=(i-1)/12;break;}}
    eye.x+=(origin.x+(target.x-origin.x)*arm-eye.x)*amount;eye.y+=(origin.y+(target.y-origin.y)*arm-eye.y)*amount;eye.z+=(origin.z+(target.z-origin.z)*arm-eye.z)*amount;
@@ -4641,16 +4689,18 @@ function makeRenderer(){
   return visibility;
  }
  vec3 illuminate(vec3 c){
-  c*=mix(vec3(.22,.28,.39),vec3(1.),daylight);
+  vec3 ambient=mix(vec3(.22,.28,.39),vec3(1.),daylight),beams=vec3(0.);
   for(int i=0;i<8;i++){
    if(lightPos[i].w<1.)continue;
    vec3 delta=position-lightPos[i].xyz;float d=length(delta);
    float cone=lightDir[i].w,alignment=dot(delta/max(d,.001),lightDir[i].xyz);
    float power=smoothstep(cone,cone+.035,alignment)*max(0.,1.-d/lightPos[i].w);
-   if(power>.001)c+=c*lightColor[i]*power*1.8*beamShadow(i,delta,lightDir[i].xyz,lightPos[i].w,cone);
+   if(power>.001)beams+=lightColor[i]*power*beamShadow(i,delta,lightDir[i].xyz,lightPos[i].w,cone);
   }
-  return c;
+  // Sum incident light, then expose once. Overlapping beams cannot multiply into white.
+  return c*(ambient+(vec3(1.)-ambient)*(vec3(1.)-exp(-beams*1.5)));
  }
+
  void main(){
   if(shadowPass>.5){
    if(material>8.1||material<-.5)discard;
@@ -4917,10 +4967,18 @@ function drawCar(m,c){
  const box=(u,v,z,w,d,h,color,roof=color)=>m.box(x+u*co-v*si,y+u*si+v*co,z,w,d,h,color,a,roof);
  box(1,2,.63,len+3,wid+5,0,'#28303a');
  box(0,0,4,len,wid,10,paint);
- box(c.type==='van'?-7:-3,0,14,c.type==='van'?len*.67:len*.46,wid*.84,c.type==='van'?16:10,c.dead?'#24252d':c.cabinBreached?'#182a34':'#455d74',c.dead?'#24252d':paint);
+ const van=c.type==='van',cabinX=van?-7:-3,cabinW=van?len*.67:len*.46,cabinH=van?16:10,glass=c.dead?'#24252d':c.cabinBreached?'#182a34':'#455d74';
+ if(c===player.veh&&(view.lean||0)>.01){
+  const lo=cabinX-cabinW/2,hi=cabinX+cabinW/2,side=wid*.42,top=14+cabinH,p=(u,v,z)=>[x+u*co-v*si,y+u*si+v*co,z];
+  for(const [u,v] of [[lo,hi],[hi,lo]])m.quad(p(u,-side,14),p(u,side,14),p(u,side,top),p(u,-side,top),glass,.7);
+  m.quad(p(lo,side,14),p(hi,side,14),p(hi,side,top),p(lo,side,top),glass,.86);
+  m.quad(p(lo,-side,top),p(hi,-side,top),p(hi,side,top),p(lo,side,top),paint,1);
+  box(cabinX,-side,14,cabinW,2,2,paint);for(const u of [lo,hi])box(u,-side,14,2,2,cabinH,paint);
+ }else box(cabinX,0,14,cabinW,wid*.84,cabinH,glass,c.dead?'#24252d':paint);
+
  for(const i of [-1,1]){
   for(const j of [-1,1]){if(!c.spikeHit)box(i*len*.28,j*wid*.44,1,13,5,8,'#1f252d');else box(i*len*.28,j*wid*.44,1,8,4,5,'#b3bab9');}
-  box(len/2-.2,i*wid*.31,9,1.3,7,3,c.dead?'#55444a':'#f6d998');
+  const lampStart=m.data.length;box(len/2-.2,i*wid*.31,9,1.3,7,3,c.dead?'#55444a':isNight()?'#d8c698':'#818e98');if(isNight()&&!c.dead&&!c.flooded)for(let k=lampStart+6;k<m.data.length;k+=7)m.data[k]=8.35;
   box(-len/2+.2,i*wid*.31,8,1.3,7,3,c.tag==='rival'?'#fff0a0':'#e27573');
  }
  if(c.type==='interceptor'){for(const side of [-1,1]){box(18,side*5,14.2,22,4,.2,'#24333f');box(-3,side*5,24.2,27,4,.2,'#24333f');box(-24,side*5,14.2,9,4,.2,'#24333f');}box(-24,0,23,7,38,2,'#253746');}
@@ -4934,11 +4992,15 @@ function drawCar(m,c){
   const side=c.grabbed?.side??-1,angle=a+side*.9;
   m.box(x-si*side*(wid/2+7),y+co*side*(wid/2+7),5,24,2,15,paint,angle);
  }
- if(c===player.veh&&(view.lean||0)>.15){
-  const p=windowMuzzle(c),z=p.z-(c.z||0),aim=view.yaw;
-  m.box(p.x,p.y,z-7,10,10,12,'#425562',a);m.tube(p.x,p.y,z+5,4.4,4,6,'#d1a480',7);
-  m.box(p.x+Math.cos(aim)*8,p.y+Math.sin(aim)*8,z,14,4,4,'#b18b70',aim);
-  m.box(p.x+Math.cos(aim)*16,p.y+Math.sin(aim)*16,z+2,10,3,3,'#303b43',aim);
+ if(c===player.veh&&(view.lean||0)>.01){
+  const pose=windowPose(c),local=p=>[p.x,p.y,p.z-(c.z||0)],{hip,shoulder,head,grip,muzzle}=pose;
+  m.beam(local(hip),local(shoulder),9,'#425562');
+  m.tube(head.x,head.y,head.z-(c.z||0)-3,4.3,4,6,'#d1a480',7);
+  m.beam(local(shoulder),local(grip),4,'#b18b70');
+  if(hotbar.slot===1){
+   m.beam(local(grip),local(muzzle),3,'#303b43');
+   m.box(grip.x,grip.y,grip.z-(c.z||0)-5,3,3,5,'#222b32',view.yaw);
+  }
  }
  for(let i=start+2;i<m.data.length;i+=7)m.data[i]+=c.z||0;
 }
@@ -4963,7 +5025,7 @@ function drawPerson(m,n){
 }
 function actorMesh(){
  const m=new Mesh(),close=o=>hyp(o.x-eye.x,o.y-eye.y)<(player.submerged?350:3600);
- architectureActors(m);underwaterMesh(m);
+ architectureActors(m);underwaterMesh(m);if(leaning()&&hotbar.slot===1)windowAim();
  for(const s of spikes){for(let i=-5;i<=5;i++){const p=lanePoint(s.e,1,along(s.e,s.x,s.y),i*s.e.width/11);m.box(p.x,p.y,s.z+.5,7,5,2,'#363a3c');m.tube(p.x,p.y,s.z+2,2,0,5,'#c4c7b7',5);}}
  for(const c of cars)if(c===player.veh||close(c))drawCar(m,c);
  for(const c of cars)if(close(c))drawVehicleCondition(m,c);
@@ -4997,10 +5059,6 @@ function actorMesh(){
   m.tube(archiveBuilding.x,archiveBuilding.y,82,10,9,5,'#8df7d3',10);
   m.tube(archiveBuilding.x,archiveBuilding.y,87,3,3,22,'#e0fff0',6);
  }
- for(const l of worldLights)if(close(l)){
-  const start=m.data.length;m.box(l.x,l.y,l.z-1,3,4,2,'#f4e8c4',l.a);
-  for(let i=start+6;i<m.data.length;i+=7)m.data[i]=8.35;
- }
  return m;
 }
 function screenShape(points,fill,stroke=null,width=1){
@@ -5010,8 +5068,9 @@ function screenShape(points,fill,stroke=null,width=1){
 }
 function drawViewModel(){
  if(player.veh&&!leaning()||state!=='play'||player.submerged||!weapon())return;
- ctx.strokeStyle='#fff3da';ctx.lineWidth=1.4;
- ctx.beginPath();ctx.moveTo(W/2-5,H/2);ctx.lineTo(W/2+5,H/2);ctx.moveTo(W/2,H/2-5);ctx.lineTo(W/2,H/2+5);ctx.stroke();
+ const aim=leaning()&&hotbar.slot===1?windowAim():null,p=aim?.blocked?project(aim.impact.x,aim.impact.y,aim.impact.z):null,x=p?.x??W/2,y=p?.y??H/2;
+ ctx.strokeStyle=aim?.blocked?'#ffb18c':'#fff3da';ctx.lineWidth=1.4;
+ ctx.beginPath();ctx.moveTo(x-5,y);ctx.lineTo(x+5,y);ctx.moveTo(x,y-5);ctx.lineTo(x,y+5);ctx.stroke();
 }
 function drawBillboards(){
  for(const sign of landmarkSigns){
@@ -5296,7 +5355,7 @@ function drawHud(){
  }
 }
 function render(){
- camera();ctx.setTransform(DPR,0,0,DPR,0,0);ctx.clearRect(0,0,W,H);
+ if(cameraSample!==time)camera();ctx.setTransform(DPR,0,0,DPR,0,0);ctx.clearRect(0,0,W,H);
  if(sceneRenderer)sceneRenderer(actorMesh());
  else {
   const view=Math.min(W,H)*1.25,scale=view/1400,left=W/2-player.x*scale,top=H/2-player.y*scale;

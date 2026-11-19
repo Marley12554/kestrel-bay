@@ -151,3 +151,12 @@ Q in ground cars exposes the player through the left window and moves the camera
 Moving lights update after physics every tick. Source IDs, hysteresis and fades stabilize the eight shadow slots, with player headlights/copter beam priority. Street fixtures and obstacle-clipped ground pools are cached throughout the visible district outside the dynamic shadow budget. Nearby physical lighting/occlusion still informs night detection. Existing full-height façades and bounded marine navigation are preserved.
 
 Fourteen seeded acceptance suites include physical slow-car weaving/contact, open-ground roles, bridge pursuit/staging, exit reacquisition, window muzzle/ammunition/exposure, copter occlusion, unarmed marine behavior, source freshness and stable/fading shadow selection. Browser input/render checks passed Q hold/fire/release with no WebGL errors. Day, city night and five-star performance sampling ran 90 simulated seconds with no updates over 100 ms; a final 30-second five-star sample after traffic avoidance also passed (maximum sampled update about 43 ms). These samples are not a hardware-independent frame-rate guarantee.
+
+
+## Window accuracy and headlight correction
+
+The leaning camera now orbits at a wider distance, keeping the car and seated peek beside the reticle. The driver has anchored hips, a continuous torso, an open left window and a slot-dependent pistol. Camera rays select actual world/vehicle/person surfaces, the barrel converges on that point, and firing/rendering share the same camera sample. Muzzle-side cover is separately checked and marked; close camera/barrel parallax no longer enlarges the pistol's screen-space spread.
+
+Headlights and their physical glowing fixtures are strictly night-only. Retired headlight slots clear at dawn. Generic floating source cubes are removed. Shadowed light contributions are accumulated independently and exposed once with a bounded response, eliminating multiplicative white blowout under overlapping cruisers.
+
+`tests/window-aim.js` adds physical near/far/angled target hits, vehicle volume targeting, muzzle/reticle alignment, seated mesh/weapon selection, camera framing, cover and day/night checks. Native browser checks exercise actual window controls and confirm bounded overlapping light and real wall shadows. The isolated ten-second aim/raycast profile measured a maximum update around 1.4 ms, without 100 ms stalls; this is a sampled result, not a hardware guarantee.

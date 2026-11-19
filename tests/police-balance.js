@@ -23,7 +23,7 @@ const watcher=npcs[0];player.veh=newCar('sedan',player.x,player.y,0,'player');of
 // Leaning is a ground-vehicle control, uses a real left-window muzzle, and shares pistol ammunition.
 clean();const car=newCar('sedan',32600,9000,0,'player');player.veh=car;cars=[car];keys.KeyQ=true;selectSlot(1);inventory.mag=12;player.fireT=0;player.reloadT=0;updateLean(.5);camera();mouse.down=true;updateWeapon(1/60,true);mouse.down=false;
 assert.ok(leaning());assert.equal(inventory.mag,11);assert.equal(bullets.length,1);const muzzle=windowMuzzle();assert.ok(muzzle.y<car.y-car.wid/2);assert.ok(bullets[0].y<car.y-car.wid/2);
-look(50,50);assert.ok(angD(view.yaw,car.a)<=.121);assert.ok(view.pitch<=.6);const hp=player.hp;assert.ok(projectileAt({o:'c',dmg:8},muzzle.x,muzzle.y,muzzle.z));assert.equal(player.hp,hp-8,'Exposed leaning torso can be hit');
+look(50,50);assert.ok(angD(view.yaw,car.a)<=.121);assert.ok(view.pitch<=.6);const hp=player.hp,exposed=windowPose().head;assert.ok(projectileAt({o:'c',dmg:8},exposed.x,exposed.y,exposed.z));assert.equal(player.hp,hp-8,'Exposed leaning torso can be hit');
 keys.KeyQ=false;updateLean(.5);assert.ok(!leaning());player.fireT=0;mouse.down=true;updateWeapon(.1,true);mouse.down=false;assert.equal(bullets.length,1,'Retracted driver cannot shoot');car.type='heli';keys.KeyQ=true;assert.ok(!leaning(),'Q remains aircraft descent');
 console.log('Q window aim, pistol ammo, left-side limits, exposed torso and aircraft exclusion pass');
 // The copter only reports a player in its physical, unoccluded cone.
