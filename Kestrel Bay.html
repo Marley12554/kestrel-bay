@@ -521,10 +521,12 @@ function tree(x,y,size){
  m.tube(x,y,size*1.02,size*.17,0,size*.19,'#527d53',8);
  solidBox(x,y,size*.082,size*.082,size*.58,{tree:true});
 }
+const lampGrid=new Map();let lightSerial=0;
 function lamp(x,y){
- streetLamps.push({x:x+6,y,z:58});
+ const source={x:x+6,y,z:58},key=Math.floor(source.x/330)+','+Math.floor(y/330);
+ streetLamps.push(source);if(!lampGrid.has(key))lampGrid.set(key,[]);lampGrid.get(key).push(source);
  worldMesh.tube(x,y,0,2.3,1.6,61,'#505c66',7);
- worldMesh.box(x+6,y,60,17,6,3,'#ffe5ab');
+ const start=worldMesh.data.length;worldMesh.box(x+6,y,60,17,6,3,'#ffe5ab');for(let i=start+6;i<worldMesh.data.length;i+=7)worldMesh.data[i]=8.35;
 }
 function walkway(points,width=20,color='#a4a199'){
  for(let i=1;i<points.length;i++){
@@ -1441,6 +1443,7 @@ function resetInput(){
  stick.id=touchLook.id=null;
 }
 function look(yaw,pitch){
+ if(leaning()){view.yaw+=yaw;view.pitch+=pitch;clampWindowAim(player.veh);return;}
  if(player.veh){
   if(aircraft(player.veh)||player.veh.type==='tank'){
    view.yaw=angD(view.yaw+yaw,0);view.pitch=clamp(view.pitch+pitch,-.6,.6);return;
@@ -1451,7 +1454,7 @@ function look(yaw,pitch){
  view.pitch=clamp(view.pitch+pitch,-1.38,1.40);
 }
 function resetLook(yaw){
- Object.assign(view,{yaw,orbit:0,lastLook:0,resetChase:true,pitch:0,recoil:0});
+ Object.assign(view,{yaw,orbit:0,lastLook:0,resetChase:true,pitch:0,recoil:0,lean:0,wasLeaning:false});
 }
 addEventListener('keydown',e=>{
  if(circuit){if(e.code==='Escape'){e.preventDefault();cancelCircuit('Work cancelled');}return;}
@@ -1465,7 +1468,7 @@ addEventListener('keydown',e=>{
  if(!e.repeat&&code==='KeyH'){if(player.veh)honk(player.veh);else selectSlot(0);}
  keys[code]=true;
  if(!e.repeat&&['KeyE','KeyF','Enter'].includes(code)&&!(code==='KeyE'&&player.veh?.type==='heli'))actQ=true;
- if(code==='KeyR'){if(player.veh)resetLook(player.a);else reloadWeapon();}
+ if(code==='KeyR'){if(player.veh&&!leaning())resetLook(player.a);else reloadWeapon();}
 });
 addEventListener('keyup',e=>{keys[e.code]=false;});
 addEventListener('blur',resetInput);
@@ -1919,6 +1922,9 @@ function armedResponder(n){return ['cop','guard','troop'].includes(n.kind);}
 function officerCombat(n,dt,d,seen,hostile=crimeThreat>=2){
  n.fire=(n.fire||0)-dt;n.firingT=Math.max(0,(n.firingT||0)-dt);
  n.weaponDrawn=hostile;
+ const ordinary=n.kind==='cop';
+ if(n.observedVehicle!==player.veh){if(n.observedVehicle&&ordinary&&time>(n.reacquireCooldown||0)){n.reacquireUntil=time+.4;n.reacquireCooldown=time+3;}n.observedVehicle=player.veh;n.observation=null;n.trackVx=n.trackVy=0;n.aim=null;}
+ if(ordinary&&(n.reacquireUntil||0)>time){n.aim=null;return false;}
  if(!seen){n.aim=null;n.exposure=0;n.observation=null;n.burst=0;return false;}
  n.exposure=Math.min(3,(n.exposure||0)+dt);
  const point=observedAim(n,dt);
@@ -1926,15 +1932,15 @@ function officerCombat(n,dt,d,seen,hostile=crimeThreat>=2){
  const shooters=npcs.filter(o=>o!==n&&armedResponder(o)&&(!o.boarded||o.marine)&&o.state!=='dead'&&(o.aim||o.burst>0)&&(o.reloadUntil||0)<=time);
  // Two officers fire controlled bursts; the remaining squad closes or takes a flank.
  if(!hostile||d>1050||shooters.length>=2&&!n.aim){n.aim=null;return false;}
- if(!n.aim&&n.fire<=0){n.aim={...point,t:n.burst>0?.13:.30};n.burst=n.burst||3;}
+ if(!n.aim&&n.fire<=0){n.aim={...point,t:n.burst>0?(ordinary?.22:.13):(ordinary?.7:.30)};n.burst=n.burst||(ordinary?2:3);}
  if(!n.aim)return false;
- if(n.aim.t>.065){n.aim.x=point.x;n.aim.y=point.y;}
+ if(n.aim.t>(ordinary?.18:.065)){n.aim.x=point.x;n.aim.y=point.y;}
  n.aim.t-=dt;n.a=Math.atan2(n.aim.y-n.y,n.aim.x-n.x);
  if(n.aim.t<=0&&state==='play'){
-  n.spread=.024-.017*clamp(n.exposure/2,0,1);
-  shootAt(n,n.aim.x,n.aim.y,'c',n.kind==='troop'?14:n.kind==='guard'?11:6+wanted);n.firingT=.11;n.ammo=(n.ammo??12)-1;n.burst--;n.aim=null;
+  n.spread=ordinary?.05-.025*clamp(n.exposure/3,0,1):.024-.017*clamp(n.exposure/2,0,1);
+  shootAt(n,n.aim.x,n.aim.y,'c',n.kind==='troop'?14:n.kind==='guard'?11:wanted>=4?8:7);n.firingT=.11;n.ammo=(n.ammo??12)-1;n.burst--;n.aim=null;
   if(n.ammo<=0){n.reloadUntil=time+2.1;n.ammo=12;n.burst=0;n.fire=2.1;}
-  else n.fire=n.burst>0?.02:rnd(.85,1.3);
+  else n.fire=n.burst>0?.02:ordinary?rnd(1.15,1.6):rnd(.85,1.3);
  }
  return !!n.aim||n.firingT>0;
 }
@@ -2164,31 +2170,101 @@ function recoverTraffic(c,dt){
  return false;
 }
 function bridgeAt(x,y){return cellItems(x,y).roads.find(e=>e.bridge&&roadDistance(e,x,y)<e.width/2+28);}
+/* Every cruiser uses steering/throttle/brakes through the player's car physics. */
+function copDriveToward(c,goal,speed,dt){
+ const dx=goal.x-c.x,dy=goal.y-c.y,turn=angD(Math.atan2(dy,dx),c.a);
+ const steer=clamp(turn*2.1,-1,1),limit=CT.cop.maxV;
+ speed=clamp(speed,0,limit);if(Math.abs(turn)>.65)speed=Math.min(speed,Math.max(75,220/(1+Math.abs(turn)*2)));
+ const error=speed-c.spd;
+ // Feed-forward counters rolling drag; proportional control then closes the error.
+ const drag=(paved(c.x,c.y)?.045:.24)*c.spd;
+ const available=Math.max(65,c.t.acc*(1-c.spd/(limit*1.04)));
+ const throttle=error<-20?-clamp(-error/160,0,1):clamp(drag/available+error/190,0,1);
+ c.vmax=0;stepCar(c,throttle,steer,speed<15&&c.spd<35,false,dt);c.aiSpeed=c.spd;
+ c.stuck=c.spd<20&&distance(c,goal)>40?(c.stuck||0)+dt:0;
+}
+function cruiserCorridor(c,goal){
+ if(c.clearGoal&&time<(c.clearAt||0)&&distance(c.clearGoal,goal)<100)return c.clearPath;
+ c.clearAt=time+.28;c.clearGoal={x:goal.x,y:goal.y};
+ const d=distance(c,goal),steps=Math.max(1,Math.ceil(d/25)),a=Math.atan2(goal.y-c.y,goal.x-c.x),test={...c};
+ let clear=true;for(let i=1;i<=steps;i++){const t=i/steps,x=c.x+(goal.x-c.x)*t,y=c.y+(goal.y-c.y)*t;
+  if(waterAt(x,y)||carWall(test,x,y,a)){clear=false;break;}}
+ c.clearPath=clear;return clear;
+}
+function policeAvoidance(c,goal,speed,ignore=null){
+ let block=c.passBlock;
+ const axis=block?.a??c.a,co=Math.cos(axis),si=Math.sin(axis);
+ if(block&&(block.dead||((c.x-block.x)*co+(c.y-block.y)*si)>(c.len+block.len)/2+12||distance(c,block)>650)){c.passBlock=null;block=null;}
+ const obstruction=obstacle(c,ignore);
+ if(!block&&obstruction&&obstruction<300&&c.frontObstacle?.type&&c.frontObstacle!==player.veh){
+  block=c.frontObstacle;
+  for(const side of (c.tactic==='contact'&&c.stopSide?[c.stopSide,-c.stopSide]:[-1,1])){
+   const separation=(c.wid+block.wid)/2+22,p={x:block.x+co*90-si*side*separation,y:block.y+si*90+co*side*separation,z:c.z||0};
+   const opposing=cars.some(o=>o!==c&&o!==block&&Math.abs((o.z||0)-(c.z||0))<24&&distance(o,p)<Math.max(85,o.spd*.8)&&Math.cos(o.a-c.a)<-.4);
+   if(!opposing&&cruiserCorridor(c,p)){c.passBlock=block;c.passSide=side;break;}
+  }
+  if(!c.passBlock)block=null;
+ }
+ if(block){
+  const separation=(c.wid+block.wid)/2+22,side=c.passSide,along=(block.x-c.x)*co+(block.y-c.y)*si,lateral=-(c.x-block.x)*si+(c.y-block.y)*co;
+  const ahead=along<95&&Math.abs(lateral)<separation*.8?Math.min(30,Math.max(8,along-55)):Math.max(60,along+100);
+  const target={x:c.x+co*ahead-si*(side*separation-lateral),y:c.y+si*ahead+co*(side*separation-lateral),z:c.z||0};
+  if(cruiserCorridor(c,target))return {goal:target,speed:Math.min(speed,Math.abs(lateral)<separation*.7?95:Math.max(300,block.spd+230))};
+  c.passBlock=null;
+ }
+ return {goal,speed:obstruction?Math.min(speed,Math.sqrt(2*500*Math.max(0,obstruction-12)),Math.max(0,(obstruction-6)*2.7)):speed};
+}
+
 function ramPursuit(c,dt){
  c.pitAttempt=false;
- if(c.tactic&&c.tactic!=='tail'&&!c.closeContainment)return false;
- if(c.role!=='pursuit'||!policeFix||(!policeFix.seen&&!c.cutoff)||distance(c,policeFix)>1250||(interior&&!c.cutoff))return false;
- // Follow the connected carriageway on bridges; never cut a corner across water or attempt a PIT there.
- if(!c.closeContainment&&(bridgeAt(c.x,c.y)||bridgeAt(player.x,player.y)))return false;
- const target=c.closeContainment?c.tacticGoal:c.cutoff?c.goal:policeFix,v=c.closeContainment||c.cutoff?null:player.veh,lead=v?clamp(distance(c,target)/1800,.05,.4):0;
- let goal={x:target.x+(v?v.vx*lead:0),y:target.y+(v?v.vy*lead:0),z:target.z||0};
- if(!lineOfSight(c,goal)||waterAt(goal.x,goal.y))return false;
- const d=distance(c,target),moving=v&&v.spd>=80,stop=c.closeContainment?12:moving?45:100;
- if(!moving&&d<stop){c.vx=c.vy=c.spd=c.aiSpeed=0;c.atStop=true;return true;}
- if(moving&&wanted>=3&&crimeThreat>=2&&v.spd>180&&v.spd<440&&d<150&&time>(c.pitCooldown||0)&&Math.cos(v.a-c.a)>.9&&
-  !intersections.some(n=>distance(n,v)<180)&&!cars.some(o=>o!==c&&o!==v&&distance(o,v)<130)){
-  const side=c.pitSide||((c.x-v.x)*-Math.sin(v.a)+(c.y-v.y)*Math.cos(v.a)>=0?1:-1);c.pitSide=side;
-  goal={x:v.x-Math.cos(v.a)*37-Math.sin(v.a)*side*25,y:v.y-Math.sin(v.a)*37+Math.cos(v.a)*side*25,z:v.z||0};c.pitAttempt=true;
+ if(c.role!=='pursuit'||!policeFix||(!policeFix.seen&&!c.cutoff)||distance(c,policeFix)>1500||(interior&&!c.cutoff))return false;
+ if(bridgeAt(c.x,c.y)||bridgeAt(player.x,player.y))return false;
+ const offRoad=!onRoad(policeFix.x,policeFix.y,45),local=c.closeContainment||offRoad||!c.tactic||['tail','contact','support'].includes(c.tactic);
+ if(!local||c.tactic==='reserve'||c.tactic==='bridge-exit')return false;
+ const v=player.veh,moving=v&&v.spd>=60,target=c.closeContainment?c.tacticGoal:policeFix;
+ const lead=moving?clamp(distance(c,target)/1600,.08,.8):0;
+ let goal={x:target.x+(moving?v.vx*lead:0),y:target.y+(moving?v.vy*lead:0),z:target.z||0};
+ const d=distance(c,target),co=v?Math.cos(v.a):1,si=v?Math.sin(v.a):0;
+ const contact=moving&&(c.tactic==='contact'||!cars.some(o=>o!==c&&o.kind==='cop'&&o.tactic==='contact'&&!o.dead)&&(!c.tactic||c.tactic==='tail'));
+ let speed=moving?v.spd+clamp((d-45)*.95,0,450):Math.max(0,(d-(c.closeContainment?9:85))*2.5);
+ if(offRoad&&moving&&c.tacticGoal&&['flank-left','flank-right'].includes(c.tactic))goal={...c.tacticGoal};
+ if(contact&&wanted>=2&&d<220&&v.spd<550){
+  const longitudinal=(c.x-v.x)*co+(c.y-v.y)*si,lateral=-(c.x-v.x)*si+(c.y-v.y)*co;
+  c.stopSide??=lateral<0?-1:1;
+  const canPit=wanted>=3&&longitudinal< -15&&v.spd>130&&v.spd<440&&d<145&&time>(c.pitCooldown||0)&&Math.cos(v.a-c.a)>.82&&
+   !intersections.some(n=>distance(n,v)<130)&&!cars.some(o=>o!==c&&o!==v&&o.kind!=='cop'&&distance(o,v)<120);
+  if(canPit){c.pitSide=c.stopSide;c.pitAttempt=true;goal={x:v.x+v.vx*.24-co*35-si*c.stopSide*25,y:v.y+v.vy*.24-si*35+co*c.stopSide*25,z:v.z||0};speed=v.spd+35;}
+  else if(longitudinal<100){goal={x:v.x+co*170-si*c.stopSide*65,y:v.y+si*170+co*c.stopSide*65,z:v.z||0};speed=v.spd+150;c.stopStage='overtake';}
+  else{goal={x:v.x+co*125,y:v.y+si*125,z:v.z||0};speed=Math.max(0,v.spd-110);c.stopStage='block';}
  }
- const angle=Math.atan2(goal.y-c.y,goal.x-c.x),turn=angD(angle,c.a);
- const targetSpeed=moving?Math.max(0,v.vx*Math.cos(c.a)+v.vy*Math.sin(c.a)):0;
- let speed=Math.min(CT.cop.maxV,moving?targetSpeed+clamp((d-stop)*.8,0,420):Math.max(45,(d-stop)*2));
- if(c.pitAttempt)speed=Math.min(CT.cop.maxV,v.spd+45);
- if(Math.abs(turn)>.6)speed=Math.min(speed,Math.max(90,targetSpeed*.65));
- // Proportional throttle eases into the target speed without slamming the brakes each frame.
- const error=speed-c.spd,throttle=error>2?clamp(error/160,0,1):error<-12?-clamp(-error/200,0,.8):.04;
- stepCar(c,throttle,clamp(turn*1.5,-1,1),false,false,dt);
- c.aiSpeed=c.spd;c.stuck=c.spd<14?c.stuck+dt:0;c.atStop=false;return true;
+ if(!cruiserCorridor(c,goal))return false;
+ if(!moving&&d<(c.closeContainment?15:90)){copDriveToward(c,goal,0,dt);c.atStop=c.spd<12;return true;}
+ const avoid=policeAvoidance(c,goal,speed,v);
+ c.atStop=false;copDriveToward(c,avoid.goal,avoid.speed,dt);return true;
+}
+function copRoadDrive(c,dt){
+ if(!c.leg)return;
+ if(ramPursuit(c,dt))return;
+ const following=c.role==='pursuit'&&['tail','support',null,undefined].includes(c.tactic)&&player.veh&&policeFix?.seen;
+ const {e,dir}=c.leg,stop=following?undefined:c.leg.stop,t=along(e,c.x,c.y),remaining=((stop??(dir===1?e.len:0))-t)*dir,mustStop=stop!==undefined;
+ if(!mustStop&&!c.next)c.next=nextLeg(c);
+ if(following&&!c.next){const end=dir===1?e.b:e.a;c.next=end.links.filter(l=>l.e!==e).sort((a,b)=>(b.e.dx*b.dir*e.dx*dir+b.e.dy*b.dir*e.dy*dir)-(a.e.dx*a.dir*e.dx*dir+a.e.dy*a.dir*e.dy*dir))[0]||null;}
+ const next=c.next;
+ const cornerAlignment=next?e.dx*dir*next.e.dx*next.dir+e.dy*dir*next.e.dy*next.dir:1;
+ const look=cornerAlignment<.8?65:clamp(c.spd*.5+75,75,500);let target=lanePoint(e,dir,clamp(t+dir*look,0,e.len),c.laneOffset??25);
+ if(next&&remaining<look){const entry=next.dir===1?0:next.e.len;target=lanePoint(next.e,next.dir,clamp(entry+next.dir*(look-Math.max(0,remaining)),0,next.e.len),c.laneOffset??25);}
+ let speed=c.role==='patrol'?(c.cruise||180):CT.cop.maxV;
+ if(next){const alignment=e.dx*dir*next.e.dx*next.dir+e.dy*dir*next.e.dy*next.dir;
+  if(alignment<.985){const corner=90+145*Math.max(0,alignment);speed=Math.min(speed,Math.sqrt(corner*corner+2*480*Math.max(0,remaining-65)));}}
+ if(mustStop||!next){target=lanePoint(e,dir,stop??(dir===1?e.len:0),c.laneOffset??25);const approach=distance(c,target);speed=Math.min(speed,Math.sqrt(2*350*Math.max(0,approach-12)),Math.max(0,(approach-8)*2));}
+ if(following&&distance(c,player)<1500&&Math.cos(c.a-player.veh.a)>.7){const gap=distance(c,player);speed=Math.min(speed,player.veh.spd+clamp((gap-65)*.9,-100,420));}
+ const avoid=policeAvoidance(c,target,speed,following?player.veh:null);c.wait=avoid.speed<20&&speed>30;
+ copDriveToward(c,avoid.goal,avoid.speed,dt);
+ if(mustStop&&distance(c,target)<20&&c.spd<25){c.atStop=true;if(c.role==='block')c.parkedAtPost=true;}
+ const now=along(e,c.x,c.y),left=((stop??(dir===1?e.len:0))-now)*dir;
+ const progress=next?(along(next.e,c.x,c.y)-(next.dir===1?0:next.e.len))*next.dir:0;
+ if(next&&(left<20||left<90&&progress>8&&roadDistance(next.e,c.x,c.y)<next.e.width/2)){
+  c.leg=next;c.next=null;if(c.route[0]===next)c.route.shift();}
 }
 
 function driveAI(c,dt){
@@ -2199,6 +2275,7 @@ function driveAI(c,dt){
  if(!c.leg)return;
  if(recoverTraffic(c,dt))return;
  if(c.parkedAtPost||c.role==='staged'){c.vx=c.vy=c.spd=c.aiSpeed=0;return;}
+ if(c.kind==='cop'){copRoadDrive(c,dt);return;}
  if(ramPursuit(c,dt))return;
  const {e,dir,stop}=c.leg;
  const t=along(e,c.x,c.y),remaining=((stop??(dir===1?e.len:0))-t)*dir;
@@ -2381,7 +2458,7 @@ function mobilizePatrols(where){
  const responding=cars.filter(c=>c.kind==='cop'&&!c.dead&&c.role!=='patrol'&&c.role!=='return'&&(!c.hasCrew||npcs.some(n=>n.cruiser===c&&n.state!=='dead')));
  const available=cars.filter(c=>c.kind==='cop'&&!c.dead&&(c.role==='patrol'||c.role==='return'&&distance(c,where)<1800)&&(!c.hasCrew||npcs.some(n=>n.cruiser===c&&n.boarded&&n.state!=='dead')));
  const escape=bridgeExit(where),priority=available.filter(c=>distance(c,where)<1800||escape&&distance(c,escape)<2400);
- let needed=Math.max(0,Math.min(4,wanted+1)-responding.filter(c=>c.role==='pursuit').length),room=Math.max(0,6-responding.length);
+ let needed=Math.max(0,Math.min(5,wanted+1)-responding.filter(c=>c.role==='pursuit').length),room=Math.max(0,6-responding.length);
  // A local patrol may relieve a remote surplus unit; it must not ignore a visible suspect.
  if(!room&&priority.some(c=>distance(c,where)<1800)){
   const relief=responding.filter(c=>c.tactic!=='bridge-exit'&&c.tactic!=='contain'&&distance(c,where)>4000).sort((a,b)=>distance(b,where)-distance(a,where))[0];
@@ -2439,10 +2516,10 @@ function deployOfficers(c){
  if(c.beingStolen||!['pursuit','block'].includes(c.role)||!policeFix)return false;
  if(c.role==='block'&&!seesPlayer(c,900))return false;
  const range=distance(c,policeFix),activeFoot=npcs.filter(n=>n.kind==='cop'&&!n.boarded&&n.state!=='dead'&&distance(n,policeFix)<1000&&Math.abs((n.z||0)-(policeFix.z||0))<60).length;
- if(range>940||activeFoot>=Math.min(8,wanted*2))return false;
+ if(range>1200||activeFoot>=Math.min(8,wanted*2))return false;
  const close=seesPlayer(c,player.veh?170:crimeThreat>=2?850:500)&&(!player.veh||player.veh.spd<75);
  const arrived=c.atStop&&range<(player.veh?180:580);
- const blocked=c.stuck>1.3&&range<(wanted>=3?800:500);
+ const blocked=c.stuck>1.3&&range<(player.veh?200:wanted>=3?1150:500);
  const relief=wanted>=3&&(dispatch?.age||0)>10&&range<(player.veh?170:810)&&activeFoot===0;
  if(!close&&!arrived&&!blocked&&!relief)return false;
  let count=0;
@@ -2503,7 +2580,7 @@ function bridgeExit(fix){
  }
  return null;
 }
-function coordinatePolice(active){
+function coordinateRoadPolice(active){
  const mobile=active.filter(c=>c.role==='pursuit'&&!c.dead),fix=policeFix;
  if(!fix)return;
  for(const c of mobile)c.closeContainment=false;
@@ -2513,7 +2590,7 @@ function coordinatePolice(active){
   const slots=offsets.map(([u,w])=>({x:v.x+co*u-si*w,y:v.y+si*u+co*w,z:v.z||0})).filter(p=>!carWall({...CT.cop,z:p.z},p.x,p.y,v.a)&&dryFooting(p.x,p.y,p.z));
   const sorted=[...mobile].sort((a,b)=>distance(a,v)-distance(b,v));
   for(const [i,c] of sorted.entries()){
-   slots.sort((a,b)=>distance(c,a)-distance(c,b));const slot=i<Math.min(4,wanted+1)?slots.shift():null;
+   slots.sort((a,b)=>distance(c,a)-distance(c,b));const slot=i<Math.min(5,wanted+1)?slots.shift():null;
    if(slot){c.closeContainment=true;c.tactic='contain-car';c.tacticGoal=slot;c.cutoff=true;}
    else{c.tactic='reserve';c.tacticGoal=roadAhead(fix,1600);c.cutoff=true;}
   }
@@ -2550,6 +2627,54 @@ function coordinatePolice(active){
  }
  policeDirector={bridge:exit,assignments:mobile.map(c=>({car:c,tactic:c.tactic,goal:c.tacticGoal}))};
 }
+function interceptionGoal(c,fix){
+ const pace=Math.max(120,player.veh?.spd||120);
+ for(const seconds of [3.5,5.5,8]){
+  const reach=Math.max(650,pace*seconds),p=roadAhead(fix,reach),t=p.dir===1?p.e.len-90:90;
+  const goal={...lanePoint(p.e,p.dir,t,0),e:p.e,dir:p.dir,t,z:bridgeHeight(p.e,t)};
+  const travel=policeTravelDistance(c,goal),arrival=travel/Math.max(280,Math.min(950,c.spd+300))+.7;
+  const suspect=(reach+(t-p.t)*p.dir)/pace;
+  if(arrival<suspect+1.2)return goal;
+ }
+ return null;
+}
+function coordinatePolice(active){
+ const fix=policeFix;if(!fix)return;
+ const mobile=active.filter(c=>c.role==='pursuit'&&!c.dead),previous=new Map(mobile.map(c=>[c,{tactic:c.tactic,goal:c.tacticGoal,until:c.commitUntil||0}]));
+ const field=player.veh&&fix.seen&&!bridgeAt(fix.x,fix.y)&&!onRoad(fix.x,fix.y,45)&&!physicalContext(fix);
+ if(field&&player.veh.spd>=65){
+  const tail=mobile.find(c=>c.tactic==='tail'&&distance(c,fix)<1600)||[...mobile].sort((a,b)=>distance(a,fix)-distance(b,fix))[0];
+  const others=mobile.filter(c=>c!==tail).sort((a,b)=>distance(a,fix)-distance(b,fix)),a=player.veh.a,co=Math.cos(a),si=Math.sin(a);
+  for(const c of mobile){
+   c.closeContainment=false;c.parkedAtPost=false;const index=others.indexOf(c);
+   c.tactic=c===tail?'tail':index===0?'contact':index===1?'flank-left':index===2?'flank-right':'reserve';
+   c.cutoff=!['tail','contact'].includes(c.tactic);c.tacticGoal=null;
+   if(index===1||index===2){const side=index===1?-1:1;const p={x:fix.x+player.veh.vx*1.1-si*side*230,y:fix.y+player.veh.vy*1.1+co*side*230,z:fix.z||0};c.tacticGoal=!waterAt(p.x,p.y)&&!carWall(c,p.x,p.y,a)?p:{x:fix.x+co*160,y:fix.y+si*160,z:fix.z||0};}
+   if(c.tactic==='reserve')c.tacticGoal=roadAhead(fix,1800);
+  }
+  policeDirector={bridge:null,assignments:mobile.map(c=>({car:c,tactic:c.tactic,goal:c.tacticGoal}))};return;
+ }
+ coordinateRoadPolice(active);
+ const moving=player.veh&&player.veh.spd>=65&&fix.seen;
+ if(moving){
+  const exit=bridgeExit(fix),tail=mobile.find(c=>c.tactic==='tail');
+  const support=[...mobile].filter(c=>c!==tail&&c.tactic!=='bridge-exit'&&distance(c,fix)<2000).sort((a,b)=>distance(a,fix)-distance(b,fix))[0];
+  if(support&&exit){support.tactic='support';support.tacticGoal=null;support.cutoff=false;support.commitUntil=0;}
+  if(!exit&&tail){const contact=mobile.filter(c=>c!==tail&&distance(c,fix)<750).sort((a,b)=>distance(a,fix)-distance(b,fix))[0];if(contact){contact.tactic='contact';contact.tacticGoal=null;contact.cutoff=false;}}
+  for(const c of mobile){
+   if(!['intercept','contain','reserve','bridge-exit'].includes(c.tactic))continue;
+   const old=previous.get(c),p=old?.goal;
+   const passed=p?.e&&roadDistance(p.e,fix.x,fix.y)<p.e.width&&((fix.x-p.x)*p.e.dx+(fix.y-p.y)*p.e.dy)*(p.dir||1)>100;
+   if(passed&&distance(c,fix)<1700){c.tactic='support';c.tacticGoal=null;c.cutoff=false;c.parkedAtPost=false;c.commitUntil=0;continue;}
+   if(old?.tactic===c.tactic&&p&&old.until>time){c.tacticGoal=p;continue;}
+   const goal=c.tactic==='bridge-exit'?exit:interceptionGoal(c,fix);
+   if(goal){c.tacticGoal=goal;c.commitUntil=time+6;}
+   else{c.tactic='support';c.tacticGoal=null;c.cutoff=false;c.commitUntil=0;}
+  }
+ }
+ policeDirector={bridge:bridgeExit(fix),assignments:mobile.map(c=>({car:c,tactic:c.tactic,goal:c.tacticGoal}))};
+}
+
 function pursuitTarget(c){
  if(c.tacticGoal)return c.tacticGoal;
 
@@ -2604,7 +2729,7 @@ function updWanted(dt){
  const active=cars.filter(c=>c.kind==='cop'&&!c.dead&&(!c.hasCrew||npcs.some(n=>n.cruiser===c&&n.state!=='dead'))&&c.role!=='patrol'&&c.role!=='return');
  const foot=npcs.filter(n=>n.kind==='cop'&&!n.boarded&&n.state!=='dead');
  const cameraSeen=cameraTracking();
- const spotted=cameraSeen||(airUnit&&time-airUnit.lastSeen<.25)||cars.some(c=>c.kind==='cop'&&!c.dead&&seesPlayer(c,bridgeAt(c.x,c.y)?2400:850))||foot.some(n=>seesPlayer(n,1200));
+ const spotted=cameraSeen||(airUnit&&time-airUnit.lastSeen<.25)||cars.some(c=>c.marine&&!c.prisonLaunch&&c.lastContact&&time-c.lastContact.time<.25)||cars.some(c=>c.kind==='cop'&&!c.dead&&seesPlayer(c,bridgeAt(c.x,c.y)?2400:850))||foot.some(n=>seesPlayer(n,1200));
  if(spotted){
   vehicleDescription=player.veh;
   policeFix={x:player.x,y:player.y,z:player.z||0,seen:true,a:player.a};unseen=0;
@@ -2642,7 +2767,7 @@ function updWanted(dt){
  copT-=dt;
  if(copT>0)return;
  copT=wanted>=3?1.6:2.4;
- const carsNeeded=Math.min(4,wanted+1),footNeeded=wanted>=3?4:2;
+ const carsNeeded=Math.min(5,wanted+1),footNeeded=wanted>=3?4:2;
  // Count units already driving in, not only the ones within a short radius.
  const mobile=active.filter(c=>c.role==='pursuit').length;
  const deployed=npcs.filter(n=>n.kind==='cop'&&!n.boarded&&n.state!=='dead'&&distance(n,policeFix)<920).length;
@@ -2654,7 +2779,7 @@ function updWanted(dt){
  for(const c of active){
   if(c.tactic==='bridge-exit'&&c.atStop&&c.goal&&distance(c,c.goal)<80&&wanted>=2){
    c.parkedAtPost=true;c.blockAngle=.7;
-   if(!c.blockSet){c.blockSet=true;c.a+=.7;}
+   if(!c.blockSet)c.blockSet=true;
    if(wanted>=3&&time>(c.spikeAt||0)&&!spikes.some(s=>distance(s,c)<240)){
     const e=c.leg.e,t=clamp(along(e,c.x,c.y)-(c.tacticGoal?.dir||c.leg.dir)*75,30,e.len-30);
     spikes.push({...lanePoint(e,1,t,0),e,z:bridgeHeight(e,t),ttl:45});c.spikeAt=time+45;
@@ -2670,6 +2795,7 @@ function projectileAt(b,x,y,z=12){
  if(architectureHit(x,y,z,b.dmg,b.o==='p'))return true;
  if(solidAtHeight(x,y,z)){spark(x,y);return true;}
  if(b.o!=='p'){
+  if(groundCar()&&(view.lean||0)>.15){const torso=windowMuzzle();if(hyp(x-torso.x,y-torso.y)<10&&Math.abs(z-torso.z)<9){hurtPlayer(b.dmg);return true;}}
   if(follower&&!follower.boarded&&z<27&&distance(follower,{x,y})<10){hurtNpc(follower,b.dmg,false);return true;}
   if(z>=(player.z||0)&&z<(player.z||0)+(player.veh?32:27)&&hyp(player.x-x,player.y-y)<(player.veh?23:11)){
    if(player.veh){
@@ -2737,30 +2863,67 @@ function updateWorldClock(dt){
  worldClock.fade=Math.max(0,worldClock.fade-dt);
  $('night-fade').style.opacity=worldClock.fade>1.15?1:clamp(worldClock.fade/1.15,0,1);
 }
-function makeLight(x,y,z,a,pitch,range,cone,color,owner){
+/* Stable sources and a small shadow budget; street illumination is cached separately. */
+function makeLight(x,y,z,a,pitch,range,cone,color,owner,id){
  const cp=Math.cos(pitch),dir=[Math.cos(a)*cp,Math.sin(a)*cp,Math.sin(pitch)];
- return {x,y,z,a,pitch,range,cone:Math.cos(cone),color,dir,owner};
+ if(owner&&!owner.lightId)owner.lightId='beam-'+(++lightSerial);
+ return {x,y,z,a,pitch,range,cone:Math.cos(cone),color,dir,owner,id:id||owner?.lightId||'beam-'+(++lightSerial)};
 }
-const watchPosts=[[35300,21700],[40400,21700],[40400,25400],[35300,25400]];
+const watchPosts=[[35300,21700],[40400,21700],[40400,25400],[35300,25400]],watchSources=watchPosts.map((_,tower)=>({tower}));
+function helicopterBeam(c=airUnit){
+ if(!c)return null;
+ return makeLight(c.x,c.y,(c.z||620)-12,c.beamYaw??c.a,c.beamPitch??-.9,3000,isNight()?.23:.38,[.83,.9,1],c);
+}
 function updateWorldLights(force=false){
- if(!force&&time-lightRefresh<.08)return;lightRefresh=time;
- const lights=[];
+ lightRefresh=time;const lights=[];
  if(daylight()<.55){
-  for(const p of streetLamps)if(distance(p,player)<700&&!inside(p.x,p.y,island))lights.push(makeLight(p.x,p.y,p.z,0,-1.45,330,.85,[1,.82,.57],p));
-  const room=physicalContext(player);if(room&&(!inside(player.x,player.y,island)||!L.prisonPower.disabled)){const b=room.building;for(const u of [-1,1])for(const v of [-1,1])lights.push(makeLight(b.x+u*b.w*.25,b.y+v*b.d*.25,room.floor*44+39,0,-1.45,300,1.05,[1,.89,.71],b));}
+  const room=physicalContext(player);if(room&&(!inside(player.x,player.y,island)||!L.prisonPower.disabled)){const b=room.building;for(const u of [-1,1])for(const v of [-1,1])lights.push(makeLight(b.x+u*b.w*.25,b.y+v*b.d*.25,room.floor*44+39,0,-1.45,300,1.05,[1,.89,.71],b,'room-'+b.id+'-'+room.floor+'-'+u+'-'+v));}
   for(const c of cars)if(!c.dead&&!c.flooded&&distance(c,player)<2300&&(c.kind==='player'||c.kind==='traffic'||c.kind==='cop'||c.marine)){
-   const bow=c.len*.54;lights.push(makeLight(c.x+Math.cos(c.a)*bow,c.y+Math.sin(c.a)*bow,(c.z||0)+(c.type==='boat'?32:11),c.a,c.type==='boat'?-.045:-.045,c.type==='boat'?1450:900,.42,[1,.88,.65],c));
+   const bow=c.len*.54;lights.push(makeLight(c.x+Math.cos(c.a)*bow,c.y+Math.sin(c.a)*bow,(c.z||0)+(c.type==='boat'?32:11),c.a,-.045,c.type==='boat'?1450:900,.42,[1,.88,.65],c));
   }
   for(const n of npcs)if(armedResponder(n)&&!n.boarded&&n.state!=='dead'&&distance(n,player)<2000){
    const a=n.aim?Math.atan2(n.aim.y-n.y,n.aim.x-n.x):n.a;
    lights.push(makeLight(n.x+Math.cos(a)*10,n.y+Math.sin(a)*10,(n.z||0)+18,a,-.02,820,.28,[.86,.91,1],n));
   }
   if(!L.prisonPower.disabled)for(let i=0;i<watchPosts.length;i++){
-   const [x,y]=watchPosts[i],outward=Math.atan2(y-23550,x-37900),a=outward+Math.sin(time*.12+i*1.8)*.65;
-   lights.push(makeLight(x+Math.cos(a)*76,y+Math.sin(a)*76,202,a,-.14,2400,.18,[.86,.91,1],{tower:i}));
+   const [x,y]=watchPosts[i],a=Math.atan2(y-23550,x-37900)+Math.sin(time*.12+i*1.8)*.65;
+   lights.push(makeLight(x+Math.cos(a)*76,y+Math.sin(a)*76,202,a,-.14,2400,.18,[.86,.91,1],watchSources[i]));
   }
  }
+ if(airUnit&&distance(airUnit,player)<3400)lights.push(helicopterBeam());
  worldLights=lights;
+}
+const beamSlots=Array.from({length:8},()=>({light:null,weight:0,since:-Infinity}));
+function selectShadowLights(dt=frameDt){
+ const candidates=worldLights.filter(l=>distance(l,eye)<l.range+450),byId=new Map(candidates.map(l=>[l.id,l]));
+ const score=l=>distance(l,eye)-((l.owner===player.veh)?8000:l.owner===airUnit?6500:0);
+ candidates.sort((a,b)=>score(a)-score(b));const used=new Set();
+ // Keep incumbent sources unless a materially closer light deserves the slot.
+ for(const slot of beamSlots)if(slot.light&&byId.has(slot.light.id)){slot.light=byId.get(slot.light.id);used.add(slot.light.id);}
+ for(const slot of beamSlots){
+  const current=slot.light,challenger=candidates.find(l=>!used.has(l.id));
+  const replace=!current||!byId.has(current.id)||(challenger&&time-slot.since>.5&&score(challenger)+220<score(current));
+  if(replace&&current&&slot.weight>0){slot.weight=Math.max(0,slot.weight-dt*5);continue;}
+  if(replace){if(current)used.delete(current.id);slot.light=challenger||null;slot.weight=0;slot.since=time;if(challenger)used.add(challenger.id);}
+  if(slot.light)slot.weight=Math.min(1,slot.weight+dt*4);
+ }
+ return beamSlots;
+}
+function streetLightGeometry(){
+ const chunks=new Map();
+ for(const p of streetLamps){
+  if(inside(p.x,p.y,island))continue;
+  const key=Math.floor(p.x/1020)+','+Math.floor(p.y/1020);if(!chunks.has(key))chunks.set(key,{x:Math.floor(p.x/1020)*1020+510,y:Math.floor(p.y/1020)*1020+510,data:[]});const row=chunks.get(key).data;
+  const count=16,radius=110,limits=[];
+  // Clip each sector once against architecture. No per-frame static-light ray casts.
+  for(let j=0;j<count;j++){const a=j/count*TAU;let limit=radius;
+   for(let r=12;r<=radius;r+=12){const x=p.x+Math.cos(a)*r,y=p.y+Math.sin(a)*r;if(physicalSolid(x,y,58*(1-r/radius)+1,0,true)){limit=Math.max(0,r-12);break;}}limits.push(limit);}
+  const vertex=(j,t)=>{const a=(j%count)/count*TAU,r=limits[j%count]*t,k=(1-t)*(1-t);return [p.x+Math.cos(a)*r,p.y+Math.sin(a)*r,.65,.24*k,.185*k,.105*k,20];};
+  for(let j=0;j<count;j++)for(let ring=0;ring<3;ring++){
+   const a=vertex(j,ring/3),b=vertex(j+1,ring/3),c=vertex(j+1,(ring+1)/3),d=vertex(j,(ring+1)/3);row.push(...a,...b,...c,...a,...c,...d);
+  }
+ }
+ return [...chunks.values()];
 }
 function lightStrength(l,p,occlusion=true){
  const dx=p.x-l.x,dy=p.y-l.y,dz=(p.z||0)+15-l.z,d=hyp(dx,dy,dz);
@@ -2775,6 +2938,12 @@ function illuminationAt(p){
  if(daylight()>.75)return 1;
  if(p===player&&illuminationSample?.lights===worldLights&&illuminationSample.x===p.x&&illuminationSample.y===p.y&&illuminationSample.z===(p.z||0))return illuminationSample.value;
  let strength=daylight();
+ const gx=Math.floor(p.x/330),gy=Math.floor(p.y/330);
+ for(let x=gx-1;x<=gx+1;x++)for(let y=gy-1;y<=gy+1;y++)for(const source of lampGrid.get(x+','+y)||[]){
+  if(distance(source,p)>150||inside(source.x,source.y,island))continue;
+  source.light??=makeLight(source.x,source.y,58,0,-Math.PI/2,330,.85,[1,.82,.57],source);
+  strength=Math.max(strength,lightStrength(source.light,p));
+ }
  for(const l of worldLights)if(l.owner!==p)strength=Math.max(strength,lightStrength(l,p));
  // Furnished indoor rooms have ceiling fittings; broken power darkens prison interiors.
  const room=physicalContext(p);if(room&&(!inside(p.x,p.y,island)||!L.prisonPower.disabled))strength=Math.max(strength,.65);
@@ -3036,7 +3205,7 @@ function updateMarine(c,dt){
  c.z=WATER_LEVEL-8;c.vx=(c.x-old.x)/dt;c.vy=(c.y-old.y)/dt;
  for(let i=0;i<crew.length;i++){
   const n=crew[i];n.x=c.x-Math.cos(c.a)*(i*18);n.y=c.y-Math.sin(c.a)*(i*18);n.z=c.z+18;n.a=seen?Math.atan2(player.y-n.y,player.x-n.x):c.a;
-  if(i===1)officerCombat(n,dt,distance(n,player),seen,c.prisonLaunch?prisonAlert>=2:crimeThreat>=2);
+  n.aim=null;n.burst=0;n.weaponDrawn=false;
  }
  const boat=player.veh;
  if(responding&&seen&&boat?.type==='boat'&&Math.abs(boat.spd)<45&&distance(c,boat)<120){
@@ -3549,13 +3718,14 @@ function punctureTires(c){
  if(c===player.veh){noise(.85,.25,3200);tone(90,38,.2,'triangle',.12);shake=Math.max(shake,4);toast('TIRES PUNCTURED · running on rims','#ffbc80');buzz(90);}
 }
 function updateAirAndSpikes(dt){
- const fast=player.veh?.type==='interceptor',need=wanted>=3&&(fast||wanted>=4);
+ const need=wanted>=3;
  if(need&&!airUnit){
   airDispatch+=dt;
   if(airDispatch>8&&policeFix){
    const approach=roadAhead(policeFix,Math.max(6000,(player.veh?.spd||500)*6)),a=policeFix.a||0;
-   airUnit={...specialVehicle('heli',approach.x-Math.sin(a)*5000,approach.y+Math.cos(a)*5000,a,'airPolice'),z:650,aiSpeed:0,lastSeen:-Infinity};
-   cars[cars.length-1]=airUnit;
+   const entry=[1,-1,2,-2].map(k=>({x:approach.x-Math.sin(a+k*.7)*8500,y:approach.y+Math.cos(a+k*.7)*8500,z:650})).find(p=>distance(p,player)>6000&&!visiblePoliceSpawn(p,a));
+   if(entry){airUnit={...specialVehicle('heli',entry.x,entry.y,a,'airPolice'),z:650,aiSpeed:0,lastSeen:-Infinity};cars[cars.length-1]=airUnit;}
+
   }
  }
  else if(!need)airDispatch=Math.max(0,airDispatch-dt);
@@ -3564,7 +3734,14 @@ function updateAirAndSpikes(dt){
   const target=policeFix||airUnit,dx=target.x-airUnit.x,dy=target.y-airUnit.y,d=hyp(dx,dy);
   airUnit.a=Math.atan2(dy,dx);const step=Math.min(Math.max(0,d-450),1850*dt);airUnit.x+=Math.cos(airUnit.a)*step;airUnit.y+=Math.sin(airUnit.a)*step;
   airUnit.z+=(620-airUnit.z)*dt;
-  if(d<2500&&lineOfSight(airUnit,player)){policeFix={x:player.x,y:player.y,z:player.z||0,a:player.a,seen:true};airUnit.lastSeen=time;unseen=0;}
+  // Sweep the last known position. Only a target inside the real beam is reported.
+  const sweep=time-airUnit.lastSeen>1?Math.sin(time*.45)*330:0;
+  const aim={x:target.x+Math.cos(time*.2)*sweep,y:target.y+Math.sin(time*.2)*sweep,z:target.z||0};
+  const yaw=Math.atan2(aim.y-airUnit.y,aim.x-airUnit.x),pitch=Math.atan2(aim.z+15-airUnit.z,Math.max(1,distance(aim,airUnit)));
+  airUnit.beamYaw=(airUnit.beamYaw??yaw)+clamp(angD(yaw,airUnit.beamYaw??yaw),-dt*.8,dt*.8);
+  airUnit.beamPitch=(airUnit.beamPitch??pitch)+clamp(pitch-(airUnit.beamPitch??pitch),-dt*.7,dt*.7);
+  if(lightStrength(helicopterBeam(),player)>.025){policeFix={x:player.x,y:player.y,z:player.z||0,a:player.a,seen:true};airUnit.lastSeen=time;unseen=0;}
+
  }
  for(let i=spikes.length-1;i>=0;i--){
   const s=spikes[i];s.ttl-=dt;
@@ -3943,7 +4120,7 @@ function mergeRightClear(c){
 function trafficMood(c,dt){
  if(c.kind!=='traffic'||!c.leg)return;
  const obstruction=obstacle(c),blocker=c.frontObstacle;
- const nearCop=cars.find(o=>o.kind==='cop'&&!o.dead&&o.role!=='patrol'&&distance(c,o)<450&&o.spd>85);
+ const nearCop=cars.find(o=>o.kind==='cop'&&!o.dead&&o.role!=='patrol'&&distance(c,o)<450&&(o.spd>85||o.role==='pursuit'));
  c.yielding=!!nearCop;
  if(c.passing){
   const p=c.passing,e=c.leg.e,passed=(along(e,c.x,c.y)-along(e,p.blocker.x,p.blocker.y))*c.leg.dir;
@@ -4174,7 +4351,38 @@ function contextAction(){
   if(c)attemptVehicleEntry(c);else if(player.swimming)player.waterJumpQueued=true;
  }
 }
+/* Ground-car window shooting keeps the muzzle and exposed torso in world space. */
+function groundCar(c=player.veh){return !!c&&!['boat','heli','plane','tank','armor'].includes(c.type);}
+function leaning(){return groundCar()&&!!keys.KeyQ&&state==='play';}
+function windowMuzzle(c=player.veh){const side=c.wid/2+9;return {x:c.x+Math.sin(c.a)*side,y:c.y-Math.cos(c.a)*side,z:(c.z||0)+23};}
+function clampWindowAim(c){view.yaw=c.a+clamp(angD(view.yaw,c.a),-Math.PI+.16,.12);view.pitch=clamp(view.pitch,-.65,.6);}
+function updateLean(dt){
+ const active=leaning();
+ if(active&&!view.wasLeaning){view.yaw=player.veh.a-.65;view.pitch=-.02;}
+ view.wasLeaning=active;view.lean=(view.lean||0)+(Number(active)-(view.lean||0))*(1-Math.exp(-dt*14));
+ if(active)clampWindowAim(player.veh);
+}
+function updateWeapon(dt,inCar=false){
+ player.fireT-=dt;
+ if(player.reloadT>0){player.reloadT-=dt;if(player.reloadT<=0){const n=Math.min((weapon()?.capacity||12)-inventory.mag,inventory.ammo);inventory.mag+=n;inventory.ammo-=n;}}
+ const gun=weapon();
+ if(theft||!fireHeld()||player.fireT>0||!gun||player.submerged||inCar&&(!leaning()||hotbar.slot!==1))return;
+ player.fireT=gun.delay;if(!inventory.mag){reloadWeapon();return;}if(player.reloadT>0)return;
+ inventory.mag--;crimeThreat=Math.max(2,crimeThreat);
+ const origin=inCar?windowMuzzle():{x:player.x,y:player.y,z:footEye()};
+ // Converge the physical window muzzle with the camera reticle, without firing through the cabin.
+ let aim=view.yaw,pitch=view.pitch;
+ if(inCar){clampWindowAim(player.veh);const target={x:eye.x+eye.fx*eye.cp*1800,y:eye.y+eye.fy*eye.cp*1800,z:eye.z+eye.sp*1800};aim=Math.atan2(target.y-origin.y,target.x-origin.x);pitch=Math.atan2(target.z-origin.z,distance(origin,target));}
+ for(let i=0;i<gun.pellets;i++){
+  const p=pitch+rnd(-gun.spread,gun.spread),a=aim+rnd(-gun.spread,gun.spread),v=1600,vx=Math.cos(a)*Math.cos(p),vy=Math.sin(a)*Math.cos(p),vz=Math.sin(p);
+  bullets.push({x:origin.x+vx*11,y:origin.y+vy*11,z:origin.z+vz*11,vx:vx*v,vy:vy*v,vz:vz*v,life:1.4,o:'p',dmg:gun.damage});
+ }
+ view.recoil=1;sfx.shot();crime(12,player);fear(player.x,player.y,650);reportNoise(player.x,player.y,700);
+ if(covers(baseBounds,player.x,player.y))raiseSecurity('base',2);
+}
+
 function updPlayer(dt){
+ updateLean(dt);
  player.hit=Math.max(0,player.hit-dt);player.hurtT+=dt;
  player.crouching=!!keys.KeyC;
  if(actQ){actQ=false;contextAction();}
@@ -4207,25 +4415,7 @@ function updPlayer(dt){
 
  if(run&&mag>.05)player.stamina=Math.max(0,player.stamina-dt*MOVEMENT.staminaDrain);
  else player.stamina=Math.min(100,player.stamina+dt*(mag>.05?MOVEMENT.jogRecovery:MOVEMENT.restRecovery));
- player.fireT-=dt;
- if(player.reloadT>0){
-  player.reloadT-=dt;
-  if(player.reloadT<=0){const n=Math.min((weapon()?.capacity||12)-inventory.mag,inventory.ammo);inventory.mag+=n;inventory.ammo-=n;}
- }
- const gun=weapon();
- if(!theft&&fireHeld()&&player.fireT<=0&&gun&&!player.submerged){
-  player.fireT=gun.delay;
-  if(!inventory.mag){reloadWeapon();return;}
-  if(player.reloadT>0)return;
-  inventory.mag--;crimeThreat=Math.max(2,crimeThreat);
-  for(let i=0;i<gun.pellets;i++){
-   const pitch=view.pitch+rnd(-gun.spread,gun.spread),aim=a+rnd(-gun.spread,gun.spread),v=1600;
-   const vx=Math.cos(aim)*Math.cos(pitch),vy=Math.sin(aim)*Math.cos(pitch),vz=Math.sin(pitch),z=footEye();
-   bullets.push({x:player.x+vx*11,y:player.y+vy*11,z:z+vz*11,vx:vx*v,vy:vy*v,vz:vz*v,life:1.4,o:'p',dmg:gun.damage});
-  }
-  view.recoil=1;sfx.shot();crime(12,player);fear(player.x,player.y,650);reportNoise(player.x,player.y,700);
-  if(covers(baseBounds,player.x,player.y))raiseSecurity('base',2);
- }
+ updateWeapon(dt);
 
  for(let i=drops.length-1;i>=0;i--){
   const p=drops[i];p.t-=dt;if(p.card){if(p.t<=0)drops.splice(i,1);continue;}
@@ -4274,7 +4464,7 @@ function gunMesh(m){
 }
 
 function update(dt){
- time+=dt;frameDt=dt;updateWorldClock(dt);updateWorldLights();
+ time+=dt;frameDt=dt;updateWorldClock(dt);
  for(const c of cars)if(c.grabbed&&(player.veh!==c||c.spd>30||c.grabbed.officer.state==='dead'||distance(c.grabbed.officer,vehicleDoor(c,c.grabbed.side))>24||!safeDoor(c,vehicleDoor(c,c.grabbed.side)))){c.grabbed.officer.grabbing=null;c.grabbed=null;}
  updateArchitecture(dt);if(started&&state==='play'){updateArrest(dt);armedReaction(dt);updateAirAndSpikes(dt);}
  if(state!=='play'){stT+=dt;actQ=false;if((state==='wasted'||state==='busted')&&stT>2.8)respawn()}
@@ -4282,8 +4472,9 @@ function update(dt){
  for(const c of cars)updCar(c,dt);
  workMarineNavigation();
  for(let i=0;i<cars.length;i++)for(let j=i+1;j<cars.length;j++)if(Math.abs((cars[i].z||0)-(cars[j].z||0))<24)carCollide(cars[i],cars[j]);
- if(player.veh){player.x=player.veh.x;player.y=player.veh.y;player.z=player.veh.z||0;player.a=player.veh.a;}
+ if(player.veh){player.x=player.veh.x;player.y=player.veh.y;player.z=player.veh.z||0;player.a=player.veh.a;if(started&&state==='play')updateWeapon(dt,true);}
  for(const n of npcs)updNpc(n,dt);
+ updateWorldLights();
  updFollower(dt);updSecurity(dt);updShells(dt);updDefenses(dt);
  updBullets(dt);
  if(started&&state==='play'){updWanted(dt);updJob(dt);updateNav(dt)}
@@ -4348,6 +4539,14 @@ function camera(){
  }else if(car){
   if(aircraft(car)){view.orbit=0;chase.yaw=car.a;}
   chaseCamera(car);
+  if(groundCar(car)&&(view.lean||0)>.01){
+   const amount=view.lean,co=Math.cos(car.a),si=Math.sin(car.a),origin=windowMuzzle(car);
+   const target={x:origin.x-co*52+si*15,y:origin.y-si*52-co*15,z:origin.z+13};
+   // Keep the shoulder camera on this side of walls and bridge barriers.
+   let arm=1;for(let i=1;i<=12;i++){const t=i/12;if(solidAtHeight(origin.x+(target.x-origin.x)*t,origin.y+(target.y-origin.y)*t,origin.z+(target.z-origin.z)*t)){arm=(i-1)/12;break;}}
+   eye.x+=(origin.x+(target.x-origin.x)*arm-eye.x)*amount;eye.y+=(origin.y+(target.y-origin.y)*arm-eye.y)*amount;eye.z+=(origin.z+(target.z-origin.z)*arm-eye.z)*amount;
+   eye.yaw+=angD(view.yaw,eye.yaw)*amount;eye.pitch+=(view.pitch-eye.pitch)*amount;
+  }
  }else{
   eye.x=player.x;eye.y=player.y;eye.z=footEye();
   eye.yaw=view.yaw;eye.pitch=view.pitch;
@@ -4469,6 +4668,7 @@ function makeRenderer(){
    vec3 c=material>9.5?vec3(.08,.26,.31):tint*vec3(.42,.76,.82);
    gl_FragColor=vec4(mix(c,deep,fog),1.);return;
   }
+  if(material>19.5){gl_FragColor=vec4(tint*(1.-daylight)*(1.-smoothstep(6000.,14000.,distanceToEye)),1.);return;}
   if(material>9.5){
    float ripple=sin(position.x*.055+position.y*.032)*.012;
    gl_FragColor=vec4(mix(illuminate(tint+vec3(ripple)),haze,smoothstep(1600.,18000.,distanceToEye)*.65),1.);return;
@@ -4560,6 +4760,8 @@ function makeRenderer(){
   const cached={stamp:facadeStamp(b),sides,roof};facadeBuffers.set(b.id,cached);return cached;
  };
  for(const b of buildings)refreshFacade(b);
+ const streetPools=streetLightGeometry().map(c=>({x:c.x,y:c.y,buffer:build(new Float32Array(c.data),gpu.STATIC_DRAW),count:c.data.length/7}));
+ const positions=new Float32Array(32),directions=new Float32Array(32),colors=new Float32Array(24);
  const dynamic=build(0,gpu.DYNAMIC_DRAW);
  const sky=build(new Float32Array([[-1,-1],[3,-1],[-1,3]].flatMap(([x,y])=>[x,y,0,0,0,0,-1])),gpu.STATIC_DRAW);
  worldMesh.data=[];
@@ -4582,18 +4784,16 @@ function makeRenderer(){
   gpu.drawArrays(gpu.TRIANGLES,first,count);
  };
  return actors=>{
-  const active=worldLights.filter(l=>distance(l,eye)<l.range+450).sort((a,b)=>
-   (distance(a,eye)-(a.owner===player.veh?3000:0))-(distance(b,eye)-(b.owner===player.veh?3000:0))).slice(0,8);
-  const positions=new Float32Array(32),directions=new Float32Array(32),colors=new Float32Array(24);
+  const active=selectShadowLights();positions.fill(0);directions.fill(0);colors.fill(0);
   gpu.uniform1f(uniforms.daylight,daylight());gpu.uniform1i(uniforms.shadowAtlas,0);
   gpu.uniform1f(uniforms.underwater,0);
   gpu.bindBuffer(gpu.ARRAY_BUFFER,dynamic);gpu.bufferData(gpu.ARRAY_BUFFER,new Float32Array(actors.data),gpu.DYNAMIC_DRAW);
-  if(active.length){
+  if(active.some(slot=>slot.light)){
    gpu.bindTexture(gpu.TEXTURE_2D,null);gpu.bindFramebuffer(gpu.FRAMEBUFFER,shadowBuffer);
    gpu.clearColor(1,1,1,1);gpu.clear(gpu.COLOR_BUFFER_BIT|gpu.DEPTH_BUFFER_BIT);gpu.uniform1f(uniforms.shadowPass,1);
    for(let i=0;i<active.length;i++){
-    const l=active[i],cp=Math.cos(l.pitch),sp=Math.sin(l.pitch),fx=Math.cos(l.a),fy=Math.sin(l.a),lens=l.cone/Math.sqrt(1-l.cone*l.cone);
-    positions.set([l.x,l.y,l.z,l.range],i*4);directions.set([...l.dir,l.cone],i*4);colors.set(l.color,i*3);
+    const slot=active[i],l=slot.light;if(!l)continue;const cp=Math.cos(l.pitch),sp=Math.sin(l.pitch),fx=Math.cos(l.a),fy=Math.sin(l.a),lens=l.cone/Math.sqrt(1-l.cone*l.cone);
+    positions.set([l.x,l.y,l.z,l.range],i*4);directions.set([...l.dir,l.cone],i*4);colors.set(l.color.map(v=>v*slot.weight),i*3);
     gpu.viewport(i%4*256,Math.floor(i/4)*256,256,256);
     gpu.uniform3f(uniforms.eye,l.x,l.y,l.z);gpu.uniform3f(uniforms.cameraRight,-fy,fx,0);
     gpu.uniform3f(uniforms.cameraUp,-fx*sp,-fy*sp,cp);gpu.uniform3f(uniforms.cameraForward,...l.dir);
@@ -4645,6 +4845,7 @@ function makeRenderer(){
   gpu.bindBuffer(gpu.ARRAY_BUFFER,dynamic);
   gpu.bufferData(gpu.ARRAY_BUFFER,new Float32Array(actors.data),gpu.DYNAMIC_DRAW);
   draw(dynamic,actors.data.length/stride);
+  if(daylight()<1){gpu.enable(gpu.BLEND);gpu.blendFunc(gpu.ONE,gpu.ONE);gpu.depthMask(false);for(const c of streetPools)if(distance(c,eye)<14500)draw(c.buffer,c.count);gpu.depthMask(true);gpu.disable(gpu.BLEND);}
   if(actors.glass?.length){gpu.enable(gpu.BLEND);gpu.blendFunc(gpu.SRC_ALPHA,gpu.ONE_MINUS_SRC_ALPHA);gpu.depthMask(false);gpu.bufferData(gpu.ARRAY_BUFFER,new Float32Array(actors.glass),gpu.DYNAMIC_DRAW);draw(dynamic,actors.glass.length/stride);gpu.depthMask(true);gpu.disable(gpu.BLEND);}
  };
 }
@@ -4733,6 +4934,12 @@ function drawCar(m,c){
   const side=c.grabbed?.side??-1,angle=a+side*.9;
   m.box(x-si*side*(wid/2+7),y+co*side*(wid/2+7),5,24,2,15,paint,angle);
  }
+ if(c===player.veh&&(view.lean||0)>.15){
+  const p=windowMuzzle(c),z=p.z-(c.z||0),aim=view.yaw;
+  m.box(p.x,p.y,z-7,10,10,12,'#425562',a);m.tube(p.x,p.y,z+5,4.4,4,6,'#d1a480',7);
+  m.box(p.x+Math.cos(aim)*8,p.y+Math.sin(aim)*8,z,14,4,4,'#b18b70',aim);
+  m.box(p.x+Math.cos(aim)*16,p.y+Math.sin(aim)*16,z+2,10,3,3,'#303b43',aim);
+ }
  for(let i=start+2;i<m.data.length;i+=7)m.data[i]+=c.z||0;
 }
 function drawPerson(m,n){
@@ -4802,7 +5009,7 @@ function screenShape(points,fill,stroke=null,width=1){
  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=width;ctx.stroke();}
 }
 function drawViewModel(){
- if(player.veh||state!=='play'||player.submerged||!weapon())return;
+ if(player.veh&&!leaning()||state!=='play'||player.submerged||!weapon())return;
  ctx.strokeStyle='#fff3da';ctx.lineWidth=1.4;
  ctx.beginPath();ctx.moveTo(W/2-5,H/2);ctx.lineTo(W/2+5,H/2);ctx.moveTo(W/2,H/2-5);ctx.lineTo(W/2,H/2+5);ctx.stroke();
 }
@@ -5011,7 +5218,7 @@ function drawHud(){
  setText('oxygen-label','OXYGEN '+Math.ceil(player.breath)+'%');
  setText('condition-label','VEHICLE HEALTH '+(v?Math.max(0,Math.ceil(v.hp/v.maxHp*100)):0)+'%');
  setText('nitro-label','NITRO '+(v?Math.round(v.nitro*100):0)+'%');
- setText('weapon-status',v?aircraft(v)?'F exit · '+Math.round((v.z||0)/4)+' ft altitude':v.type==='tank'?'Mouse aims · click fires':'H honk · E exit':player.inWater?'W + look to swim · Space to jump · '+Math.ceil(player.breath)+'% oxygen':(player.reloadT>0?'Reloading':weapon()?weapon().name+' · '+inventory.mag+' / '+inventory.ammo+' · R reload':hotbar.slot===4?'Bypass tools · E to use':'Unarmed · 2 draw pistol · H holster')+(player.crouching?' · Crouched':''));
+ setText('weapon-status',v?aircraft(v)?'F exit · '+Math.round((v.z||0)/4)+' ft altitude':v.type==='tank'?'Mouse aims · click fires':leaning()?(hotbar.slot===1?'LEFT WINDOW · '+(player.reloadT>0?'Reloading':inventory.mag+' / '+inventory.ammo)+' · click fires · R reload · release Q to retract':'LEFT WINDOW · 2 draw pistol'):'Hold Q · left-window aim · H honk · E exit':player.inWater?'W + look to swim · Space to jump · '+Math.ceil(player.breath)+'% oxygen':(player.reloadT>0?'Reloading':weapon()?weapon().name+' · '+inventory.mag+' / '+inventory.ammo+' · R reload':hotbar.slot===4?'Bypass tools · E to use':'Unarmed · 2 draw pistol · H holster')+(player.crouching?' · Crouched':''));
  setText('police-state',witnessCalls.length?'Witness calling dispatch':
   wanted?(dispatch&&!dispatch.confirmed?'Dispatch assigning units':unseen>7?'Police searching':dispatch?.onFoot?'Officers on foot':'Police responding'):'');
  $('vitals').style.setProperty('--health',clamp(player.hp,0,100)+'%');

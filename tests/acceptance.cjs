@@ -4,12 +4,14 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 const root=path.resolve(__dirname,'..');
 const source=fs.readFileSync(path.join(root,'Kestrel Bay.html'),'utf8').split('<script>')[1].split('</script>')[0];
 new vm.Script(source); // syntax-check the shipped source, not a second implementation
-for(const file of (process.argv.length>2?process.argv.slice(2):['geometry.js','response.js','campaign.js','pursuit-regressions.js','water-impacts.js','encounters.js','fire-escapes.js','driving-city.js','dock-dispatch.js','night-security.js','marine.js','frame-budget.js','accessibility.js'])){
+for(const file of (process.argv.length>2?process.argv.slice(2):['geometry.js','response.js','campaign.js','pursuit-regressions.js','water-impacts.js','encounters.js','fire-escapes.js','driving-city.js','dock-dispatch.js','night-security.js','marine.js','frame-budget.js','accessibility.js','police-balance.js'])){
  const noop=()=>{},context=new Proxy({}, {get:()=>noop});
  const element=()=>({getContext:type=>type==='webgl'?null:context,clientWidth:1280,clientHeight:800,addEventListener:noop,
   style:{setProperty:noop},classList:{add:noop,toggle:noop},dataset:{},replaceChildren:noop,append:noop,setAttribute:noop,querySelectorAll:()=>[]});
  const els=new Map(),document={addEventListener:noop,getElementById:id=>{if(!els.has(id))els.set(id,element());return els.get(id);},createElement:element,querySelectorAll:()=>[element(),element()],body:element()};
- const world=vm.createContext({console,assert,window:{},document,navigator:{},innerWidth:1280,innerHeight:800,
+ // Reproducible traffic, burst pauses and spawn selection in acceptance scenarios.
+ let seed=0x4b455354;const testMath=Object.create(Math);testMath.random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+ const world=vm.createContext({console,assert,Math:testMath,window:{},document,navigator:{},innerWidth:1280,innerHeight:800,
   performance:{now:()=>0},addEventListener:noop,requestAnimationFrame:noop,setTimeout:noop});
  const test=fs.readFileSync(path.join(__dirname,file),'utf8');
  console.log('\n'+file);

@@ -11,7 +11,7 @@ console.log('Both performance top speeds reduced 10%; cruiser unchanged; striped
 resetScene();const span=roads.find(e=>e.bridge&&e.a.id==='bridgeN1'),after=roads.find(e=>e.bridge&&e.a===span.b);
 assert.ok(span&&after);const route=[span,after,...roads.filter(e=>e.bridge&&e.a===after.b)];
 const target=roadCar('sport',span,1,span.len-850,'player'),cruiser=roadCar('cop',span,1,span.len-1600,'cop');
-cruiser.role='pursuit';target.spd=1180;target.z=cruiser.z=120;player.veh=target;cars=[target,cruiser];let index=0,progress=span.len-850,replan=0;const trace=[];
+cruiser.role='pursuit';target.spd=1080;cruiser.spd=1080;cruiser.vx=span.dx*1080;cruiser.vy=span.dy*1080;target.z=cruiser.z=120;player.veh=target;cars=[target,cruiser];let index=0,progress=span.len-850,replan=0;const trace=[];
 const startGap=distance(cruiser,target);
 ticks(7,(dt,i)=>{
  progress+=target.spd*dt;while(progress>route[index].len&&index<route.length-1){progress-=route[index].len;index++;}

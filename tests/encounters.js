@@ -15,7 +15,7 @@ run(10,(dt,i)=>{
  const a=i*dt*MOVEMENT.sprint/65;player.x=32600+Math.cos(a)*65;player.y=9000+Math.sin(a)*65;
  policeFix={x:player.x,y:player.y,z:0,seen:true};
  const before=bullets.length;for(const n of npcs)updOfficer(n,dt);shots+=Math.max(0,bullets.length-before);peakShooters=Math.max(peakShooters,npcs.filter(n=>n.aim||n.burst>0).length);updBullets(dt);
-});console.log('Circular sprint encounter',{hp:player.hp,shots,peakShooters});assert.ok(shots>=12&&player.hp<=70,'Steady circles must not give invulnerability');assert.ok(peakShooters<=2);
+});console.log('Circular sprint encounter',{hp:player.hp,shots,peakShooters});assert.ok(shots>=12&&player.hp<=90&&player.hp>0,'Steady circles must not give invulnerability');assert.ok(peakShooters<=2);
 resetEncounter();cop(player.x-550,player.y-30);cop(player.x-520,player.y+40);
 run(7,(dt)=>{player.y-=MOVEMENT.sprint*dt;policeFix={x:player.x,y:player.y,z:0,seen:true};for(const n of npcs)updOfficer(n,dt);updBullets(dt);});console.log('Straight sprint under fire',{hp:player.hp});assert.ok(player.hp<90);
 resetEncounter();Object.assign(player,{x:27000,y:11470,z:0});const blocked=cop(27000,11770);assert.ok(!seesPlayer(blocked,1200));policeFix={x:blocked.x-100,y:blocked.y,z:0,seen:false};run(1,dt=>{officerCombat(blocked,dt,distance(blocked,player),seesPlayer(blocked,1200));updBullets(dt);});assert.equal(player.hp,100);assert.equal(bullets.length,0);console.log('Actual exterior walls still stop sight and gunfire');
