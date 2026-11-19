@@ -61,3 +61,9 @@ console.log('Production update-loop bridge interception and physical spikes pass
 resetEncounter();const armored=specialVehicle('tank',player.x,player.y+45,0,'military');ejectOccupants(armored);time+=1;for(const n of npcs)updNpc(n,1/60);assert.ok(npcs.some(n=>n.kind==='troop'&&n.patrol.length));console.log('Military vehicle ejection leaves a functioning soldier');
 
 resetEncounter();const empty=roadCar('cop',roads.find(e=>!e.bridge),1,100,'cop');empty.role='pursuit';cruiserCrew(empty);cars=[empty];empty.x+=200;for(const n of npcs)updNpc(n,1/60);assert.ok(npcs.every(n=>n.x===empty.x&&n.y===empty.y));for(const n of npcs)n.state='dead';empty.spd=200;driveAI(empty,1/60);assert.equal(empty.spd,0);console.log('Boarded crews travel with the cruiser; an empty cruiser cannot drive itself');
+
+// Response-cap rotation may retire a distant reserve, never the far bridge holding unit.
+resetEncounter();const fixSpan=roads.find(e=>e.bridge&&e.a.id==='bridgeN1'),fixPosition=lanePoint(fixSpan,1,200);Object.assign(player,{...fixPosition,z:120,a:Math.atan2(fixSpan.dy,fixSpan.dx)});policeFix={x:player.x,y:player.y,z:120,a:player.a,seen:true};dispatch={confirmed:true,age:20};heat=119;wanted=5;
+const protectedPost=roadCar('cop',fixSpan,1,fixSpan.len-100,'cop');protectedPost.role='pursuit';protectedPost.tactic='bridge-exit';cars=[protectedPost];
+for(let i=0;i<5;i++){const reserve=roadCar('cop',fixSpan,1,300+i*100,'cop');reserve.role='staged';reserve.stageTime=time;reserve.tactic='reserve';cars.push(reserve);}
+policeReplan=1;copT=0;updWanted(1/60);assert.equal(protectedPost.role,'pursuit');console.log('Response cap preserves a reserved bridge interception');
