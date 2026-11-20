@@ -1,6 +1,6 @@
 # Midtown free flight
 
-This branch opens a standalone Godot survey of a 2,100 × 2,400 metre Midtown district centered on Bryant Park. Fly with WASD, climb with E, descend with Q, and drag to look. Double-click for captured mouse look and press Escape to release. The speed control runs from 2 to 2,400 mph, with 1 mph steps up to 100 mph, 5 mph steps to 600 mph, and 25 mph steps above that. Touch devices have independent movement, altitude and drag-to-look controls.
+This branch opens a standalone Godot survey of a 2,100 × 2,400 metre Midtown district centered on Bryant Park. Fly with WASD, climb with E, descend with Q, and drag to look. Double-click for captured mouse look and press Escape to release. Press 4 or use the Exit body button to leave a life-size figure at your current position and fly around it. Press 4 again to return to your original viewpoint. The speed control runs from 2 to 2,400 mph, with 1 mph steps up to 100 mph, 5 mph steps to 600 mph, and 25 mph steps above that. Touch devices have independent movement, altitude and drag-to-look controls.
 
 Geometry comes from the [Technical University of Munich NYC CityGML project](https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/) and the underlying NYC Open Data building and street surveys. Building shapes reflect the 2014 survey. The source places streets on a flat plane. Building bases are aligned with that plane while preserving individual building heights. The rendering uses illustrative surface colors.
 

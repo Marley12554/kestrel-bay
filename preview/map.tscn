@@ -1,7 +1,8 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://flight.gd" id="1"]
 [ext_resource type="PackedScene" path="res://meshes/midtown.scn" id="2"]
+[ext_resource type="PackedScene" path="res://body.tscn" id="3"]
 
 [sub_resource type="Environment" id="Env"]
 background_mode = 1
@@ -40,6 +41,9 @@ position = Vector3(0, -0.52, 0)
 mesh = SubResource("GroundMesh")
 
 [node name="Survey" parent="." instance=ExtResource("2")]
+
+[node name="Body" parent="." instance=ExtResource("3")]
+visible = false
 
 [node name="Camera" type="Camera3D" parent="."]
 current = true

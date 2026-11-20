@@ -1,0 +1,129 @@
+[gd_scene load_steps=11 format=3]
+
+[sub_resource type="StandardMaterial3D" id="Coat"]
+albedo_color = Color(0.58, 0.19, 0.085, 1)
+roughness = 0.91
+
+[sub_resource type="StandardMaterial3D" id="Denim"]
+albedo_color = Color(0.09, 0.155, 0.19, 1)
+
+[sub_resource type="StandardMaterial3D" id="Skin"]
+albedo_color = Color(0.69, 0.44, 0.29, 1)
+
+[sub_resource type="StandardMaterial3D" id="Dark"]
+albedo_color = Color(0.11, 0.12, 0.13, 1)
+
+[sub_resource type="SphereMesh" id="Round"]
+radial_segments = 16
+rings = 8
+
+[sub_resource type="CapsuleMesh" id="Sleeve"]
+material = SubResource("Coat")
+radius = 0.066
+height = 0.56
+radial_segments = 12
+rings = 5
+
+[sub_resource type="CapsuleMesh" id="Leg"]
+material = SubResource("Denim")
+radius = 0.087
+height = 0.86
+radial_segments = 12
+rings = 5
+
+[sub_resource type="CapsuleMesh" id="Jacket"]
+material = SubResource("Coat")
+radius = 0.22
+height = 0.68
+radial_segments = 16
+rings = 7
+
+[sub_resource type="CapsuleMesh" id="Head"]
+material = SubResource("Skin")
+radius = 0.107
+height = 0.252
+radial_segments = 16
+rings = 6
+
+[sub_resource type="CylinderMesh" id="Hem"]
+material = SubResource("Coat")
+top_radius = 0.205
+bottom_radius = 0.201
+height = 0.14
+radial_segments = 16
+
+[node name="Body" type="Node3D"]
+
+[node name="LeftLeg" type="MeshInstance3D" parent="."]
+position = Vector3(-0.103, 0.50, -0.026)
+mesh = SubResource("Leg")
+
+[node name="RightLeg" type="MeshInstance3D" parent="."]
+position = Vector3(0.103, 0.50, 0.026)
+mesh = SubResource("Leg")
+
+[node name="LeftBoot" type="MeshInstance3D" parent="."]
+position = Vector3(-0.103, 0.095, -0.071)
+scale = Vector3(0.177, 0.19, 0.30)
+mesh = SubResource("Round")
+material_override = SubResource("Dark")
+
+[node name="RightBoot" type="MeshInstance3D" parent="."]
+position = Vector3(0.103, 0.095, -0.019)
+scale = Vector3(0.177, 0.19, 0.30)
+mesh = SubResource("Round")
+material_override = SubResource("Dark")
+
+[node name="Jacket" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.18, 0)
+scale = Vector3(1, 1, 0.69)
+mesh = SubResource("Jacket")
+
+[node name="Hem" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.94, 0)
+scale = Vector3(1, 1, 0.71)
+mesh = SubResource("Hem")
+
+[node name="LeftSleeve" type="MeshInstance3D" parent="."]
+position = Vector3(-0.227, 1.162, 0)
+rotation_degrees = Vector3(4, 0, -6)
+mesh = SubResource("Sleeve")
+
+[node name="RightSleeve" type="MeshInstance3D" parent="."]
+position = Vector3(0.227, 1.162, 0)
+rotation_degrees = Vector3(4, 0, 6)
+mesh = SubResource("Sleeve")
+
+[node name="LeftHand" type="MeshInstance3D" parent="."]
+position = Vector3(-0.254, 0.869, -0.022)
+scale = Vector3(0.097, 0.148, 0.084)
+mesh = SubResource("Round")
+material_override = SubResource("Skin")
+
+[node name="RightHand" type="MeshInstance3D" parent="."]
+position = Vector3(0.254, 0.869, -0.022)
+scale = Vector3(0.097, 0.148, 0.084)
+mesh = SubResource("Round")
+material_override = SubResource("Skin")
+
+[node name="Collar" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.50, 0)
+scale = Vector3(0.27, 0.16, 0.23)
+mesh = SubResource("Round")
+material_override = SubResource("Dark")
+
+[node name="Head" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.657, 0)
+mesh = SubResource("Head")
+
+[node name="Nose" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.662, -0.099)
+scale = Vector3(0.044, 0.054, 0.054)
+mesh = SubResource("Round")
+material_override = SubResource("Skin")
+
+[node name="Beanie" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.742, 0.005)
+scale = Vector3(0.24, 0.155, 0.24)
+mesh = SubResource("Round")
+material_override = SubResource("Dark")

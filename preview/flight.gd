@@ -1,6 +1,8 @@
 extends Node3D
 
 @onready var camera: Camera3D = $Camera
+@onready var body: Node3D = $Body
+var return_view: Transform3D
 var speed_mph := 95.0
 var yaw := 0.0
 var pitch := 0.0
@@ -43,7 +45,9 @@ func look(delta: Vector2) -> void:
 	camera.rotation = Vector3(pitch, yaw, 0)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventScreenTouch:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_4:
+		toggle_body()
+	elif event is InputEventScreenTouch:
 		if event.pressed and look_finger == -1:
 			look_finger = event.index
 		elif not event.pressed and event.index == look_finger:
@@ -56,7 +60,33 @@ func _unhandled_input(event: InputEvent) -> void:
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or dragging or (web and bool(web.midtownLocked)):
 			look(event.screen_relative)
 
+func toggle_body() -> void:
+	if body.visible:
+		camera.transform = return_view
+		body.hide()
+	else:
+		return_view = camera.transform
+		body.position = camera.position - Vector3.UP * MIN_HEIGHT
+		body.rotation.y = yaw
+		body.show()
+		var offset := body.basis * Vector3(1.5, 2.65, 2.8)
+		if absf(body.position.x + offset.x) > 1350:
+			offset.x *= -1
+		if absf(body.position.z + offset.z) > 1500:
+			offset.z *= -1
+		camera.position = body.position + offset
+		camera.position.y = minf(camera.position.y, MAX_HEIGHT)
+		camera.look_at(body.position + Vector3.UP * 1.0)
+	yaw = camera.rotation.y
+	pitch = camera.rotation.x
+	_reset_clock()
+	if web:
+		web.midtownBodyChanged(body.visible)
+
 func _process(_dt: float) -> void:
+	if web and bool(web.midtownToggleBody):
+		web.midtownToggleBody = false
+		toggle_body()
 	# Engine delta can omit elapsed time at low frame rates. Free flight has no physics steps.
 	var now := Time.get_ticks_usec()
 	var elapsed := (now - last_move_usec) / 1_000_000.0 if last_move_usec != 0 else 0.0
