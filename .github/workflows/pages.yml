@@ -13,14 +13,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Acceptance checks
+      - name: Check Classic
         run: node tests/acceptance.cjs
-      - name: Build static game
-        run: node scripts/build.cjs
+      - name: Cache Godot editor and Web export template
+        id: godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/bin/godot
+            ~/.local/share/godot/export_templates/4.7.1.stable/web_nothreads_release.zip
+          key: godot-4.7.1-linux64-web-release-v1
+      - name: Install verified Godot 4.7.1
+        if: steps.godot.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}
+        env:
+          RELEASE: https://github.com/godotengine/godot-builds/releases/download/4.7.1-stable
+        run: |
+          set -eu
+          curl --fail --location --retry 3 --silent --show-error "$RELEASE/Godot_v4.7.1-stable_linux.x86_64.zip" -o editor.zip
+          echo 'c7ff14fd28472c8d4f193043de30278dcf7e5241a1dcf7566b02e27addaa33ba  editor.zip' | sha256sum --check
+          unzip -q editor.zip
+          install -D -m 0755 Godot_v4.7.1-stable_linux.x86_64 ~/.local/bin/godot
+          curl --fail --location --retry 3 --silent --show-error "$RELEASE/Godot_v4.7.1-stable_export_templates.tpz" -o templates.zip
+          echo '86409db6200b6f8fd3230989c2d2002851f3dd18acf11d7bdbafddf5a0dd0f72  templates.zip' | sha256sum --check
+          template_dir=~/.local/share/godot/export_templates/4.7.1.stable
+          mkdir -p "$template_dir"
+          unzip -j -q templates.zip templates/web_nothreads_release.zip -d "$template_dir"
+      - name: Check the native city and export for the browser
+        run: |
+          export GODOT_BIN="$HOME/.local/bin/godot"
+          node scripts/godot.cjs test
+          node scripts/build.cjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: dist
+          path: dist/site
   deploy:
     needs: build
     runs-on: ubuntu-latest

@@ -1,5 +1,7 @@
 # Kestrel Bay implementation notes
 
+This document records the original HTML edition. The current Godot game, build commands and deployment are described in [README.md](README.md).
+
 The current pass supersedes the original single-island layout and off-map interior plan.
 
 ## World contract

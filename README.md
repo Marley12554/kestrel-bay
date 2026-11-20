@@ -1,10 +1,47 @@
 # Kestrel Bay
 
-A standalone WebGL island-city sandbox. First person on foot, third person in vehicles. No install, server, external assets, or package dependencies.
+A single-player Godot open world set in a compressed New York harbor. Start in Old Harbor, Brooklyn with a parked compact. Cross the river into Manhattan, follow the Queens waterfront, or leave Pier 04 for Blackwater. All eleven operations are available from the map. Free roam, completed jobs and the three endings of *Public Record* are available independently.
 
-**[Play](https://Marley12554.github.io/kestrel-bay/)** · **[Source](https://github.com/Marley12554/kestrel-bay)**
+**[Play Kestrel Bay](https://marley12554.github.io/kestrel-bay/)** · **[Play the original HTML edition](https://marley12554.github.io/kestrel-bay/classic/)**
 
-## Play locally
+## Controls
+
+| Input | Action |
+| --- | --- |
+| WASD, mouse | Walk and look. Click the game view to capture the mouse. |
+| Shift, Space, C | Sprint, jump or rise in water, crouch. Swim in the direction you look. |
+| E, F | Interact or enter/exit a road vehicle or boat. F boards or exits aircraft. |
+| WASD in a car | Accelerate, reverse and steer. Hold Shift, Space or X to drift. H sounds the horn. |
+| Q in a car | Lean from the driver's window. Select the pistol to fire. |
+| 1–5, left click, R | Select equipment, use it and reload. |
+| M, Escape | Map and operations, close a menu or release the mouse. Opening the map pauses sound and time. |
+| Helicopter | WASD to move, E/Q to climb or descend. |
+| Plane | W/S throttle, A/D rudder and mouse to steer or pitch. Landing gear deploys automatically. |
+
+On a touch screen, use the left stick to move and drag the right side to look. Tap Sprint once to toggle it. Vehicles have separate brake and drift controls. A browser with WebGL 2 is required. Saved progress stays in the browser on the origin where you play. The web build imports supported money, completed operations, equipment and earned prison dock progress from Classic.
+
+## Run the Godot edition locally
+
+Open `godot-prototype/project.godot` in Godot 4.7.1 and press Play. For a web release install the matching Web export template and run these commands from the repository root. Set `GODOT_BIN` if your Godot executable is elsewhere.
+
+```sh
+node scripts/godot.cjs test
+node scripts/build.cjs
+node scripts/godot.cjs serve
+```
+
+Open [the local game](http://127.0.0.1:8065/). The single-threaded export and Classic are assembled under `dist/site`. GitHub Actions checks both editions, builds the Web export and publishes that directory to Pages.
+
+With that server running, `node tests/godot-web.cjs` exercises the exported game in Chrome. It checks touch input, pointer capture, the casebook, and a five-star nighttime crossing into a downtown hotel. It also reports frame intervals during the drive. The browser check uses Node 22 or later. Set `CHROME_BIN` for a different Chromium installation, or `KB_SHOTS` to keep screenshots.
+
+## Working on the city
+
+The city layout and the navigation atlas share one source, `scripts/design-city.py`. After changing it, run `python3 scripts/design-city.py` and `node scripts/godot.cjs bake`. The committed scene contains batched exterior geometry. Doors, elevators, nearby furnished floors, police, traffic and missions run in `godot-prototype/bay/`. The original waterfront scene and its regression checks are also part of the project.
+
+<details>
+<summary>Original HTML edition, controls and implementation notes</summary>
+
+### Classic controls
 
 Open `Kestrel Bay.html` in a desktop browser with WebGL enabled. Click **Enter the Bay**, then click the game to capture the mouse. Press Escape to release it. All operations are unlocked and accepted explicitly from the map; completed jobs can be replayed. The next job is never automatically assigned.
 
@@ -59,12 +96,12 @@ Set a map waypoint to **Mariner Grand** in Meridian. Open its north entrance, wa
 
 ```sh
 node tests/acceptance.cjs
-node scripts/build.cjs
+node scripts/build.cjs --classic
 ```
 
 The acceptance harness executes the shipped game functions. It checks footprint overlaps and entrances, physical windows/floors, stair pursuit/descent, room breaches, bridge support, swimming depth and oxygen, opaque-water line of sight, rescue ladders, vehicle ratios, sprinting, incident deduplication, arrest recovery, officer reboarding/redeployment, bridge pursuit and barriers, restrained PIT contact, map audio suspension, helicopters/spikes, directional diving/surfacing and water jumps, bridge reinforcement spawns, glancing impacts and fire escape timing, all seven main mission stage handlers, exact 300-second day/night halves, guarded-zone population restrictions, independent prison access and power, circuit routing/checkpoint recovery, water-route hull clearance, marine pursuit/boarding, unlocked/replayable operations, open-ground and circular-sprint gunfights, physical driver extraction, theft success/cancellation, real officer ejection, fair spawn visibility/travel time, far bridge approach staging, and accelerating fire warnings. It does not replace browser/rendering or human playtesting.
 
-Pushing `main` runs these checks, builds `dist/index.html` from the canonical `Kestrel Bay.html`, and publishes through GitHub Pages. Do not edit the generated `dist` copy.
+Classic is copied from `Kestrel Bay.html` to `dist/site/classic/index.html` during a Pages build.
 
 The renderer caches full-height exterior walls, recessed windows and roofs, then culls offscreen, rear-facing and fully hidden façades. Nearby floors load their furnished interiors; visible towers retain real window geometry across their height. Traffic recovery and navigation are lightweight sandbox AI; they are not a full driving or tactical simulation. Campaign progress is saved to browser local storage. Local-file and hosted saves belong to different browser origins.
 
@@ -123,3 +160,5 @@ Nitro and its fuel meter are removed. Space or X holds the car's handbrake; S/do
 On mobile, tap SPRINT to toggle it on, then move with the joystick; tap it again to return to jogging. Stamina limits still apply. The button becomes a held HAND BRAKE in cars, with a separate held BRAKE pedal that stops without automatically reversing. The on-foot brake button is now JUMP. Entering/exiting vehicles and opening the map clear latched/held input to avoid carrying sprint or a pedal into the next context. Helicopter controls read UP/DOWN and plane controls THR +/THR −.
 
 `tests/drift-mobile.js` adds actual toggle/run/jog movement, independent pedal fingers, pause/context resets, jumping, drift/regrip, variable track appearance, fading, bridge height, terrain gating and aircraft labels. Native mobile browser checks verified running/jogging speeds, HUD/context labels, held pedals and visible drift tracks. The browser harness stopped afterward on a redundant touch-release cleanup command; no additional browser attempts were made.
+
+</details>

@@ -1,0 +1,37 @@
+config_version=5
+
+[application]
+config/name="Kestrel Bay"
+run/main_scene="res://bay/launch.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=800
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+textures/vram_compression/import_etc2_astc=true
+textures/vram_compression/import_s3tc_bptc=true
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+anti_aliasing/quality/msaa_3d=1
+environment/defaults/default_clear_color=Color(0.10, 0.19, 0.25, 1)
+
+[physics]
+common/physics_ticks_per_second=60
+
+[audio]
+driver/enable_input=false
+
+[shader_globals]
+kb_eye={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+kb_dark={
+"type": "float",
+"value": 0.0
+}
