@@ -102,6 +102,8 @@ async function touch(b) {
   await enter(b,true);
   const control = async name => b.atUV(await b.value('kbGodotState.touch_uv.' + name),true);
   await b.wait('kbGodotState.touch_uv.sprint','touch controls');
+  await control('fire');
+  await b.wait('kbGodotState.hands_visible','touch punch');
   const yaw = () => b.value('kbGodotState.yaw');
   const before = await yaw();
   const stick = {x:85,y:236,id:1}, look = {x:545,y:115,id:2};
@@ -157,6 +159,10 @@ async function desktop(b) {
   await b.value('window.recordFrames=false');
   await key('keyDown','1','Digit1',49);await key('keyUp','1','Digit1',49);
   const command = name => b.value('kbGodotCommand(' + JSON.stringify(name) + ')');
+  await b.atUV([.50,.55],false);
+  await b.wait('kbGodotState.hands_visible','mouse punch');
+  await b.screenshot('punch');
+  await command('flyover');await pause(700);await b.screenshot('night-flight');
   await command('riverbank');await pause(400);await b.screenshot('riverbank');
   async function toggleMap() {
     const key = {key:'m',code:'KeyM',windowsVirtualKeyCode:77};
@@ -219,6 +225,30 @@ async function desktop(b) {
   await key('keyDown','e','KeyE',69);await key('keyUp','e','KeyE',69);
   await b.wait('kbGodotState.boat_engine && kbGodotState.sounding_cruisers===0','boat motor in a quiet harbor');
 }
+async function recoverGraphics(b) {
+  // Lose the actual GPU context after Godot creates it, during startup.
+  const hook = await b.send('Page.addScriptToEvaluateOnNewDocument',{source:`
+    if (!new URLSearchParams(location.search).has('graphics')) {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function(...args) {
+        const ctx = original.apply(this,args);
+        if (ctx && this.id === 'canvas' && args[0] === 'webgl2') {
+          HTMLCanvasElement.prototype.getContext = original;
+          const loss = ctx.getExtension('WEBGL_lose_context');
+          setTimeout(() => loss.loseContext(),0);
+        }
+        return ctx;
+      };
+    }`});
+  await b.send('Page.navigate',{url:url.href});
+  await b.wait('document.querySelector("#graphics-recovery a")','context loss recovery',80000);
+  await b.send('Page.removeScriptToEvaluateOnNewDocument',{identifier:hook.identifier});
+  await b.value('document.querySelector("#graphics-recovery a").click()');
+  await b.wait('window.kbGodotState?.low_graphics && kbGodotState.warmup.ready','low graphics relaunch',80000);
+  await b.atUV(await b.value('kbGodotState.enter_uv'),false);
+  await b.wait('kbGodotState.started','play after graphics loss');
+  console.log('Forced WebGL context loss and playable low-graphics restart passed');
+}
 (async()=>{
   const profile=await fs.mkdtemp(path.join(os.tmpdir(),'kestrel-chrome-'));
   const args=['--headless','--enable-gpu','--disable-background-networking','--no-first-run','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'];
@@ -229,6 +259,7 @@ async function desktop(b) {
     await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});
     launched=true;
     b=await connect(path.join(profile,'DevToolsActivePort'),child);
+    if(process.argv.includes('--recovery')) {await recoverGraphics(b);return;}
     if(!process.argv.includes('--desktop'))await touch(b);
     if(!process.argv.includes('--touch'))await desktop(b);
     assert.deepEqual(b.errors,[],'Browser reported errors');

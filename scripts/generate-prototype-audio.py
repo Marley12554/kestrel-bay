@@ -59,3 +59,15 @@ def impact(t,i):
  ring=.13*math.sin(math.tau*491*t)*math.exp(-19*t)
  return (body+crumple+ring)*min(1,t*700)*min(1,(.64-t)*100)
 write('crash',.64,impact)
+
+def fist_voice(name, contact):
+ filtered=0.
+ def sample(t,i):
+  nonlocal filtered
+  filtered=.76*filtered+.24*rng.uniform(-1.,1.)
+  if contact:
+   return min(1,t*430)*math.exp(-t*26)*(.68*math.sin(math.tau*(72*t+.9*(1-math.exp(-45*t))))+.46*filtered)
+  return filtered*math.sin(math.pi*t/.16)**2
+ write(name,.25 if contact else .16,sample)
+fist_voice('swing',False)
+fist_voice('thud',True)

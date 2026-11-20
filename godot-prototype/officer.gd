@@ -85,12 +85,22 @@ func deploy() -> bool:
 			return true
 	return false
 
+func receive_punch():
+	if hp<=0 or boarded:return
+	torso.rotation.x=.16
+	torso.create_tween().tween_property(torso,"rotation:x",0.,.22)
+	ops.alert(position,2)
+	apply_injury(16.)
+
 func take_damage(amount: float) -> void:
 	if hp<=0:
 		return
 	react_to_fire(world.player.position)
-	hp -= amount
 	ops.alert(position,3)
+	apply_injury(amount)
+
+func apply_injury(amount:float):
+	hp-=amount
 	if hp<=0:
 		collision_layer = 0
 		collision_mask = 0

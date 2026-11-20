@@ -61,6 +61,7 @@ var pressure_last=0.
 var next_audio=0.
 var refreshed_hud=0.
 var ownership={}
+var hands=preload("res://bay/hands.gd").new()
 func configure(w:Node3D):
 	rng.seed=982707
 	super(w)
@@ -68,6 +69,8 @@ func configure(w:Node3D):
 	add_child(campaign);campaign.configure(w,self)
 	barrel=w.box(gun,Vector3(0,0,-.33),Vector3(.09,.1,.5),Color("27383b"))
 	barrel.hide()
+	w.player.camera.add_child(hands)
+	hands.configure(self)
 	_create_population()
 	spikes=Node3D.new();add_child(spikes)
 	for i in 12:
@@ -555,12 +558,17 @@ func can_fire_from_vehicle()->bool:return weapon_slot==1 and world.player.leanin
 func select_slot(slot):
 	if slot<0 or slot>4 or not campaign.shop_owned[slot]:return
 	if weapon_slot in [1,2,3]:magazines[weapon_slot]=ammo;reserves[weapon_slot]=reserve
+	if slot!=0:hands.cancel()
 	weapon_slot=slot;armed=slot in [1,2,3];reload_until=0
 	if armed:ammo=magazines[slot];reserve=reserves[slot]
 	if barrel:barrel.visible=slot in [2,3];barrel.scale.z=1.65 if slot==3 else 1.
 	if armed and world.started:
 		for car in world.fleet.get("cruiser",[]):
 			if car.position.distance_to(world.player.position)<23 and sees_player(car.position+Vector3.UP*1.55,[car.get_rid()]):incident(world.player.position,1);break
+func attack_press():
+	if weapon_slot==0:hands.press()
+	else:fire()
+
 func fire():
 	if not armed or hp<=0 or world.clock<next_shot or world.clock<reload_until or map_open or modal or puzzle or lock_target:return
 	if world.player.vehicle and not can_fire_from_vehicle():return
@@ -712,9 +720,9 @@ func _unhandled_input(event):
 			var i=posmod(weapon_slot+step,5)
 			while not campaign.shop_owned[i]:i=posmod(i+step,5)
 			select_slot(i)
-		if event.button_index==MOUSE_BUTTON_LEFT:fire()
+		if event.button_index==MOUSE_BUTTON_LEFT and (world.mobile or Input.mouse_mode==Input.MOUSE_MODE_CAPTURED):attack_press()
 	if event.is_action_pressed("reload"):reload()
-	if event.is_action_pressed("shoot"):fire()
+	if event.is_action_pressed("shoot"):attack_press()
 func interaction_hint()->String:
 	if lock_target:return "Hold to take the driver’s seat" if not entry_latched else ""
 	if puzzle:return ""
@@ -743,6 +751,7 @@ func issue_spawn_ammo():
 		ammo=magazines[1]
 		reserve=reserves[1]
 func reset_run():
+	hands.cancel()
 	if modal:close_modal()
 	if lock_target:cancel_theft()
 	campaign.cleanup()
@@ -753,6 +762,7 @@ func reset_run():
 	campaign.save_progress()
 func _physics_process(dt):
 	if not world.started or get_tree().paused:return
+	hands.tick(dt)
 	if hp<=0:
 		super(dt);return
 	if lock_target:tick_entry(dt)

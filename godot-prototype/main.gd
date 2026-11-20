@@ -522,6 +522,8 @@ func set_night(value: bool) -> void:
 	var sky = environment.sky.sky_material as ProceduralSkyMaterial
 	sky.sky_top_color = Color("081522") if night else Color("385d75")
 	sky.sky_horizon_color = Color("243e51") if night else Color("c1d2d3")
+	sky.ground_horizon_color = sky.sky_horizon_color
+	sky.ground_bottom_color = Color("0b1823") if night else Color("394b52")
 	for lamp in lamps:
 		lamp.visible = night
 	for v in vehicles:

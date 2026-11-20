@@ -20,6 +20,10 @@ void fragment() {
 	bool deco=architecture==2.0;
 	bool workshop=architecture==3.0;
 	float span=curtain?2.12:(workshop?4.6:2.55+fract(seed*.013)*.7);
+	// Pixel footprint in window bays/floors, including steep viewing angles.
+	vec2 footprint=fwidth(UV/vec2(span,3.8));
+	float coverage=max(footprint.x,footprint.y);
+	float distant=smoothstep(.21,.65,coverage);
 	float bay_x=fract((UV.x+span*.5)/span);
 	float aa=max(.004,fwidth(UV.x/span));
 	float edge=smoothstep(.12-aa,.12+aa,bay_x)*(1.-smoothstep(.88-aa,.88+aa,bay_x));
@@ -46,6 +50,21 @@ void fragment() {
 	float sash=1.-smoothstep(.025,.07,abs(level-2.46));
 	glass=mix(glass,stone*.64,max(mullion,sash)*.84);
 	ALBEDO=mix(stone,glass,pane);
-	ROUGHNESS=mix(.86,curtain?.21:.39,pane);
-	EMISSION=pane*lit*vec3(3.8,2.65,.64)*(1.-.76*max(mullion,sash));
+	// Broad, building-anchored lighting survives minification. Fade even those
+	// bands to their mean before they can alias at the far end of the island.
+	// Several adjacent offices share a floor ribbon. As even this group
+	// becomes subpixel, converge on a muted mean for this facade.
+	vec2 group=UV/vec2(span*6.,3.8*4.)+vec2(fract(seed*.31),0.);
+	vec2 width=clamp(fwidth(group),vec2(.01),vec2(.48));
+	vec2 local=fract(group);
+	vec2 ribbon=smoothstep(vec2(.10,.32)-width,vec2(.10,.32)+width,local)
+		*(1.-smoothstep(vec2(.87,.66)-width,vec2(.87,.66)+width,local));
+	float rooms=step(.65,hash(floor(group)+vec2(seed,0.)));
+	float distant_light=mix(ribbon.x*ribbon.y*rooms,.09,smoothstep(.30,.76,max(width.x,width.y)*1.7));
+	float occupied=(curtain?.22:(workshop?.075:.14))*distant_light;
+	vec3 far_glass=mix(vec3(.075,.13,.16),vec3(.24,.32,.35),sky);
+	vec3 far_wall=mix(COLOR.rgb,far_glass,curtain?.69:.45);
+	ALBEDO=mix(ALBEDO,far_wall,distant);
+	ROUGHNESS=mix(mix(.86,curtain?.21:.39,pane),.76,distant);
+	EMISSION=mix(pane*lit*(1.-.76*max(mullion,sash))*vec3(3.8,2.65,.64),occupied*kb_dark*vec3(2.6,1.82,.68),distant);
 }

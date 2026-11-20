@@ -37,6 +37,10 @@ function build() {
   const classic = '<a href="./classic/" style="color:#eed7ac">Play Kestrel Bay Classic</a>';
   let page = html.replace('</body>', '<noscript>' + classic + '</noscript>\n</body>');
   page = page.replace("setStatusMode('notice');", "setStatusMode('notice');\nconst alternate=document.createElement('a');alternate.href='./classic/';alternate.textContent='Play Kestrel Bay Classic';alternate.style.color='#eed7ac';statusNotice.append(document.createElement('br'),alternate);");
+  const engineScript = '<script src="index.js"></script>';
+  if (!page.includes(engineScript)) throw Error('Missing Godot loader script');
+  fs.copyFileSync(path.join(__dirname, 'web-recovery.js'), path.join(output, 'web-recovery.js'));
+  page = page.replace(engineScript, '<script src="web-recovery.js"></script>\n' + engineScript);
   fs.writeFileSync(shell, page);
   buildClassic();
   fs.writeFileSync(path.join(output, '.nojekyll'), '');

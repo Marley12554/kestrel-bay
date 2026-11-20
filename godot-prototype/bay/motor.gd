@@ -23,6 +23,7 @@ var engine_mesh
 var driver
 var crew_head
 var helix
+var propeller:Node3D
 var tail_helix
 var flaps=[]
 var owned=false
@@ -89,7 +90,7 @@ func configure(w:Node3D,at:Vector3,is_boat:bool,is_police:bool,index:int)->void:
 	elif aircraft:
 		max_speed=48. if rotorcraft else 82.
 		acceleration=11.
-		camera_distance=19.
+		camera_distance=19. if rotorcraft else 16.
 	else:
 		max_speed=20.
 		acceleration=3.7
@@ -279,41 +280,90 @@ func _marine_crew():
 		world.box(sailor,Vector3.UP*1.24,Vector3(.29,.34,.29),Color("b78e70"))
 		world.box(sailor,Vector3.UP*1.42,Vector3(.34,.09,.34),Color("283c4d"))
 		seat_bodies.append(sailor)
+# Cross sections follow the longitudinal axis from spinner to rudder.
+func fuselage_station(z:float,y:float,rx:float,ry:float)->Array:
+	var points=[]
+	for i in 12:
+		var angle=i*TAU/12.
+		points.append(Vector3(rx*cos(angle),y+ry*sin(angle),z))
+	return points
+
+func wing_section(x:float,y:float,leading:float,chord:float,depth:float)->Array:
+	return [Vector3(x,y,leading),Vector3(x,y+depth,leading+chord*.24),
+		Vector3(x,y+.02,leading+chord),Vector3(x,y-depth*.45,leading+chord*.27)]
+
+func build_trainer():
+	var alloy=Color("b7c1c4")
+	var orange=Color("d85b32")
+	var ink=Color("263943")
+	shape(Vector3(0,1.20,0),Vector3(1.38,1.46,7.4))
+	shape(Vector3(0,1.08,.14),Vector3(9.8,.23,1.28))
+	engine_mesh=loft([fuselage_station(-4.4,1.35,.38,.40),fuselage_station(-3.4,1.33,.67,.60),
+		fuselage_station(-1.30,1.33,.81,.79),fuselage_station(.90,1.34,.72,.74),
+		fuselage_station(3.9,1.44,.32,.38),fuselage_station(5.16,1.46,.11,.19)],alloy)
+	loft([fuselage_station(-2.05,1.85,.32,.12),fuselage_station(-1.02,1.91,.64,.65),
+		fuselage_station(.47,1.93,.57,.61),fuselage_station(1.50,1.89,.22,.11)],Color("354e60"))
+	loft([fuselage_station(-.31,1.93,.63,.65),fuselage_station(-.21,1.93,.63,.65)],alloy)
+	for side in [-1,1]:
+		var root_section=wing_section(.35*side,1.01,-1.26,2.64,.23)
+		var band=wing_section(4.65*side,1.28,-.72,1.58,.12)
+		var tip=wing_section(5.64*side,1.39,-.42,1.0,.07)
+		loft([root_section,band],alloy)
+		wreck_loss.append(loft([band,tip],orange))
+		var marker=part(Vector3(side*5.55,1.43,-.19),Vector3(.15,.14,.22),alloy)
+		marker.material_override=world.material(Color("e74b3e") if side<0 else Color("49ce88"),true)
+		wreck_loss.append(marker)
+		loft([wing_section(.12*side,1.50,3.16,1.55,.12),
+			wing_section(side*2.25,1.69,4.03,.83,.06)],alloy)
+	# Swept fin and rudder, with a high-visibility cap.
+	var fin_base=[Vector3(-.11,1.54,2.92),Vector3(.11,1.54,2.92),Vector3(.11,1.54,5.14),Vector3(-.11,1.54,5.14)]
+	var fin_band=[Vector3(-.06,2.99,4.17),Vector3(.06,2.99,4.17),Vector3(.06,2.99,5.06),Vector3(-.06,2.99,5.06)]
+	loft([fin_base,fin_band],alloy)
+	loft([fin_band,[Vector3(-.04,3.36,4.47),Vector3(.04,3.36,4.47),Vector3(.04,3.36,5.03),Vector3(-.04,3.36,5.03)]],orange)
+	loft([fuselage_station(-4.93,1.35,.04,.04),fuselage_station(-4.40,1.35,.39,.39)],orange)
+	propeller=Node3D.new()
+	visual.add_child(propeller)
+	propeller.position=Vector3(0,1.35,-4.43)
+	for i in 3:
+		var blade=Node3D.new()
+		propeller.add_child(blade);blade.rotation.z=i*TAU/3.
+		world.box(blade,Vector3(0,.70,0),Vector3(.16,1.03,.06),ink)
+		world.box(blade,Vector3(0,1.25,0),Vector3(.15,.12,.06),orange)
+	for mount in [Vector3(0,0,-2.9),Vector3(-1.35,0,.55),Vector3(1.35,0,.55)]:
+		var gear=Node3D.new();visual.add_child(gear);gear.position=mount
+		world.box(gear,Vector3(0,.67,0),Vector3(.09,.82,.09),alloy)
+		world.cylinder(gear,Vector3(0,.27,0),.27,.17,ink).rotation.z=PI/2
+		flaps.append(gear)
+
 func build_aircraft():
-	var helicopter=rotorcraft
-	var col=Color("374e55") if helicopter else Color("a6a799")
+	if not rotorcraft:
+		build_trainer()
+		return
+	var col=Color("374e55")
 	shape(Vector3(0,1.0,0),Vector3(2.3,1.95,5.3))
 	engine_mesh=loft([ring(.55,.81,2.35,2.35),ring(1.33,1.12,2.84,2.45),ring(2.19,.64,1.65,1.7)],col)
 	loft([ring(1.33,1.13,2.86,.38),ring(2.15,.63,1.73,.3)],Color("476676"))
 	part(Vector3(0,1.5,4.15),Vector3(.38,.51,4.5),col)
-	if helicopter:
-		helix=Node3D.new()
-		visual.add_child(helix)
-		helix.position.y=2.91
-		for angle in [0.,PI/2]:
-			world.box(helix,Vector3.ZERO,Vector3(10,.075,.22),Color("333c3c")).rotation.y=angle
-		part(Vector3(0,2.48,0),Vector3(.34,.88,.34),col)
-		tail_helix=Node3D.new()
-		visual.add_child(tail_helix)
-		tail_helix.position=Vector3(.26,1.91,6.19)
-		for a in [0.,PI/2]:
-			world.box(tail_helix,Vector3.ZERO,Vector3(.09,2.1,.17),Color("424b49")).rotation.x=a
-		for side in [-1,1]:
-			part(Vector3(side*1.12,.2,0),Vector3(.16,.21,4.6),col)
-			part(Vector3(side*.99,.45,.45),Vector3(.16,.64,.18),col)
-		searchlight=SpotLight3D.new()
-		visual.add_child(searchlight)
-		searchlight.position=Vector3(0,.54,-1.66)
-		searchlight.spot_range=225
-		searchlight.spot_angle=17
-		searchlight.light_energy=6
-	else:
-		for side in [-1,1]:
-			var wing=part(Vector3(side*2.71,1.13,.42),Vector3(4.8,.22,1.64),col)
-			wing.rotation.y=side*-.18
-			flaps.append(part(Vector3(side*.93,.32,0),Vector3(.28,.57,.50),Color("313a39")))
-		part(Vector3(0,2.19,5.8),Vector3(.22,1.88,1.4),col)
-		part(Vector3(0,1.6,5.75),Vector3(3.9,.14,.92),col)
+	helix=Node3D.new()
+	visual.add_child(helix)
+	helix.position.y=2.91
+	for angle in [0.,PI/2]:
+		world.box(helix,Vector3.ZERO,Vector3(10,.075,.22),Color("333c3c")).rotation.y=angle
+	part(Vector3(0,2.48,0),Vector3(.34,.88,.34),col)
+	tail_helix=Node3D.new()
+	visual.add_child(tail_helix)
+	tail_helix.position=Vector3(.26,1.91,6.19)
+	for a in [0.,PI/2]:
+		world.box(tail_helix,Vector3.ZERO,Vector3(.09,2.1,.17),Color("424b49")).rotation.x=a
+	for side in [-1,1]:
+		part(Vector3(side*1.12,.2,0),Vector3(.16,.21,4.6),col)
+		part(Vector3(side*.99,.45,.45),Vector3(.16,.64,.18),col)
+	searchlight=SpotLight3D.new()
+	visual.add_child(searchlight)
+	searchlight.position=Vector3(0,.54,-1.66)
+	searchlight.spot_range=225
+	searchlight.spot_angle=17
+	searchlight.light_energy=6
 func reset_vehicle():
 	super()
 	wreck=false
@@ -334,6 +384,9 @@ func reset_vehicle():
 	for lens in flash_lenses:lens.show()
 	if helix:helix.show()
 	if tail_helix:tail_helix.show()
+	if propeller:
+		propeller.show()
+		for gear in flaps:gear.show()
 	captain_hp=75
 	gunner_hp=65
 	landing_aid=false
@@ -397,6 +450,7 @@ func detonate():
 		s.collision_layer=0
 	if helix:helix.hide()
 	if tail_helix:tail_helix.hide()
+	if propeller:propeller.hide()
 	for lens in flash_lenses:lens.hide()
 	for member in crew:
 		if member.boarded:member.hp=0
@@ -713,6 +767,7 @@ func _fly(dt):
 	move_and_slide()
 	if burning>0 and (get_slide_collision_count()>0 or position.y<.7):detonate()
 	speed=Vector2(velocity.x,velocity.z).length()
+	if propeller and occupied and not wreck:propeller.rotation.z+=dt*(19.+air_throttle*51.)
 	if helix and not wreck:
 		var multiplier=1. if occupied or model=="spotter" else .0
 		helix.rotation.y+=dt*34*multiplier

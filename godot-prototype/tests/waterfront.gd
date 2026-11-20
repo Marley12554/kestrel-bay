@@ -13,6 +13,27 @@ func run():
 	root.add_child(w);await frames(6);w.start_test();await frames(12)
 	var p=w.player
 	var o=w.ops
+	# Contact is evaluated at extension and respects intervening geometry.
+	var actor=o.civilians[0]
+	var home=actor.position
+	actor.set_physics_process(false)
+	p.reset_player(Vector3(0,2.65,92));p.yaw=0.;p.pitch=0.
+	actor.position=p.position+Vector3.FORWARD*1.1
+	await frames(2)
+	var initial_health=actor.hp
+	o.attack_press();await frames(3)
+	check(o.hands.visible and actor.hp==initial_health,"Visible wind-up precedes contact")
+	await frames(10)
+	check(actor.hp==initial_health-16,"One punch lands on extension")
+	var first_side=o.hands.side
+	o.attack_press();await frames(27)
+	check(o.hands.side!=first_side and actor.hp==initial_health-32,"Recovery buffers the opposite hand")
+	await frames(21)
+	var wall=w.box(w,p.position+Vector3(0,1.,-.61),Vector3(1.,2.2,.12),Color.GRAY,true)
+	await frames(1);o.attack_press();await frames(20)
+	check(actor.hp==initial_health-32,"Solid wall blocks melee")
+	wall.queue_free();actor.position=home;actor.hp=initial_health;actor.set_physics_process(true)
+	o.hands.cancel();o.wanted=0;w.chase=false;o.reports.clear()
 	# Approach public banks from the river, disembark, and use normal swim/walk controls.
 	for ix in [0,1]:
 		var poly=w.atlas.outlines[ix]

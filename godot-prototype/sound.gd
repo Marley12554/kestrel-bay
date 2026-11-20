@@ -1,7 +1,7 @@
 extends Node
 
 var world: Node3D
-var sounds = {"crash":preload("res://audio/crash.wav"),"horn":preload("res://audio/horn.wav"),"air":preload("res://audio/air.wav"),"blast":preload("res://audio/blast.wav"),"pressure":preload("res://audio/pressure.wav"),"shotgun":preload("res://audio/shotgun.wav"),"carbine":preload("res://audio/carbine.wav"),"shot":preload("res://audio/shot.wav"),"reload":preload("res://audio/reload.wav"),"click":preload("res://audio/click.wav"),"glass":preload("res://audio/glass.wav")}
+var sounds = {"swing":preload("res://audio/swing.wav"),"thud":preload("res://audio/thud.wav"),"crash":preload("res://audio/crash.wav"),"horn":preload("res://audio/horn.wav"),"air":preload("res://audio/air.wav"),"blast":preload("res://audio/blast.wav"),"pressure":preload("res://audio/pressure.wav"),"shotgun":preload("res://audio/shotgun.wav"),"carbine":preload("res://audio/carbine.wav"),"shot":preload("res://audio/shot.wav"),"reload":preload("res://audio/reload.wav"),"click":preload("res://audio/click.wav"),"glass":preload("res://audio/glass.wav")}
 var road_engine
 var marine_engine
 var voices=[]

@@ -25,6 +25,7 @@ var fleet={}
 var labels3=[]
 var ui_root
 var state_before_reset=""
+var low_graphics=false
 var mobile=false
 var qa=false
 var next_light=0.
@@ -38,6 +39,10 @@ func _ready():
 	qa=OS.get_cmdline_user_args().has("--qa") or (OS.has_feature("web") and bool(JavaScriptBridge.eval("new URLSearchParams(location.search).has('qa')")))
 	mobile=OS.has_feature("mobile") or (OS.has_feature("web") and bool(JavaScriptBridge.eval("navigator.maxTouchPoints > 1")))
 	if qa and OS.has_feature("web"):JavaScriptBridge.eval("window.kbBootStages=window.kbBootStages||[]")
+	low_graphics=OS.has_feature("web") and bool(JavaScriptBridge.eval("new URLSearchParams(location.search).get('graphics') === 'low'"))
+	if OS.has_feature("web"):
+		update_render_budget()
+		get_window().size_changed.connect(update_render_budget)
 	loading_stage("city scene")
 	var vertex_material=StandardMaterial3D.new()
 	vertex_material.vertex_color_use_as_albedo=true
@@ -50,15 +55,20 @@ func _ready():
 	glass.cull_mode=BaseMaterial3D.CULL_DISABLED
 	glass.roughness=.2
 	super()
-	environment.glow_enabled=true
+	environment.glow_enabled=not low_graphics
+	if low_graphics:sun.shadow_enabled=false
 	environment.glow_intensity=0.
 	environment.glow_hdr_threshold=.86
 	environment.glow_blend_mode=Environment.GLOW_BLEND_MODE_ADDITIVE
 	environment.glow_bloom=.04
 	player.camera.far=5600
 	player.camera.near=.16
-	if mobile:get_viewport().scaling_3d_scale=.62
 	update_rooms(true)
+func update_render_budget():
+	var pixels=get_window().size
+	var budget=960.*540. if low_graphics else (1280.*720. if mobile else 1920.*1080.)
+	get_viewport().scaling_3d_scale=minf(.68 if low_graphics else (.72 if mobile else 1.),sqrt(budget/maxf(1.,float(pixels.x)*pixels.y)))
+
 func lighting_warmup_views()->Array:
 	var views=super()
 	# Four distinct material paths, each exercised in daylight and at night.
@@ -437,6 +447,8 @@ func _process(dt):
 		var sky=environment.sky.sky_material
 		sky.sky_top_color=Color("385d75").lerp(Color("081522"),blend)
 		sky.sky_horizon_color=Color("c1d2d3").lerp(Color("243e51"),blend)
+		sky.ground_horizon_color=sky.sky_horizon_color
+		sky.ground_bottom_color=Color("394b52").lerp(Color("0b1823"),blend)
 	RenderingServer.global_shader_parameter_set("kb_eye",player.camera.global_position)
 	var lamp_power=1. if night_lock else smoothstep(316.,341.,day_time)*(1.-smoothstep(578.,598.,day_time))
 	RenderingServer.global_shader_parameter_set("kb_dark",lamp_power)
@@ -494,15 +506,17 @@ func snapshot()->Dictionary:
 	info["slot"]=ops.weapon_slot
 	info["yaw"]=player.yaw
 	info["mobile"]=mobile
+	info["low_graphics"]=low_graphics
+	info["hands_visible"]=ops.hands.visible
 	info["sounding_cruisers"]=ops.audio.sirens.filter(func(s):return s.player.playing).size()
 	info["boat_engine"]=player.vehicle!=null and player.vehicle.boat and ops.audio.engine.stream==ops.audio.marine_engine
 	info["touch_sprint"]=player.mobile_sprint
-	var dimensions=Vector2(get_window().size)
-	var button_center=start_button.get_screen_transform()*(start_button.size*.5)/dimensions
+	var dimensions=get_viewport().get_visible_rect().size
+	var button_center=start_button.get_global_transform_with_canvas()*(start_button.size*.5)/dimensions
 	info["enter_uv"]=[button_center.x,button_center.y]
 	info["touch_uv"]={}
 	for id in ops.hud.mobile_buttons:
-		var uv=ops.hud.get_screen_transform()*Vector2(ops.hud.mobile_buttons[id])/dimensions
+		var uv=ops.hud.get_global_transform_with_canvas()*Vector2(ops.hud.mobile_buttons[id])/dimensions
 		info.touch_uv[id]=[uv.x,uv.y]
 	info["buttons"]={}
 	if ops.map_open:
@@ -515,6 +529,13 @@ func _browser_command(args:Array):
 	if not qa or args.is_empty():return
 	var id=String(args[0])
 	match id:
+		"flyover":
+			player.reset_player(Vector3(-465,123,-670))
+			var plane=fleet.plane[0]
+			plane.position=player.position;plane.rotation=Vector3(0,1.71,0)
+			plane.speed=51.;plane.velocity=-plane.global_basis.z*51.;plane.air_throttle=.66
+			player.board(plane);player.yaw=plane.rotation.y;player.pitch=-.06
+			day_time=434.;set_night(true)
 		"riverbank":
 			var line=atlas.outlines[1]
 			var mid=(line[2]+line[3])*.5

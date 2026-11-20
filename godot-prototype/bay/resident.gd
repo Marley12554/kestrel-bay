@@ -19,6 +19,7 @@ var next_choice=0.
 var last_fire=0.
 var path=PackedVector3Array()
 var active=true
+var upper=Node3D.new()
 var last_impact=-10.
 var notice_at=0.
 var refuge=Vector3.INF
@@ -38,8 +39,9 @@ func configure(w,kind:String,points:PackedVector3Array,color:Color):
 	cap.position.y=.88
 	cap.shape=sh
 	add_child(cap)
-	var jacket=world.box(self,Vector3(0,1.06,0),Vector3(.43,.55,.26),color)
-	var head=world.cylinder(self,Vector3(0,1.55,0),.145,.30,Color(["b78d72","d4ac8a","916c59"][get_instance_id()%3]))
+	add_child(upper)
+	var jacket=world.box(upper,Vector3(0,1.06,0),Vector3(.43,.55,.26),color)
+	var head=world.cylinder(upper,Vector3(0,1.55,0),.145,.30,Color(["b78d72","d4ac8a","916c59"][get_instance_id()%3]))
 	head.mesh.radial_segments=8
 	for side in [-1,1]:
 		var leg=Node3D.new()
@@ -47,9 +49,9 @@ func configure(w,kind:String,points:PackedVector3Array,color:Color):
 		world.box(leg,Vector3(0,-.37,0),Vector3(.16,.69,.20),Color("3e474a"))
 		world.box(leg,Vector3(0,-.77,-.05),Vector3(.19,.12,.31),Color("393b38"))
 		legs.append(leg)
-		world.box(self,Vector3(side*.285,1.03,0),Vector3(.14,.50,.17),color)
+		world.box(upper,Vector3(side*.285,1.03,0),Vector3(.14,.50,.17),color)
 	if role in ["guard","soldier","hostile"]:
-		world.box(self,Vector3(0,1.73,-.025),Vector3(.34,.09,.36),color.darkened(.32))
+		world.box(upper,Vector3(0,1.73,-.025),Vector3(.34,.09,.36),color.darkened(.32))
 		light=SpotLight3D.new()
 		add_child(light)
 		light.position=Vector3(.25,1.2,-.25)
@@ -57,12 +59,24 @@ func configure(w,kind:String,points:PackedVector3Array,color:Color):
 		light.spot_range=35
 		light.light_energy=1.5
 	else:
-		world.box(self,Vector3(0,1.72,.015),Vector3(.285,.11,.27),Color("51443b"))
+		world.box(upper,Vector3(0,1.72,.015),Vector3(.285,.11,.27),Color("51443b"))
+func receive_punch():
+	if hp<=0:return
+	danger=world.player.position
+	frightened=world.clock+8.
+	world.ops.incident(position,1 if role=="civilian" else 2)
+	upper.rotation.x=.17
+	upper.create_tween().tween_property(upper,"rotation:x",0.,.23)
+	apply_injury(16.)
+
 func take_damage(amount,_by_player=true):
 	if hp<=0:return
-	hp=maxf(0.,hp-amount)
 	world.ops.investigate(position)
 	if role=="civilian":world.ops.incident(position,3)
+	apply_injury(amount)
+
+func apply_injury(amount):
+	hp=maxf(0.,hp-amount)
 	if hp<=0:
 		collision_layer=0
 		rotation.z=PI/2

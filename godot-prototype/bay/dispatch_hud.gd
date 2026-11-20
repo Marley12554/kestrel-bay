@@ -229,7 +229,7 @@ func draw_mobile():
 	mobile_buttons.clear()
 	var w=size.x;var h=size.y
 	var car=world.player.vehicle
-	var labels=["Use","Jump","Sprint","Fire","Map"]
+	var labels=["Use","Jump","Sprint","Punch" if ops.weapon_slot==0 else "Fire","Map"]
 	if car:labels=["Exit","Up","Down","Fire","Map"] if car.aircraft else ["Exit","Brake","Drift" if not car.boat else "Horn","Lean" if not car.boat else "Horn","Map"]
 	for i in labels.size():
 		var pos=[Vector2(w-65,h-120),Vector2(w-155,h-100),Vector2(w-230,h-100),Vector2(w-66,h-206),Vector2(204,50)][i]
@@ -262,6 +262,7 @@ func mobile_press(action,down):
 			elif down:ops.audio.effect("horn",v.position,-5)
 		"fire":
 			if v and not v.aircraft and not v.boat:p.mobile_lean=down
+			if down and not v and ops.weapon_slot==0:ops.attack_press()
 			ops.trigger_down=down and ops.armed
 func action_state(action,down):
 	if down:Input.action_press(action)

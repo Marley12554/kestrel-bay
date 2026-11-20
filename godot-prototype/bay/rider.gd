@@ -88,9 +88,11 @@ func _process(dt):
 		camera.rotation=Vector3(-.12,lerp_angle(yaw,car.rotation.y,smoothstep(.72,1.90,t)),0)
 	elif vehicle and vehicle.aircraft:
 		var focus=vehicle.position+Vector3.UP*1.6
-		var behind=Vector3(sin(yaw),.28,cos(yaw))*vehicle.camera_distance
+		var heading=yaw if vehicle.rotorcraft else vehicle.rotation.y+wrapf(yaw-vehicle.rotation.y,-PI,PI)*.22
+		var behind=Vector3(sin(heading),.28 if vehicle.rotorcraft else .43,cos(heading))*vehicle.camera_distance
+		if not vehicle.rotorcraft:behind+=Vector3(cos(heading),0,-sin(heading))*1.55
 		camera.global_position=focus+behind
-		camera.look_at(focus+Vector3.UP*pitch*2)
+		camera.look_at(focus+Vector3.UP*pitch*2-(Vector3.ZERO if vehicle.rotorcraft else vehicle.global_basis.z*2.2))
 	elif leaning():
 		var angle=vehicle.rotation.y+PI*.5+clampf(yaw,-1.42,1.42)
 		var look=Vector3(-sin(angle)*cos(pitch),sin(pitch),-cos(angle)*cos(pitch))
