@@ -4,11 +4,68 @@ var rng=RandomNumberGenerator.new()
 var clouds=[]
 var short_lived=[]
 var skid_marks=[]
-var cache={}
+var free_sprites=[]
+var live=[]
+var textures={}
+var smoke_fade=[]
+var shots=0
 func configure(world):
 	w=world
 	process_mode=Node.PROCESS_MODE_PAUSABLE
 	rng.seed=610
+	var quad=QuadMesh.new()
+	var gradient=Gradient.new()
+	gradient.offsets=PackedFloat32Array([0.,.44,.77,1.])
+	gradient.colors=PackedColorArray([Color.WHITE,Color(1,1,1,.88),Color(1,1,1,.30),Color(1,1,1,0)])
+	var stamp=GradientTexture2D.new()
+	stamp.width=64;stamp.height=64;stamp.gradient=gradient
+	stamp.fill=GradientTexture2D.FILL_RADIAL;stamp.fill_from=Vector2(.5,.5);stamp.fill_to=Vector2(1.,.5)
+	for entry in [["flash",Color("fff1a6")],["flame",Color("ff8a27")],["spark",Color("ffd77c")],["smoke",Color("534e4e")],["dust",Color("a79883")]]:
+		var mat=StandardMaterial3D.new()
+		mat.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.billboard_mode=BaseMaterial3D.BILLBOARD_ENABLED;mat.billboard_keep_scale=true
+		mat.albedo_color=entry[1];mat.albedo_texture=stamp
+		textures[entry[0]]=mat
+	for i in 12:
+		var smoke=textures["smoke"].duplicate()
+		smoke.albedo_color=Color(.30,.29,.29,(i+1.)/12.)
+		smoke_fade.append(smoke)
+	for i in 96:
+		var sprite=MeshInstance3D.new()
+		sprite.mesh=quad;sprite.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		sprite.hide();add_child(sprite);free_sprites.append(sprite)
+
+func warm_up(camera:Camera3D,visible_now:bool):
+	# Exercise the alpha-blended effects pipeline while the loading cover is up.
+	for i in textures.size():
+		var sprite=free_sprites[i]
+		sprite.visible=visible_now
+		if visible_now:
+			sprite.global_position=camera.to_global(Vector3((i-2)*.16,0,-1.4))
+			sprite.material_override=textures[textures.keys()[i]]
+			sprite.scale=Vector3.ONE*.14
+
+func puff(kind:String,at:Vector3,motion:Vector3,size:float,growth:float,life:float):
+	if free_sprites.is_empty():return
+	var sprite=free_sprites.pop_back()
+	sprite.position=at;sprite.scale=Vector3.ONE*size;sprite.material_override=textures[kind];sprite.show()
+	live.append({"node":sprite,"v":motion,"size":size,"growth":growth,"life":life,"age":0.,"kind":kind})
+
+func shot(a:Vector3,b:Vector3,impact:bool):
+	var delta=b-a
+	if delta.length_squared()<.001:return
+	var f=delta.normalized()
+	puff("flash",a+f*.12,Vector3.ZERO,.16,.35,.055)
+	if impact:puff("dust",b-f*.045,Vector3.UP*.8,.13,1.6,.23)
+	shots+=1
+	if shots%3==0 and delta.length()>6:
+		puff("spark",a+f*.7,f*180.,.115,0.,minf(.075,(delta.length()-.8)/180.))
+
+func rim_sparks(at:Vector3,motion:Vector3):
+	for i in 3:
+		var offset=Vector3(rng.randf_range(-1.,1.),rng.randf_range(.6,2.1),rng.randf_range(-1.,1.))
+		puff("spark",at,motion*.25+offset,.075,0.,rng.randf_range(.12,.34))
 func plume(parent:Node3D,at:Vector3,flame:bool):
 	var n=CPUParticles3D.new()
 	n.amount=9 if flame else 12
@@ -43,20 +100,15 @@ func blast(at:Vector3,source):
 	for n in w.ops.officers+w.residents:
 		if is_instance_valid(n) and n.hp>0 and n.position.distance_to(at)<radius and w.ops.sight(at,n.position+Vector3.UP,[source.get_rid(),n.get_rid()]):
 			n.take_damage(118.*(1.-at.distance_to(n.position)/radius))
-	for i in 18:
-		var angle=i*TAU/18
-		var end=at+Vector3(cos(angle)*radius*rng.randf_range(.66,1.),rng.randf_range(2,10),sin(angle)*radius*rng.randf_range(.66,1.))
-		var ember=plume(self,at,true)
-		var tween=create_tween()
-		tween.tween_property(ember,"position",end,.46).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		short_lived.append([ember,w.clock+1.1])
-	for i in 9:
-		var place=at+Vector3(rng.randf_range(-6,6),0,rng.randf_range(-6,6))
-		var smoke=plume(self,place,false)
-		smoke.scale_amount_min=1.5;smoke.scale_amount_max=3.4
-		smoke.lifetime=3.4
-		short_lived.append([smoke,w.clock+7.8])
-	clouds.append([at+Vector3.UP*4,10.,w.clock+7.3])
+	var origin=at+Vector3.UP*.82
+	puff("flash",origin,Vector3.UP,4.,28.,.22)
+	for i in 17:
+		var dir=Vector3(cos(i*2.4),rng.randf_range(.15,.8),sin(i*2.4)).normalized()
+		puff("flame",origin+dir*.6,dir*rng.randf_range(10.,24.),2.5,10.,rng.randf_range(.50,.85))
+		puff("spark",origin,dir*rng.randf_range(19.,30.),.17,0.,rng.randf_range(.44,.88))
+		var drift=dir*rng.randf_range(.8,1.8)+Vector3(.40,.60,0)
+		puff("smoke",origin+dir*rng.randf_range(1.,3.),drift,2.,2.4,rng.randf_range(5.8,7.8))
+	clouds.append([origin+Vector3.UP*2.5,8.,w.clock+5.8])
 	w.ops.audio.effect("blast",at,2)
 func obscures(a:Vector3,b:Vector3)->bool:
 	for cloud in clouds:
@@ -75,12 +127,23 @@ func skid(car,strength):
 			skid_marks.append([mark,w.clock+32])
 	car.skid_prev=now
 	while skid_marks.size()>110:skid_marks.pop_front()[0].queue_free()
-func spray(at,water):
-	var n=w.box(self,at+Vector3.UP*.28,Vector3(.8,.055,1.58 if water else .18),Color("c2d7cd") if water else Color("ffba57"))
+func wake(at):
+	var n=w.box(self,at+Vector3.UP*.28,Vector3(.8,.055,1.58),Color("c2d7cd"))
 	n.rotation.y=rng.randf()*PI
 	short_lived.append([n,w.clock+.38])
-func _process(_dt):
+func _process(dt):
 	if not w or not w.started:return
+	for i in range(live.size()-1,-1,-1):
+		var p=live[i]
+		p.age+=dt
+		if p.age>=p.life:
+			p.node.hide();free_sprites.append(p.node);live.remove_at(i);continue
+		var fade=1.-smoothstep(.60,1.,p.age/p.life)
+		p.node.scale=Vector3.ONE*maxf(.001,(p.size+p.growth*p.age)*fade)
+		if p.kind=="smoke":p.node.material_override=smoke_fade[clampi(ceili(fade*12.)-1,0,11)]
+		p.node.position+=p.v*dt
+		if p.kind=="spark":p.v.y-=dt*9.
+		if p.kind=="flame":p.v*=exp(-dt*1.4)
 	for group in [short_lived,skid_marks]:
 		for i in range(group.size()-1,-1,-1):
 			if w.clock>group[i][1]:group[i][0].queue_free();group.remove_at(i)

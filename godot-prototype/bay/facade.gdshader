@@ -41,11 +41,11 @@ void fragment() {
 		glass*=.82+.18*smoothstep(.04,.89,fract(UV.x*.019+place.z*.011));
 	}
 	float lit=step(.72,noise)*kb_dark;
-	glass=mix(glass,vec3(.74,.50,.23),lit*.85);
+	glass=mix(glass,vec3(.99,.89,.52),lit*.85);
 	float mullion=1.-smoothstep(.018,.038,abs(bay_x-.5));
 	float sash=1.-smoothstep(.025,.07,abs(level-2.46));
 	glass=mix(glass,stone*.64,max(mullion,sash)*.84);
 	ALBEDO=mix(stone,glass,pane);
 	ROUGHNESS=mix(.86,curtain?.21:.39,pane);
-	EMISSION=pane*lit*vec3(.26,.15,.055);
+	EMISSION=pane*lit*vec3(.95,.78,.34);
 }

@@ -72,7 +72,7 @@ if(require.main===module) {
   const action=process.argv[2];
   if (action==='test') {
     importProject();
-    for(const test of ['smoke','playable','response','city','containment','drive']) {
+    for(const test of ['smoke','playable','response','city','waterfront','containment','drive']) {
       run(['--fixed-fps','60','--script','res://tests/'+test+'.gd','--','--qa']);
     }
     run(['--fixed-fps','60','--script','res://tests/drive.gd','--','--qa','--bridge']);

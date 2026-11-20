@@ -102,6 +102,23 @@ async function touch(b) {
   await enter(b,true);
   const control = async name => b.atUV(await b.value('kbGodotState.touch_uv.' + name),true);
   await b.wait('kbGodotState.touch_uv.sprint','touch controls');
+  const yaw = () => b.value('kbGodotState.yaw');
+  const before = await yaw();
+  const stick = {x:85,y:236,id:1}, look = {x:545,y:115,id:2};
+  const touches = (type, points) => b.send('Input.dispatchTouchEvent',{type,touchPoints:points});
+  await touches('touchStart',[stick]);
+  await touches('touchMove',[{...stick,y:211}]);
+  await touches('touchStart',[{...stick,y:211},look]);
+  await pause(450);
+  assert(Math.abs(await yaw()-before)<.015,'Planting the look thumb rotated the camera');
+  await touches('touchMove',[{...stick,y:211},{...look,x:568}]);
+  await b.wait('Math.abs(kbGodotState.yaw-('+before+'))>.04','independent look drag');
+  const turn=await yaw();
+  assert(Math.abs(turn-before)<.75,'Look drag jumped across the viewport');
+  await touches('touchEnd',[{...look,x:568}]);
+  await touches('touchEnd',[]);
+  await pause(450);
+  assert(Math.abs(await yaw()-turn)<.015,'Lifting the move thumb rotated the camera');
   await control('sprint');
   await b.wait('kbGodotState.touch_sprint','tap to sprint');
   await pause(300);
@@ -118,7 +135,29 @@ async function desktop(b) {
   await b.atUV([.50,.55],false);
   await b.wait('document.pointerLockElement','mouse capture');
   await b.screenshot('waterfront');
+  assert.equal(await b.value('kbGodotState.sounding_cruisers'),0);
+  const key = async (type,key,code,id) => b.send('Input.dispatchKeyEvent',{type,key,code,windowsVirtualKeyCode:id});
+  await key('keyDown','2','Digit2',50);await key('keyUp','2','Digit2',50);
+  await b.wait('kbGodotState.slot===1','draw pistol');
+  await b.value(`window.recordFrames=true;window.sampleFrames=[];
+    requestAnimationFrame(function collect(t){sampleFrames.push(t);
+      if(recordFrames)requestAnimationFrame(collect)})`);
+  async function measureWindow(label, fire) {
+    const start=await b.value('performance.now()');
+    if(fire)await key('keyDown','j','KeyJ',74);
+    await pause(1350);
+    if(fire)await key('keyUp','j','KeyJ',74);
+    const ms=await b.value(`sampleFrames.map((t,i)=>i&&t>${start}?t-sampleFrames[i-1]:0).filter(Boolean).sort((a,b)=>a-b)`);
+    assert(ms.length>5,label+' froze rendering');
+    console.log(label+' p95/worst ms',ms[Math.floor(ms.length*.95)].toFixed(1),ms.at(-1).toFixed(1));
+  }
+  await measureWindow('Standing at spawn',false);
+  await measureWindow('First burst',true);
+  await measureWindow('Second burst',true);
+  await b.value('window.recordFrames=false');
+  await key('keyDown','1','Digit1',49);await key('keyUp','1','Digit1',49);
   const command = name => b.value('kbGodotCommand(' + JSON.stringify(name) + ')');
+  await command('riverbank');await pause(400);await b.screenshot('riverbank');
   async function toggleMap() {
     const key = {key:'m',code:'KeyM',windowsVirtualKeyCode:77};
     await b.send('Input.dispatchKeyEvent',{...key,type:'keyDown'});
@@ -173,6 +212,12 @@ async function desktop(b) {
   const metrics={frames:intervals.length,medianMs:q(.5),p95Ms:q(.95),p99Ms:q(.99),worstMs:q(1),over100ms:intervals.filter(t=>t>100).length};
   console.log('Five-star hotel arrival', JSON.stringify({seconds:end.drive.elapsed,distance:end.drive.distance,metrics,longFrames:await b.value('longFrames')}));
   await b.screenshot('arrival');
+  await b.wait('kbGodotState.sounding_cruisers>0','responding cruisers emit their sirens');
+  await command('chase');
+  await b.wait('kbGodotState.wanted===0 && kbGodotState.sounding_cruisers===0','stand down and stop sirens');
+  await command('boat');await pause(400);
+  await key('keyDown','e','KeyE',69);await key('keyUp','e','KeyE',69);
+  await b.wait('kbGodotState.boat_engine && kbGodotState.sounding_cruisers===0','boat motor in a quiet harbor');
 }
 (async()=>{
   const profile=await fs.mkdtemp(path.join(os.tmpdir(),'kestrel-chrome-'));

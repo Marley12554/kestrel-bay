@@ -13,6 +13,7 @@ var selected_description
 var accept_button
 var veil
 var touches={}
+var look_positions={}
 var stick_origin=Vector2.ZERO
 var stick=Vector2.ZERO
 var map_buttons=[]
@@ -126,16 +127,17 @@ func _draw():
 	if ops.armed:
 		centered(Vector2(w*.5,h-56),"%d / %d"%[ops.ammo,ops.reserve],15)
 		if not v or p.leaning():
+			draw_circle(center,3.2,INK)
+			draw_circle(center,1.65,Color.WHITE)
 			for dir in [Vector2.UP,Vector2.DOWN,Vector2.LEFT,Vector2.RIGHT]:
-				draw_line(center+dir*3,center+dir*(8+ops.recoil*22),Color("fff5d9"),1.6,true)
-	if ops.lock_target:
-		var track=Rect2(w*.5-130,h*.63,260,16)
-		draw_rect(track,INK)
-		var zone=ops.lock_width()
-		draw_rect(Rect2(track.position+Vector2((ops.lock_center()-zone*.5)*260,1),Vector2(260*zone,14)),Color("73b78b"))
-		var mark=track.position+Vector2(260*ops.lock_cursor(),-3)
-		draw_line(mark,mark+Vector2.DOWN*22,PAPER,3,true)
-		centered(Vector2(w*.5,track.position.y-10),"Door lock   %d / 3"%(ops.lock_round+1),15)
+				var a=center+dir*5.5
+				var b=center+dir*(13+ops.recoil*34)
+				draw_line(a,b,INK,4.4,true)
+				draw_line(a,b,Color.WHITE,2.1,true)
+	if ops.lock_target and not ops.entry_latched:
+		var ring_center=center+Vector2(0,34)
+		draw_arc(ring_center,15,0,TAU,40,INK,5,true)
+		draw_arc(ring_center,15,-PI/2,-PI/2+TAU*clampf(ops.lock_time/.78,.001,1.),40,GOLD,3.5,true)
 	if world.mobile and not (ops.modal or ops.puzzle):
 		draw_mobile()
 func action_button(parent,txt,fn):
@@ -244,9 +246,8 @@ func mobile_press(action,down):
 	var p=world.player;var v=p.vehicle
 	match action:
 		"use":
-			if down:
-				if ops.lock_target:ops.theft_hit()
-				else:p.press_interact()
+			ops.use_touch=down
+			if down and not ops.lock_target:p.press_interact()
 		"map":
 			if down:ops.toggle_map()
 		"jump":
@@ -268,8 +269,8 @@ func action_state(action,down):
 func release_touch():
 	if not world or not world.player:return
 	for id in touches.values():
-		if id in ["fire","jump","sprint"]:mobile_press(id,false)
-	touches.clear();stick=Vector2.ZERO;world.player.analog=stick
+		if id in ["fire","jump","sprint","use"]:mobile_press(id,false)
+	touches.clear();look_positions.clear();stick=Vector2.ZERO;world.player.analog=stick
 func _input(event):
 	if not is_instance_valid(ops) or not world.started:return
 	if large_map:
@@ -293,17 +294,22 @@ func _input(event):
 				if event.position.distance_to(mobile_buttons[id])<36:
 					action=id;break
 			if action=="look" and event.position.x<size.x*.45:
-				action="stick";stick_origin=event.position;stick=Vector2.ZERO
+				action="stick"
+			if touches.values().has(action):return
+			if action=="stick":stick_origin=event.position;stick=Vector2.ZERO
+			if action=="look":look_positions[event.index]=event.position
 			touches[event.index]=action
 			mobile_press(action,true)
 		elif touches.has(event.index):
-			var act=touches[event.index];touches.erase(event.index)
+			var act=touches[event.index];touches.erase(event.index);look_positions.erase(event.index)
 			if act=="stick":stick=Vector2.ZERO;p.analog=stick
 			else:mobile_press(act,false)
 		get_viewport().set_input_as_handled()
 	elif event is InputEventScreenDrag and touches.has(event.index):
 		if touches[event.index]=="look":
-			p.yaw-=event.relative.x*.0045;p.pitch=clampf(p.pitch-event.relative.y*.0045,-1.3,1.18)
+			var delta=event.position-look_positions[event.index]
+			look_positions[event.index]=event.position
+			p.yaw-=delta.x*.0045;p.pitch=clampf(p.pitch-delta.y*.0045,-1.3,1.18)
 		elif touches[event.index]=="stick":
 			stick=((event.position-stick_origin)/45).limit_length();p.analog=stick
 		get_viewport().set_input_as_handled()

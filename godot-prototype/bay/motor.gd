@@ -10,6 +10,15 @@ var body_parts=[]
 var wreck_loss=[]
 var rubbers=[]
 var rims=[]
+var wheel_pivots=[]
+var wheel_rolls=[]
+var door
+var door_glass
+var door_open=0.
+var axle_span=2.62
+func driver_door()->Vector3:
+	return to_global(Vector3(-1.35,.04,-.12))
+
 var engine_mesh
 var driver
 var crew_head
@@ -21,10 +30,16 @@ var driving_npc=false
 var mission_driver=false
 var traffic_route=PackedVector3Array()
 var threat_until=0.
+var junction_id=-1
+var junction_kind=0
+var stopped_since=-1.
+var entered_junction=false
+var blocked_since=-1.
 var lane_origin=Vector3.INF
 var pass_offset=0.
 var pass_until=0.
 var pass_side=0.
+var following_gap=5.0
 var obstacle_distance=100.
 var horn_at=-100.
 var wreck=false
@@ -32,6 +47,7 @@ var burning=0.
 var flooded=false
 var fire_objects=[]
 var spike=false
+var flat_count=0
 var skid_at=0.
 var safety_boot=0.
 var target_steer=0.
@@ -140,7 +156,16 @@ func build_car():
 	engine_mesh=loft([ring(.29,.81,half-.13,half-.14),ring(.50,.98,half,half),ring(.84,.99,half-.04,half-.03),
 		ring(.99,.91,half-.31,half-.22)],col)
 	var roof_y=1.44 if sports else (1.95 if long_model else 1.61)
-	loft([ring(.97,.89,1.2,1.37),ring(roof_y,.70,.61,1.0)],Color("324a56"))
+	# Separate panes leave a real opening when the driver's door swings out.
+	part(Vector3(0,(roof_y+.97)*.5,-.97),Vector3(1.50,roof_y-.96,.055),Color("486373")).rotation.x=-.38
+	part(Vector3(0,(roof_y+.97)*.5,1.13),Vector3(1.50,roof_y-.96,.055),Color("455d67")).rotation.x=.30
+	part(Vector3(.84,(roof_y+.97)*.5,.07),Vector3(.05,roof_y-.97,2.02),Color("465e69"))
+	part(Vector3(-.84,(roof_y+.97)*.5,.69),Vector3(.05,roof_y-.97,.86),Color("465e69"))
+	door=Node3D.new();visual.add_child(door);door.position=Vector3(-.97,.55,-.91)
+	world.box(door,Vector3(0,.18,.58),Vector3(.10,.49,1.16),col)
+	door_glass=world.box(door,Vector3(.10,(roof_y+.97)*.5-.55,.58),Vector3(.05,roof_y-.97,1.16),Color("4a626c"))
+	world.box(door,Vector3(.10,roof_y-.55,.58),Vector3(.07,.055,1.18),col)
+	axle_span=half*1.26
 	loft([ring(roof_y-.01,.71,.63,1.0),ring(roof_y+.08,.67,.55,.9)],col)
 	for x in [-1,1]:
 		part(Vector3(x*.84,1.24,.22),Vector3(.065,.49,.11),col)
@@ -153,6 +178,12 @@ func build_car():
 			var rim=world.cylinder(visual,Vector3(x*.98,.36,z),.235,.20,Color("9da7a5"))
 			rim.rotation.z=PI/2
 			rims.append(rim)
+			var pivot=Node3D.new()
+			visual.add_child(pivot);pivot.position=wheel.position
+			var roll=Node3D.new();pivot.add_child(roll)
+			wheel.reparent(roll);rim.reparent(roll)
+			world.box(roll,Vector3(x*.145,0,0),Vector3(.012,.34,.054),Color("53616a"))
+			wheel_pivots.append(pivot);wheel_rolls.append(roll)
 		part(Vector3(x*.66,.76,-half+.01),Vector3(.47,.14,.09),Color("ebdfbb"))
 		part(Vector3(x*.65,.76,half-.02),Vector3(.42,.15,.09),Color("aa4543"))
 	wreck_loss.append(part(Vector3(0,.54,-half-.01),Vector3(.78,.16,.05),Color("303b3c")))
@@ -255,7 +286,7 @@ func reset_vehicle():
 	wreck=false
 	burning=0
 	flooded=false
-	spike=false
+	spike=false;flat_count=0
 	air_throttle=0
 	for item in fire_objects:
 		if is_instance_valid(item):item.queue_free()
@@ -284,12 +315,17 @@ func take_damage(amount:float):
 		world.ops.audio.effect("pressure",position,-4)
 		burning=7.
 		if occupied:world.ops.message("Engine fire · exit vehicle",3)
-func puncture():
-	if spike or boat or aircraft:return
+func puncture(index:int=-1):
+	if boat or aircraft:return
+	if index<0:
+		for i in rubbers.size():puncture(i)
+		return
+	if not rubbers[index].visible:return
+	rubbers[index].hide();flat_count+=1
+	if not spike:
+		world.ops.audio.effect("air",position,1)
+		if occupied:world.ops.message("Tire punctured · running on rim",4)
 	spike=true
-	for wheel in rubbers:wheel.hide()
-	world.ops.audio.effect("air",position,1)
-	if occupied:world.ops.message("Tires punctured · running on rims",4)
 func _effects(dt):
 	if health<53 and not wreck and not flooded:
 		if fire_objects.is_empty():
@@ -334,6 +370,7 @@ func detonate():
 func _physics_process(dt):
 	if not world.started:return
 	if not engine_mesh.has_meta("initial_mat"):engine_mesh.set_meta("initial_mat",engine_mesh.material_override)
+	if door:door.rotation.y=move_toward(door.rotation.y,-door_open*1.12,dt*3.4)
 	_effects(dt)
 	if wreck or flooded:
 		if flooded:position.y=maxf(-8.,position.y-dt*1.2)
@@ -374,27 +411,48 @@ func _physics_process(dt):
 		if offset.length()<3.6 or (active_police and not boat and crew.any(func(n):return n.hp>0 and not n.boarded)):
 			desired=0
 		if boat and police and (captain_hp<=0 or landing_aid):desired=0
+		if driving_npc and junction_id>=0 and not entered_junction and not traffic_route.is_empty():
+			var dst=traffic_route[0]
+			var left=(dst-position).dot((dst-lane_origin).normalized())-14.
+			var phase=fposmod(world.clock+junction_id%7+(12 if junction_kind==3 else 0),24.)
+			var must_wait=junction_kind>=2 and phase>=9.
+			if junction_kind==1:
+				if left<1.8 and speed<.6 and stopped_since<0:stopped_since=world.clock
+				must_wait=stopped_since<0 or world.clock-stopped_since<1.1
+				if not must_wait and left<5.:
+					for cross_car in world.ops.traffic:
+						if cross_car!=self and cross_car.speed>2. and cross_car.position.distance_to(dst)<16.:
+							must_wait=true;break
+			if left>=0 and left<8 and not must_wait:
+				var lane=(dst-lane_origin).normalized()
+				for other in world.ops.traffic:
+					if other==self or other.speed>2. or other.global_basis.z.dot(global_basis.z)<.7:continue
+					var beyond=other.position-dst
+					if beyond.dot(lane)>0 and beyond.dot(lane)<9 and absf(beyond.dot(lane.cross(Vector3.UP))-2.5)<2.:
+						must_wait=true;break
+			if left<.5 and not must_wait:entered_junction=true
+			if must_wait:desired=minf(desired,sqrt(maxf(0.,left)*9.))
 		if driver_yield and world.ops.lock_target==self and world.player.position.distance_to(position)<3.:desired=0
 		if world.clock>=next_scan:
 			next_scan=world.clock+.16
 			_obstacle(active_police)
-		if avoid_throttle<.2:desired=minf(desired,maxf(0.,obstacle_distance-3.)*1.2)
+		if avoid_throttle<.2:desired=minf(desired,sqrt(maxf(0.,obstacle_distance-following_gap)*12.))
 		if pass_until>world.clock:desired=minf(desired,10.)
 		pass_offset=move_toward(pass_offset,pass_side if pass_until>world.clock else 0.,dt*2.8)
 		turn=clampf(turn+avoid_turn,-1.,1.)
 		throttle=desired/max_speed
 		pedal=speed>desired+1.8
-		if driver:driver.visible=driving_npc
+		if driver:driver.visible=driving_npc or (police and crew.any(func(n):return n.boarded and n.hp>0))
 	else:
 		responding=false
 		pedal=true
-		if driver:driver.hide()
+		if driver:driver.visible=police and crew.any(func(n):return n.boarded and n.hp>0)
 	steer=move_toward(steer,turn,dt*(4.9 if not boat else 1.9))
 	var forward=-global_basis.z
 	var along=velocity.dot(forward)
 	var vertical=velocity.y
 	var lateral=Vector3(velocity.x,0,velocity.z)-forward*along
-	var effective=max_speed*(.28 if spike else 1.)
+	var effective=max_speed*(maxf(.28,1.-flat_count*.23) if spike else 1.)
 	var desired_speed=throttle*effective if throttle>=0 else throttle*effective*.22
 	var rate=acceleration if throttle!=0 else 1.6
 	if pedal:desired_speed=0;rate=15.
@@ -403,7 +461,12 @@ func _physics_process(dt):
 	if boat:rotation.y+=steer*.63*clampf(along/6.,-1.,1.)*dt
 	else:
 		var steering_angle=lerpf(29.0 if model!="striped" else 32.0,4.8,smoothstep(4.,34.,absf(along)))
-		rotation.y+=steer*along*tan(deg_to_rad(steering_angle))/2.62*dt*(1.45 if brake else 1.)
+		var curvature=steer*tan(deg_to_rad(steering_angle))/axle_span
+		rotation.y+=along*curvature*dt*(1.45 if brake else 1.)
+		for i in wheel_pivots.size():
+			var pivot=wheel_pivots[i]
+			pivot.rotation.y=atan2(axle_span*curvature,1.+pivot.position.x*curvature) if pivot.position.z<0 else 0.
+			wheel_rolls[i].rotate_x(-along*(1.+pivot.position.x*curvature)*dt/.36)
 	# Tires redirect longitudinal velocity. Only a braked rear axle retains
 	# appreciable side-slip, giving ordinary cars grip around intersections.
 	var new_f=-global_basis.z
@@ -425,6 +488,7 @@ func _physics_process(dt):
 	if boat:
 		visual.rotation.x=lerpf(visual.rotation.x,(world.wave_height(position.x,position.z-3)-world.wave_height(position.x,position.z+3))/6,dt*4)
 		visual.rotation.z=lerpf(visual.rotation.z,(world.wave_height(position.x-1,position.z)-world.wave_height(position.x+1,position.z))/2,dt*4)
+	if not boat:collision_mask=7 if not occupied else 3
 	var incoming=velocity
 	move_and_slide()
 	var ground_only=is_on_floor()
@@ -432,6 +496,9 @@ func _physics_process(dt):
 		var hit=get_slide_collision(i)
 		if hit.get_normal().y<.72:ground_only=false
 		var impulse=-incoming.dot(hit.get_normal())
+		if hit.get_collider()==world.player and impulse>4.5 and world.clock>=world.player.traffic_hit_at:
+			world.player.traffic_hit_at=world.clock+1.
+			world.ops.hurt(minf(90.,(impulse-4.)*3.2))
 		if world.clock>damage_cooldown and impulse>11 and absf(hit.get_normal().y)<.67:
 			take_damage((impulse-10)*1.35)
 			damage_cooldown=world.clock+.85
@@ -448,7 +515,10 @@ func _physics_process(dt):
 	elif not brake:skid_prev.clear()
 	if (spike or boat) and speed>3 and world.clock>skid_at and position.distance_squared_to(world.player.position)<40000:
 		skid_at=world.clock+.2
-		world.ops.fx.spray(position+global_basis.z*(4 if boat else 1.6),boat)
+		if boat:world.ops.fx.wake(position+global_basis.z*4)
+		elif tires_grounded:
+			for i in rubbers.size():
+				if not rubbers[i].visible:world.ops.fx.rim_sparks(wheel_pivots[i].global_position+Vector3.DOWN*.31,velocity)
 	_lights()
 func wheel_ground()->float:
 	var height=-INF
@@ -468,11 +538,22 @@ func _obstacle(pursuit):
 	obstacle_distance=100.
 	var obstruction
 	for width in [0.,-.82,.82]:
-		var ray=PhysicsRayQueryParameters3D.create(start+side*width,start+side*width+forward*maxf(9.,speed*1.32),3,[get_rid()])
+		var ray=PhysicsRayQueryParameters3D.create(start+side*width,start+side*width+forward*maxf(20.,10.+speed*.55+speed*speed/22.),15,[get_rid()])
 		var hit=get_world_3d().direct_space_state.intersect_ray(ray)
 		if not hit.is_empty() and start.distance_to(hit.position)<obstacle_distance:
 			obstruction=hit.collider;obstacle_distance=start.distance_to(hit.position)
-	if not obstruction:return
+	if not obstruction:
+		blocked_since=-1.
+		return
+	if blocked_since<0:blocked_since=world.clock
+	var person=obstruction==world.player or obstruction.collision_layer==8
+	following_gap=10. if person or (obstruction.has_method("puncture") and obstruction.speed<1.) else 5.
+	var near_junction=not traffic_route.is_empty() and position.distance_to(traffic_route[0])<16.
+	if person or (obstruction.has_method("puncture") and (near_junction or world.clock-blocked_since<1.2)):
+		avoid_throttle=0.
+		if driving_npc and person and world.clock-horn_at>12 and (speed>6 or world.clock-blocked_since>1.):
+			world.ops.audio.effect("horn",position,-10);horn_at=world.clock
+		if near_junction or world.clock-blocked_since<1.4:return
 	if pursuit and obstruction==world.player.vehicle and world.player.vehicle!=null and world.player.vehicle.speed>3:return
 	if obstruction.has_method("puncture"):
 		var along=obstruction.velocity.dot(forward)
@@ -480,6 +561,7 @@ func _obstacle(pursuit):
 			avoid_throttle=0. if obstacle_distance<maxf(4.,speed*.55) else 1.
 			return
 	if pass_until>world.clock:
+		if person and not near_junction and obstacle_distance>2.4:avoid_throttle=1.
 		if pursuit or boat:avoid_turn=-signf(pass_side)*.64
 		if obstacle_distance<2.:avoid_throttle=0.
 		return
@@ -489,9 +571,10 @@ func _obstacle(pursuit):
 		var blocked=false
 		for margin in [-.85,.85]:
 			var origin=corridor+side*margin
-			var q=PhysicsRayQueryParameters3D.create(origin-forward*2.1,origin+forward*maxf(15.,speed*1.3),3,[get_rid()])
+			var q=PhysicsRayQueryParameters3D.create(origin-forward*5.,origin+forward*maxf(28.,speed*2.6),15,[get_rid()])
 			if not get_world_3d().direct_space_state.intersect_ray(q).is_empty():blocked=true;break
 		if blocked:continue
+		if person and obstacle_distance>2.4:avoid_throttle=1.
 		pass_side=choice*(4.05 if not boat else 5.7)
 		pass_until=world.clock+3.4
 		if pursuit or boat:avoid_turn=-choice*.7

@@ -6,6 +6,7 @@ var atlas
 var chunks={}
 var root_node=Node3D.new()
 var standard=StandardMaterial3D.new()
+var signals=ShaderMaterial.new()
 var facades=ShaderMaterial.new()
 var rng=RandomNumberGenerator.new()
 var trunks=PackedVector3Array()
@@ -18,7 +19,7 @@ func buffer(p,mode):
 	if not chunks.has(key):
 		var st=SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		st.set_material(facades if mode==1 else standard)
+		st.set_material(signals if mode==2 else facades if mode==1 else standard)
 		chunks[key]=st
 	return chunks[key]
 func quad(a:Vector3,b:Vector3,c:Vector3,d:Vector3,color:Color,normal:Vector3,mode=0,uv=Rect2(0,0,1,1),tag=Vector2.ZERO):
@@ -130,11 +131,32 @@ func shell(p):
 		for side in [-1,1]:
 			for i in 5:
 				box(front+Vector3(side*(3+i*.4),3.5+i*.26,.7),Vector3(.20,6+i*.51,.48),Color("aa8850"))
+func intersection(node:int, origin:Vector3, width:float):
+	var control=atlas.junction_control(node,origin)
+	if control==0:return
+	var end=atlas.points[node]
+	var f=(end-origin).normalized()
+	var side=f.cross(Vector3.UP).normalized()
+	var stop=end-f*12
+	var pos=stop+side*(width*.5+.55)
+	strip(stop+Vector3.UP*.16+side*.3,stop+Vector3.UP*.16+side*width*.49,.25,Color("e6e1c7"))
+	segment(pos,pos+Vector3.UP*(2.4 if control==1 else 4.),.085,Color("535852"))
+	if control==1:
+		var face=pos+Vector3.UP*2.35
+		quad(face-side*.45+Vector3.UP*.45,face+side*.45+Vector3.UP*.45,face+side*.45-Vector3.UP*.45,face-side*.45-Vector3.UP*.45,Color.WHITE,-f,2,Rect2(0,0,1,1),Vector2(0,-1))
+		return
+	var center=pos+Vector3.UP*4.
+	box(center,Vector3(.5,1.25,.5),Color("343733"))
+	for lamp in 3:
+		var c=center-f*.37+Vector3.UP*(.37-lamp*.37)
+		quad(c-side*.16+Vector3.UP*.16,c+side*.16+Vector3.UP*.16,c+side*.16-Vector3.UP*.16,c-side*.16-Vector3.UP*.16,[Color("ff4a39"),Color("ffc243"),Color("4ef486")][lamp],-f,2,Rect2(0,0,1,1),Vector2(node%7+(12 if control==3 else 0),lamp))
 func street(e):
 	var a=atlas.points[int(e[0])]
 	var b=atlas.points[int(e[1])]
 	var width=float(e[2])
 	var bridge=e[4]=="bridge"
+	intersection(int(e[0]),b,width)
+	intersection(int(e[1]),a,width)
 	var up=Vector3.UP
 	var forward=(b-a).normalized()
 	var right=forward.cross(up).normalized()
@@ -166,6 +188,8 @@ func bake():
 	standard.vertex_color_use_as_albedo=true
 	standard.vertex_color_is_srgb=true
 	standard.roughness=.86
+	signals.shader=preload("res://bay/signal.gdshader")
+	signals.set_shader_parameter("stop_face",preload("res://bay/stop.svg"))
 	facades.shader=load("res://bay/facade.gdshader")
 	for area in atlas.data.land:
 		flat(area[1],Color("928d83") if area[2]=="city" else Color("818877"),2.6)

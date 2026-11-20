@@ -380,7 +380,7 @@ func hurt(amount: float) -> void:
 	last_health_hit = world.clock
 	if hp<=0:
 		dead_until = world.clock+1.6
-		message("You were caught. Return to the board to retry.",4)
+		message("Arrested" if arrest>=1. else "You went down",4)
 
 func officer_shot(n: CharacterBody3D,from: Vector3,to: Vector3) -> void:
 	var end = from+(to-from).normalized()*75
@@ -507,6 +507,7 @@ func interact() -> bool:
 				door.locked = false
 				door.opened = not door.opened
 			return true
+	if has_method("request_vehicle"):return false
 	# An occupied police vehicle is not an instant escape button.
 	for v in world.vehicles:
 		if v.police and p.position.distance_to(v.position)<4 and (v.boat or v.crew.any(func(n): return n.boarded and n.hp>0)):
@@ -728,6 +729,7 @@ func _physics_process(dt: float) -> void:
 			if not v.police or not vehicle_on_call(v):
 				continue
 			var dist = v.position.distance_to(p.position)
+			if has_method("clear_strip") and v==get("strip_unit"):continue
 			if not v.boat and v.crew.all(func(n): return n.boarded) and dist<22 and (not p.vehicle or p.vehicle.speed<2) and v.speed<4:
 				for n in v.crew:
 					n.deploy()

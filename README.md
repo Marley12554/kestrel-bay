@@ -11,6 +11,8 @@ A single-player Godot open world set in a compressed New York harbor. Start in O
 | WASD, mouse | Walk and look. Click the game view to capture the mouse. |
 | Shift, Space, C | Sprint, jump or rise in water, crouch. Swim in the direction you look. |
 | E, F | Interact or enter/exit a road vehicle or boat. F boards or exits aircraft. |
+| Vehicle entry | At a parked car, press E at the driver’s door. At an occupied car, hold E or the touch Use button while you stay alongside. |
+| Surrender | Holster and press E near an officer when the surrender prompt appears. |
 | WASD in a car | Accelerate, reverse and steer. Hold Shift, Space or X to drift. H sounds the horn. |
 | Q in a car | Lean from the driver's window. Select the pistol to fire. |
 | 1–5, left click, R | Select equipment, use it and reload. |

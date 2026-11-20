@@ -3,10 +3,12 @@ var campaign=preload("res://bay/campaign.gd").new()
 var fx=preload("res://bay/fx.gd").new()
 var modal
 var lock_target
-var lock_round=0
+var entry_occupied=false
+var entry_latched=false
+var entry_ejected=false
+var use_touch=false
 var lock_time=0.
-var lock_origin=Vector3.ZERO
-var lock_owned=false
+var entry_glass=false
 var weapon_slot=0
 var magazines=[0,12,6,24,0]
 var reserves=[0,72,24,96,0]
@@ -26,6 +28,16 @@ var last_noise_time=-99.
 var next_guard_shot=0.
 var marine_shot=0.
 var spikes
+var strip_unit
+var strip_officer
+var strip_goal=Vector3.INF
+var strip_angle=0.
+var strip_setup=0.
+var strip_deadline=0.
+var last_tires=[]
+var strip_vehicle
+var surrendered=false
+var recent_threat=-100.
 var spike_pos=Vector3.INF
 var air_unit
 var board_time=0.
@@ -63,6 +75,7 @@ func configure(w:Node3D):
 		needle.rotation.z=.37
 	w.box(spikes,Vector3(0,.055,0),Vector3(6.7,.11,.28),Color("403f39"))
 	spikes.hide()
+func warm_effects(value):fx.warm_up(world.player.camera,value)
 func make_hud()->Control:return preload("res://bay/dispatch_hud.gd").new()
 func _create_population():
 	for i in 32:
@@ -145,7 +158,7 @@ func _build_routes():
 						var other=samples[key+delta]
 						if water_at(at.lerp(water_graph.get_point_position(other),.5)):water_graph.connect_points(id,other)
 func water_at(p):
-	for poly in world.atlas.outlines:
+	for poly in world.atlas.tide_lines:
 		if Geometry2D.is_point_in_polygon(Vector2(p.x,p.z),poly):return false
 	return true
 func on_pavement(pos):
@@ -181,6 +194,7 @@ func observe(at:Vector3):
 	super(at)
 	known_velocity=world.player.velocity
 func report_shot(at:Vector3):
+	recent_threat=world.clock;surrendered=false;arrest=0;extract_timer=0
 	investigate(at)
 	incident(at,2)
 func investigate(at):
@@ -226,6 +240,26 @@ func allow_guard_shot():
 	next_guard_shot=world.clock+.34
 	return true
 func vehicle_on_call(car)->bool:return dispatched(car)
+func shelter(unit,source):
+	var fallback=unit.position+(unit.position-source).slide(Vector3.UP).normalized()*6.
+	var best=Vector3.INF
+	var dist=INF
+	var spots=[]
+	for v in world.vehicles:
+		if v.speed>2 or v.boat or v.aircraft or v.position.distance_squared_to(unit.position)>500:continue
+		var away=(v.position-source).slide(Vector3.UP).normalized()
+		spots.append(v.position+away*3.2)
+	for side in 8:spots.append(unit.position+Vector3(sin(side*PI/4),0,cos(side*PI/4))*7.)
+	for at in spots:
+		var ds=at.distance_squared_to(unit.position)
+		if ds>=dist or not walk_clear(at):continue
+		if not sight(source+Vector3.UP,at+Vector3.UP,[unit.get_rid(),world.player.get_rid()]):
+			best=at;dist=ds
+	return fallback if best==Vector3.INF else best
+
+func can_surrender()->bool:
+	return wanted>0 and not armed and not world.player.vehicle and world.clock-recent_threat>2 and officers.any(func(n):return n.hp>0 and not n.boarded and n.position.distance_to(world.player.position)<15 and sees_player(n.position+Vector3.UP*1.5,[n.get_rid()]))
+
 func vehicle_door(officer,v)->Vector3:
 	var closest=null
 	var best=INF
@@ -238,7 +272,7 @@ func vehicle_door(officer,v)->Vector3:
 	var side=signf(v.to_local(officer.position).x)
 	return v.to_global(Vector3(1.61*(side if side!=0 else -1.),0,-.46))
 func dispatched(v)->bool:
-	return v in active_units or (v.model=="marine" and v.position.distance_to(last_fix)<900) or (v in world.security_cars and v.position.distance_to(last_fix)<200)
+	return v==strip_unit or v in active_units or (v.model=="marine" and v.position.distance_to(last_fix)<900) or (v in world.security_cars and v.position.distance_to(last_fix)<200)
 func dispatch():
 	var p=world.player
 	active_units.clear()
@@ -278,8 +312,52 @@ func dispatch():
 		if is_bridge or wanted>=4:
 			var near=road_graph.get_closest_point(goal)
 			var q=road_graph.get_point_position(near)
-			if q.distance_to(p.position)>50 and (spike_pos==Vector3.INF or spike_pos.distance_to(p.position)>150):
-				spike_pos=q+Vector3.UP*.12;spikes.position=spike_pos;spikes.show()
+			if q.distance_to(p.position)>50 and strip_unit==null:
+				var links=road_graph.get_point_connections(near)
+				if links.is_empty():return
+				var approach=road_graph.get_point_position(links[0])-q
+				approach.y=0;approach=approach.normalized()
+				var site=q+approach*11.
+				for unit in available:
+					if unit.crew[0].hp<=0 or unit.position.distance_to(site)>195 or unit.crew.any(func(n):return not n.boarded):continue
+					strip_unit=unit;strip_officer=unit.crew[0];strip_goal=site
+					strip_angle=atan2(approach.x,approach.z)
+					strip_setup=0.;strip_deadline=world.clock+32
+					break
+func clear_strip():
+	if strip_officer and strip_officer.hp>0:strip_officer.torso.rotation.x=0
+	strip_unit=null;strip_officer=null;strip_goal=Vector3.INF
+	spike_pos=Vector3.INF;spikes.hide();last_tires.clear();strip_vehicle=null
+
+func update_strip(dt):
+	if not strip_unit:return
+	if wanted<3 or strip_unit.occupied or strip_unit.wreck or strip_officer.hp<=0 or world.clock>strip_deadline or strip_officer.under_fire_until>world.clock:
+		clear_strip();return
+	if not spikes.visible:
+		if strip_officer.boarded:
+			if strip_unit.position.distance_to(strip_goal)<8 and strip_unit.speed<3:strip_officer.deploy()
+		elif strip_officer.position.distance_to(strip_goal)<2.2:
+			strip_setup+=dt
+			strip_officer.torso.rotation.x=.48
+			if strip_setup>=1.2:
+				strip_officer.torso.rotation.x=0
+				spike_pos=strip_goal+Vector3.UP*.12;spikes.position=spike_pos;spikes.rotation.y=strip_angle
+				spikes.show();strip_deadline=world.clock+50.
+		return
+	var car=world.player.vehicle
+	if not car or car.boat or car.aircraft:
+		last_tires.clear();strip_vehicle=null;return
+	if car!=strip_vehicle:last_tires.clear();strip_vehicle=car
+	for i in car.wheel_pivots.size():
+		var at=spikes.to_local(car.wheel_pivots[i].global_position)
+		if last_tires.size()<=i:last_tires.append(at)
+		var prev=last_tires[i]
+		var delta=at-prev
+		var t=clampf(-prev.z/delta.z,0,1) if absf(delta.z)>.001 else 1.
+		var contact=prev.lerp(at,t)
+		if absf(contact.z)<.29 and absf(contact.x)<3.45 and absf(contact.y)<.63:car.puncture(i)
+		last_tires[i]=at
+
 func visible_spawn(at):
 	var cam=world.player.camera
 	for offset in [Vector3.ZERO,Vector3(3,2,3),Vector3(-3,2,-3)]:
@@ -296,6 +374,8 @@ func drive_goal(v:CharacterBody3D)->Vector3:
 			if water_at(v.position.lerp(dest,.5)) and v.position.distance_to(dest)<130:path=PackedVector3Array([dest])
 			water_paths[key]=[world.clock+3,path]
 		return path_goal(water_paths[key][1],v.position,10)
+	if v==strip_unit:
+		return v.position if not strip_officer.boarded else strip_goal+Basis(Vector3.UP,strip_angle)*Vector3(4.8,0,0)
 	if v.crew.any(func(n):return not n.boarded and n.hp>0):return v.position
 	var desired=last_fix
 	var ahead=known_velocity
@@ -311,6 +391,10 @@ func drive_goal(v:CharacterBody3D)->Vector3:
 	elif v.assignment=="contain":desired-=Vector3(6,0,3)
 	var dist=v.position.distance_to(desired)
 	if v in world.security_cars or (dist<115 and absf(v.position.y-desired.y)<3 and not water_at(desired) and not water_at(v.position.lerp(desired,.5)) and sees_point(v.position+Vector3.UP*1.6,desired+Vector3.UP*1.6,[v.get_rid()])):
+		if not world.player.vehicle and dist<32:
+			var away=v.position-desired;away.y=0
+			if away.length()<10:return v.position
+			return desired+away.normalized()*9.
 		return desired
 	var key=v.get_instance_id()
 	var target_id=road_graph.get_closest_point(desired)
@@ -327,6 +411,7 @@ func path_goal(path,position3,tolerance):
 func traffic_goal(car)->Vector3:
 	var route=car.traffic_route
 	if not route.is_empty() and flat_distance(car.position,route[0])<maxf(6.,car.speed*.48):
+		car.junction_id=-1;car.entered_junction=false;car.stopped_since=-1.
 		car.lane_origin=route[0]
 		route.remove_at(0)
 	if route.is_empty():
@@ -349,24 +434,29 @@ func traffic_goal(car)->Vector3:
 	var edge=dest-car.lane_origin
 	if edge.length()<.12:return dest
 	var dir=edge.normalized()
+	if car.junction_id<0:
+		car.junction_id=world.atlas.graph.get_closest_point(dest)
+		car.junction_kind=world.atlas.junction_control(car.junction_id,car.lane_origin)
+
 	var side=dir.cross(Vector3.UP).normalized()
 	var offset=2.5
 	if wanted>0 and active_units.any(func(c):return c.responding and c.position.distance_squared_to(car.position)<500):offset=4.65
-	var lead=clampf((car.position-car.lane_origin).dot(dir)+maxf(13,car.speed*.95),0,edge.length())
+	var lookahead=maxf(4.0,car.speed*.65) if car.pass_until>world.clock else maxf(13,car.speed*.95)
+	var lead=clampf((car.position-car.lane_origin).dot(dir)+lookahead,0,edge.length())
 	return car.lane_origin+dir*lead+side*(offset+car.pass_offset)
 func flat_distance(a,b):return Vector2(a.x,a.z).distance_to(Vector2(b.x,b.z))
 func nearest_vehicle():
 	var closest=null
 	var d=4.4
 	for v in world.vehicles:
-		if v.wreck or v.flooded or v.occupied or v.speed>3.4:continue
-		var dist=world.player.position.distance_to(v.position)
+		if v.wreck or v.flooded or v.occupied or ((v.boat or v.aircraft) and v.speed>3.4):continue
+		var dist=world.player.position.distance_to(v.position if v.boat or v.aircraft or v.owned else v.driver_door())
 		if v.boat:dist-=1.
 		if v.aircraft:dist-=.8
 		if dist<d:closest=v;d=dist
 	return closest
 func request_vehicle(v):
-	if v.owned or v==world.vehicles[3]:
+	if (v.boat or v.aircraft) and v.owned:
 		world.player.board(v);return
 	if v.police and v.boat and (v.gunner_hp>0 or v.captain_hp>0) and not v.overboard:
 		incident(v.position,2)
@@ -376,44 +466,60 @@ func request_vehicle(v):
 		var captain=person("guard",v.position+v.global_basis.z*3+Vector3.UP*.6,Color("3c5668"))
 		sentries.append(captain)
 		v.seat_bodies[0].hide();v.seat_bodies[0].collision_layer=0
-	if v.driving_npc and not armed:
-		v.threat_until=world.clock+6;incident(v.position,1)
-		message("Driver pulls away");return
-	if v.driving_npc and armed:
-		var local=v.to_local(world.player.position)
-		if absf(local.z)>2.2 or absf(local.x)>2.5:
-			v.threat_until=world.clock+7
-			incident(v.position,2);message("Driver tries to get clear");return
-		v.driver_yield=true
-	if v.police:
-		alert(v.position,2)
-		for n in v.crew:n.deploy()
-	lock_target=v;lock_round=0;lock_time=0;lock_origin=world.player.position
-	message("Time three hits in the green zone",2)
-func lock_cursor()->float:return (1.-cos(lock_time*(2.4+.38*lock_round)))*.5
-func lock_width()->float:return [.36,.28,.22][clampi(lock_round,0,2)]
-func lock_center()->float:return [.54,.39,.62][clampi(lock_round,0,2)]
-func theft_hit():
-	if not lock_target:return
-	if absf(lock_cursor()-lock_center())>lock_width()*.5:
-		cancel_theft();message("Lock slipped");return
-	lock_round+=1
-	audio.effect("click",world.player.position,-10)
-	if lock_round<3:return
+	if v.boat or v.aircraft:
+		v.owned=true;incident(v.position,2);world.player.board(v);return
+	if world.player.position.distance_to(v.driver_door())>1.85:
+		message("Move to the driver’s door");return
+	lock_target=v
+	lock_time=.58 if v.owned else 0.
+	entry_occupied=v.driving_npc or v.crew.any(func(n):return n.boarded and n.hp>0)
+	entry_latched=not entry_occupied
+	entry_ejected=false
+	entry_glass=not v.owned and not entry_occupied and v.door_glass.visible
+	if entry_occupied:v.threat_until=world.clock+6
+
+func tick_entry(dt):
 	var car=lock_target
-	if car.driving_npc:
-		var driver_npc=person("civilian",car.position+car.global_basis.x*1.7,Color("7e7869"))
-		driver_npc.danger=world.player.position;driver_npc.frightened=world.clock+12
-		civilians.append(driver_npc)
-	for n in car.crew:
-		if n.boarded and n.hp>0:n.deploy()
-	if car.crew.any(func(n):return n.boarded and n.hp>0):
-		cancel_theft();message("The driver’s door is blocked");return
-	cancel_theft();car.owned=true;car.driving_npc=false
-	incident(car.position,2 if car.police else 1);world.player.board(car)
+	var p=world.player
+	var door_at=car.driver_door()
+	if car.wreck or car.flooded or p.position.distance_to(door_at)>2.05:
+		cancel_theft();return
+	lock_time+=dt
+	if not entry_latched:
+		if not (Input.is_action_pressed("interact") or use_touch):
+			cancel_theft();return
+		if lock_time<.78:return
+		entry_latched=true;lock_time=0.;car.driver_yield=true
+	if entry_glass and lock_time>=.38:
+		car.door_glass.hide();entry_glass=false;audio.effect("glass",door_at,-4)
+	if lock_time>.58:car.door_open=1.
+	if entry_occupied and car.driving_npc and lock_time>.58:
+		var pull=smoothstep(.60,1.02,lock_time)
+		car.driver.position=Vector3(-.44,.9,-.15).lerp(Vector3(-1.78,.83,.93),pull)
+		car.driver.rotation.z=pull*.58
+	if lock_time>=1.02 and not entry_ejected:
+		if car.driving_npc:
+			var driver_npc=person("civilian",car.to_global(Vector3(-1.78,.1,.93)),Color("7e7869"))
+			driver_npc.danger=p.position;driver_npc.frightened=world.clock+12
+			civilians.append(driver_npc)
+			car.driving_npc=false;car.driver.hide()
+		for n in car.crew:
+			if n.boarded and n.hp>0:n.deploy()
+		if car.crew.any(func(n):return n.boarded and n.hp>0):
+			cancel_theft();return
+		entry_ejected=true
+		if not car.owned:incident(car.position,2 if car.police else 1)
+	if lock_time>=1.86:car.door_open=0.
+	if lock_time>=2.22:
+		cancel_theft();car.owned=true;p.board(car)
+
 func cancel_theft():
-	if lock_target:lock_target.driver_yield=false
-	lock_target=null;lock_round=0
+	if lock_target:
+		lock_target.driver_yield=false
+		lock_target.door_open=0.
+		lock_target.driver.position=Vector3(-.44,.9,-.15)
+		lock_target.driver.rotation.z=0.
+	lock_target=null;lock_time=0.;entry_latched=false
 func hurt(amount:float):
 	if lock_target:cancel_theft()
 	if campaign.armor>0:
@@ -439,6 +545,7 @@ func fire():
 	var p=world.player
 	var aim=aim_points()
 	ammo-=1;next_shot=world.clock+fire_interval();recoil=.068
+	audio.player_report(["","shot","shotgun","carbine"][weapon_slot])
 	var pellets=5 if weapon_slot==2 else 1
 	var excluded:Array[RID]=[p.get_rid()]
 	if p.vehicle:excluded.append(p.vehicle.get_rid())
@@ -452,8 +559,15 @@ func fire():
 			point=hit.position
 			var victim=hit.collider.get_meta("target",hit.collider)
 			if victim.has_method("take_damage"):victim.take_damage(17. if pellets>1 else weapon_damage())
-		_trace(muzzle,point,Color("e5c381"))
-	audio.effect("shot",p.position,-8);report_shot(p.position)
+		for cop in officers:
+			if cop.hp<=0 or cop.boarded:continue
+			var eye=cop.position+Vector3.UP*1.2
+			if Geometry3D.get_closest_point_to_segment(eye,muzzle,point).distance_squared_to(eye)<8.:
+				cop.react_to_fire(muzzle)
+		fx.shot(muzzle,point,not hit.is_empty())
+	report_shot(p.position)
+func _trace(a:Vector3,b:Vector3,_color:Color):
+	fx.shot(a,b,false)
 func aim_points()->Array:
 	var p=world.player
 	var start=p.camera.global_position
@@ -483,6 +597,7 @@ func reset_ledger():
 func interact()->bool:
 	if map_open or modal or puzzle or hp<=0:return true
 	if world.player.vehicle:return false
+	if can_surrender():surrendered=true;return true
 	if campaign.interact():return true
 	var pos=world.player.position
 	var room=world.nearby_lift()
@@ -519,7 +634,7 @@ func purchase(index):
 	elif index in [2,3,4]:campaign.shop_owned[index]=true
 	elif index==5:
 		if not is_instance_valid(last_vehicle) or last_vehicle.wreck:message("Bring a repairable vehicle to the shop");return
-		last_vehicle.health=100;last_vehicle.spike=false;last_vehicle.burning=0
+		last_vehicle.health=100;last_vehicle.spike=false;last_vehicle.flat_count=0;last_vehicle.burning=0
 		for mesh in last_vehicle.rubbers:mesh.show()
 		for puff in last_vehicle.fire_objects:puff.queue_free()
 		last_vehicle.fire_objects.clear()
@@ -578,8 +693,9 @@ func _unhandled_input(event):
 	if event.is_action_pressed("reload"):reload()
 	if event.is_action_pressed("shoot"):fire()
 func interaction_hint()->String:
-	if lock_target:return "Click or press Space in the green zone · Esc cancels"
+	if lock_target:return "Hold to take the driver’s seat" if not entry_latched else ""
 	if puzzle:return ""
+	if can_surrender():return "E · Surrender"
 	if world.player.vehicle:
 		return "F · Exit aircraft" if world.player.vehicle.aircraft else ("Q · Left window    E · Exit" if not world.player.vehicle.boat else "E · Step onto deck")
 	if world.nearby_lift():return "E · Elevator"
@@ -591,7 +707,7 @@ func interaction_hint()->String:
 	if p.distance_to(world.atlas.marks["Copper Kettle"])<4.3 or p.distance_to(world.atlas.marks["Southbank Garage"])<4.3:return "E · Supplies and repairs"
 	if p.distance_to(Vector3(-45,3,27))<20:return super()
 	var v=nearest_vehicle()
-	if v:return ("F · Enter aircraft" if v.aircraft else "E · Board launch" if v.boat else "E · Enter vehicle" if v.owned else "E · Attempt entry")
+	if v:return ("F · Enter aircraft" if v.aircraft else "E · Board launch" if v.boat else "E · Enter vehicle" if v.owned else "Hold · Take driver’s seat" if v.driving_npc or v.crew.any(func(n):return n.boarded and n.hp>0) else "E · Open driver’s door")
 	return ""
 func reset_run():
 	if modal:close_modal()
@@ -599,15 +715,14 @@ func reset_run():
 	campaign.cleanup()
 	cash=maxi(0,cash-mini(300,roundi(cash*.1)))
 	super()
-	weapon_slot=0;active_units.clear();spikes.hide();spike_pos=Vector3.INF;reports.clear();world.night_lock=false
+	clear_strip();surrendered=false;recent_threat=-100.;weapon_slot=0;active_units.clear();reports.clear();world.night_lock=false
 	campaign.save_progress()
 func _physics_process(dt):
 	if not world.started or get_tree().paused:return
 	if hp<=0:
 		super(dt);return
-	if lock_target:
-		lock_time+=dt
-		if lock_target.speed>4 or lock_target.wreck or world.player.position.distance_to(lock_target.position)>5.8:cancel_theft()
+	if lock_target:tick_entry(dt)
+	if armed or world.player.velocity.length()>1. or wanted==0:surrendered=false
 	if world.player.vehicle:
 		last_vehicle=world.player.vehicle;arrest=0
 	if world.clock-door_contact_at>.35:extract_timer=maxf(0.,extract_timer-dt*2)
@@ -616,7 +731,7 @@ func _physics_process(dt):
 		active_units.clear()
 		if spikes.visible:spikes.hide();spike_pos=Vector3.INF
 	var p=world.player
-	if spikes.visible and p.vehicle and not p.vehicle.boat and not p.vehicle.aircraft and p.position.distance_to(spike_pos)<6.2:p.vehicle.puncture()
+	update_strip(dt)
 	while not reports.is_empty() and reports[0][0]<=world.clock:
 		var report=reports.pop_front();alert(report[1],report[2])
 	while not report_history.is_empty() and world.clock-report_history[0][1]>6:report_history.pop_front()
@@ -681,6 +796,7 @@ func _repopulate():
 			if at.distance_to(p.position)<55 or visible_spawn(at):continue
 			if pool==traffic:
 				item.position=at+Vector3.UP*.2;item.velocity=Vector3.ZERO;item.rotation.y=atan2(-d.x,-d.z)
+				item.junction_id=-1;item.stopped_since=-1.;item.entered_junction=false;item.blocked_since=-1.
 				item.speed=0;item.pass_until=0;item.pass_offset=0;item.lane_origin=world.atlas.points[int(e[1] if reverse else e[0])]
 				item.traffic_route=PackedVector3Array([world.atlas.points[int(e[0] if reverse else e[1])]])
 			else:item.position=at;item.route=pair;item.index=1

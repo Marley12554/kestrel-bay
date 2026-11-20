@@ -8,6 +8,8 @@ var plots={}
 var by_cell={}
 var road_cells={}
 var outlines=[]
+var shore_toes=[]
+var tide_lines=[]
 var park_shape: PackedVector2Array
 var graph=AStar3D.new()
 func _init():
@@ -36,8 +38,31 @@ func _init():
 		if not by_cell.has(key):by_cell[key]=[]
 		by_cell[key].append(p)
 	for area in data.land:
-		outlines.append(polygon(area[1]))
+		var outline=polygon(area[1])
+		var toes=PackedVector3Array()
+		var tide=PackedVector2Array()
+		for j in outline.size():
+			var point=outline[j]
+			var incoming=(point-outline[(j-1+outline.size())%outline.size()]).normalized()
+			var outgoing=(outline[(j+1)%outline.size()]-point).normalized()
+			var n=Vector2(outgoing.y,-outgoing.x)
+			var outward=(Vector2(incoming.y,-incoming.x)+n).normalized()
+			var toe=point+outward*(14.0 if area[2]=="city" else .075)/maxf(.45,outward.dot(n))
+			toes.append(Vector3(toe.x,-3.,toe.y))
+			tide.append(point.lerp(toe,BASE/(BASE+3.)))
+		outlines.append(outline);shore_toes.append(toes);tide_lines.append(tide)
 	park_shape=polygon(data.parks[0][1])
+# 0 = priority, 1 = stop, 2/3 = the two signal phases.
+func junction_control(node:int, incoming:Vector3)->int:
+	var links=graph.get_point_connections(node)
+	if links.size()<3:return 0
+	var dir=(points[node]-incoming).normalized()
+	if links.size()>=4:
+		return 2 if absf(dir.x)>absf(dir.z) else 3
+	for link in links:
+		if (points[link]-points[node]).normalized().dot(dir)>.74:return 0
+	return 1
+
 static func cell(p:Vector3)->Vector2i:
 	return Vector2i(floori(p.x/100),floori(p.z/100))
 static func polygon(raw:Array)->PackedVector2Array:
@@ -62,8 +87,8 @@ func neighbors(p:Vector3,grid:Dictionary,r=1)->Array:
 	return result
 func region(p:Vector3)->String:
 	if Geometry2D.is_point_in_polygon(Vector2(p.x,p.z),park_shape):return "Central Park"
-	for i in outlines.size():
-		if Geometry2D.is_point_in_polygon(Vector2(p.x,p.z),outlines[i]):
+	for i in tide_lines.size():
+		if Geometry2D.is_point_in_polygon(Vector2(p.x,p.z),tide_lines[i]):
 			if i==0:
 				return "Upper Manhattan" if p.z<-3030 else "Midtown" if p.z<-1300 else "Lower Manhattan"
 			if i==1:return "Queens" if p.z<-1800 else "Old Harbor · Brooklyn" if p.z>-160 else "Brooklyn"

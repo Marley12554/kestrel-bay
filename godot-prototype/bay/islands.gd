@@ -29,6 +29,7 @@ var mobile=false
 var qa=false
 var next_light=0.
 var deck_shapes=[]
+var building_shapes={}
 const BASE=2.6
 
 func loading_stage(phase:String):
@@ -53,6 +54,10 @@ func _ready():
 	player.camera.near=.16
 	if mobile:get_viewport().scaling_3d_scale=.62
 	update_rooms(true)
+func lighting_warmup_views()->Array:
+	var views=super()
+	# Four distinct material paths, each exercised in daylight and at night.
+	return [views[0],views[5],views[7],views[8]]
 func diagnostics_enabled()->bool:return qa
 func make_player()->CharacterBody3D:return preload("res://bay/rider.gd").new()
 func make_director()->Node3D:return preload("res://bay/director.gd").new()
@@ -75,7 +80,9 @@ func _build_shore():
 	distant_sea.material_override=material(Color("376678"))
 	distant_sea.position.y=-1.2
 	add_child(distant_sea)
-	for outline in atlas.outlines:
+	for index in atlas.outlines.size():
+		var outline=atlas.outlines[index]
+		build_shoreline(outline,atlas.shore_toes[index],index<2)
 		# Extruded convex coast sections give a stable ground plane at each
 		# street. A single giant, double-sided triangle soup snagged wheels.
 		var body=StaticBody3D.new()
@@ -90,6 +97,27 @@ func _build_shore():
 			var hull=ConvexPolygonShape3D.new();hull.points=verts
 			var shape=CollisionShape3D.new();shape.position=Vector3(center.x,BASE,center.y);shape.shape=hull
 			body.add_child(shape)
+# Use the same shoreline triangles for the camera and the swimmer.
+func build_shoreline(outline:PackedVector2Array,toes:PackedVector3Array,sloped:bool):
+	var faces=PackedVector3Array()
+	for i in outline.size():
+		var j=(i+1)%outline.size()
+		var a=Vector3(outline[i].x,BASE,outline[i].y)
+		var b=Vector3(outline[j].x,BASE,outline[j].y)
+		faces.append_array(PackedVector3Array([a,toes[j],b,a,toes[i],toes[j]]))
+	var surface=SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	if sloped:
+		var sand=ShaderMaterial.new()
+		sand.shader=preload("res://bay/sand.gdshader")
+		surface.set_material(sand)
+	else:surface.set_material(material(Color("847867")))
+	for v in faces:surface.add_vertex(v)
+	surface.generate_normals()
+	var shore=MeshInstance3D.new()
+	shore.mesh=surface.commit()
+	add_child(shore)
+	face_body(faces)
 func face_body(faces:PackedVector3Array):
 	var shape=ConcavePolygonShape3D.new()
 	shape.backface_collision=true
@@ -102,9 +130,11 @@ func face_body(faces:PackedVector3Array):
 	return body
 func collision_box(body,at:Vector3,size:Vector3):
 	var coll=CollisionShape3D.new()
-	var bounds=BoxShape3D.new()
-	bounds.size=size
-	coll.shape=bounds
+	if not building_shapes.has(size):
+		var bounds=BoxShape3D.new()
+		bounds.size=size
+		building_shapes[size]=bounds
+	coll.shape=building_shapes[size]
 	coll.position=at
 	body.add_child(coll)
 	return coll
@@ -376,6 +406,7 @@ func start_test():
 		player.yaw=1.36
 		if mobile:Input.mouse_mode=Input.MOUSE_MODE_VISIBLE
 func _process(dt):
+	RenderingServer.global_shader_parameter_set("kb_traffic_clock",clock)
 	super(dt)
 	if not player or not started:return
 	if not night_lock:day_time=fmod(day_time+dt,600.)
@@ -442,6 +473,8 @@ func snapshot()->Dictionary:
 	info["slot"]=ops.weapon_slot
 	info["yaw"]=player.yaw
 	info["mobile"]=mobile
+	info["sounding_cruisers"]=ops.audio.sirens.filter(func(s):return s.player.playing).size()
+	info["boat_engine"]=player.vehicle!=null and player.vehicle.boat and ops.audio.engine.stream==ops.audio.marine_engine
 	info["touch_sprint"]=player.mobile_sprint
 	var dimensions=Vector2(get_window().size)
 	var button_center=start_button.get_screen_transform()*(start_button.size*.5)/dimensions
@@ -461,6 +494,14 @@ func _browser_command(args:Array):
 	if not qa or args.is_empty():return
 	var id=String(args[0])
 	match id:
+		"riverbank":
+			var line=atlas.outlines[1]
+			var mid=(line[2]+line[3])*.5
+			var f=(line[3]-line[2]).normalized()
+			var n=Vector3(f.y,0,-f.x)
+			player.reset_player(Vector3(mid.x,-.60,mid.y)+n*12.)
+			player.yaw=atan2(n.x,n.z);player.pitch=.06
+			update_rooms(true)
 		"bridge_run","route_run":begin_drive("bridge" if id=="bridge_run" else "route")
 		"square","park","observatory","blackwater","skyline","battery","fort","billboards":
 			var places={"square":["Times Square",Vector3(0,.3,-4),PI*.73,.18],"park":["Central Park",Vector3(3,.3,-8),-.24,.08],"observatory":["Empire State Building",Vector3(2,326.96,-19),-PI*.62,-.30],"blackwater":["Blackwater Service Dock",Vector3(0,.16,0),PI,.02],"skyline":["Brooklyn Bridge",Vector3(8,.18,-3),PI*.48,.16],"battery":["Battery House Hotel",Vector3(0,.14,2),0.,.07],"fort":["Fort Halcyon",Vector3(0,.14,2),-2.2,.1],"billboards":["Times Square",Vector3(4,.3,49),.38,.23]}

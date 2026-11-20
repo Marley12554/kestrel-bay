@@ -105,12 +105,14 @@ func _prepare_lighting() -> void:
 				player.camera.global_position = view[0]
 				player.camera.look_at(view[1])
 				set_underwater_fog(view[2])
+				if ops.has_method("warm_effects"):ops.warm_effects(true)
 				warmup_label.text = "Preparing lighting… %d%%" % roundi(100.0*warmup_rendered_views/(views.size()*2))
 				# Resource preload alone doesn't compile Compatibility/WebGL variants.
 				# Keep the actual 3D view drawing beneath the opaque loading screen.
 				await RenderingServer.frame_post_draw
 				await RenderingServer.frame_post_draw
 				warmup_rendered_views += 1
+	if ops.has_method("warm_effects"):ops.warm_effects(false)
 	ops.gun.visible = false
 	set_night(false)
 	set_underwater_fog(false)
@@ -420,9 +422,8 @@ func _build_waterfront() -> void:
 	# Sloped access onto the dock instead of a sudden ledge.
 	var approach = box(self,Vector3(4,2.13,142),Vector3(5,.25,7),Color("8c7861"),true)
 	approach.rotation.x = .13
-	make_sign(self,Vector3(4,4,138),"HARBOR / PIER 04",.033,PI)
 	for x in range(-155,160,22):
-		_tree(Vector3(x,2.8,145))
+		_tree(Vector3(x,2.8,137.6))
 
 func _build_bridge() -> void:
 	# Flat shared junction until x=184, then a gradual climb over open water.

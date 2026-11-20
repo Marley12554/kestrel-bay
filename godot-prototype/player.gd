@@ -112,7 +112,7 @@ func _physics_process(dt: float) -> void:
 	var iz = move_input.y
 	var input = Vector2(ix,iz).limit_length()
 	var wave = world.wave_height(global_position.x,global_position.z)
-	swimming = global_position.y<.1 and not is_on_floor()
+	swimming = global_position.y<wave+.16 and not is_on_floor()
 	submerged = camera.global_position.y<wave-.1
 	sprint = wants_sprint() and not world.ops.exhausted
 	var travel_speed = (3.8 if sprint else 2.7) if swimming else (8.5 if sprint else 4.4)

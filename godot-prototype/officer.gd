@@ -17,6 +17,15 @@ var torso: Node3D
 var flashlight: SpotLight3D
 var weapon: Node3D
 var walking = 0.0
+var under_fire_until=-100.
+var threat_from=Vector3.ZERO
+var refuge=Vector3.INF
+var next_refuge=0.
+func react_to_fire(at:Vector3):
+	under_fire_until=world.clock+4.5
+	threat_from=at
+	ops.arrest=0;ops.extract_timer=0
+
 var role = "approach"
 
 func configure(owner_world: Node3D, director: Node3D, car: CharacterBody3D, index: int) -> void:
@@ -79,6 +88,7 @@ func deploy() -> bool:
 func take_damage(amount: float) -> void:
 	if hp<=0:
 		return
+	react_to_fire(world.player.position)
 	hp -= amount
 	ops.alert(position,3)
 	if hp<=0:
@@ -112,6 +122,27 @@ func _physics_process(dt: float) -> void:
 		else:
 			_move_to(cruiser.position,dt,3.2)
 		return
+	if ops.has_method("clear_strip"):
+		if self==ops.strip_officer and under_fire_until<=world.clock:
+			role="deploy strip"
+			var site=ops.strip_goal
+			if ops.spikes.visible:site=cruiser.position+cruiser.global_basis.x*1.8
+			if position.distance_to(site)>1.15:_move_to(site,dt,4.0)
+			return
+		if under_fire_until>world.clock:
+			role="take cover"
+			if world.clock>=next_refuge or refuge==Vector3.INF:
+				next_refuge=world.clock+1.25;refuge=ops.shelter(self,threat_from)
+			if position.distance_to(refuge)>1.:_move_to(refuge,dt,6.4)
+			elif visible_target and world.clock>shot_at and ops.shooter_slot(self):
+				ops.officer_shot(self,position+Vector3.UP*1.3,p.position+Vector3.UP)
+				shot_at=world.clock+1.35
+			return
+		if ops.surrendered and visible_target:
+			role="arrest"
+			if distance>1.55:_move_to(p.position,dt,3.8)
+			else:ops.arrest+=dt*.85
+			return
 	if p.vehicle and ops.has_method("vehicle_door") and p.vehicle.speed<2.5 and not p.vehicle.boat and visible_target and distance<25:
 		var door=ops.vehicle_door(self,p.vehicle)
 		if door!=Vector3.INF:
@@ -148,10 +179,10 @@ func _physics_process(dt: float) -> void:
 	role = "flank" if seat==1 else "approach"
 	if visible_target:
 		if distance<6:
-			target = position
+			target = p.position if ops.wanted==1 and distance>1.4 else position
 		elif seat==1 and distance>12 and p.position.y<5:
 			target += Vector3(6 if cruiser.slot==0 else -6,0,2)
-		if ops.wanted>=2 and distance<48:
+		if ops.wanted>=2 and distance<48 and (not ops.has_method("clear_strip") or world.clock-ops.recent_threat<12 or ops.armed and ops.wanted>=3):
 			aim_time += dt
 			if aim_time>.8 and world.clock>shot_at and world.clock>reload_until and ops.shooter_slot(self):
 				var target_eye = p.position+Vector3.UP*1.2
@@ -169,12 +200,14 @@ func _physics_process(dt: float) -> void:
 	else:
 		aim_time = 0
 	_move_to(target,dt,4.5 if visible_target else 3.8)
-	if visible_target and ops.wanted==1 and distance<1.7:
+	if visible_target and ops.wanted==1 and distance<1.7 and (not ops.has_method("clear_strip") or world.clock-ops.recent_threat>5):
 		ops.arrest += dt*.45
 
 func _move_to(target: Vector3,dt: float,speed: float) -> void:
 	var transit=ops.interior_step(self,target) if ops.has_method("interior_step") else Vector3.INF
-	if transit!=Vector3.INF:
+	if role in ["take cover","deploy strip"] and target.distance_to(position)<16 and ops.navigation_clear(position,target):
+		path=PackedVector3Array([target])
+	elif transit!=Vector3.INF:
 		path=PackedVector3Array([transit])
 	elif world.clock-route_at>.9 and not (position.x>-67 and position.x<-62 and position.z>28 and position.z<48 and position.y>2.9 and position.y<6.6):
 		path = ops.foot_path(position,target)

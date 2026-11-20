@@ -1,4 +1,5 @@
 extends "res://player.gd"
+var traffic_hit_at=-1.
 var mobile_brake=false
 var mobile_sprint=false
 var mobile_lean=false
@@ -28,15 +29,13 @@ func _unhandled_input(event):
 	if not world.started or world.ops.map_open or world.ops.puzzle or world.ops.modal or world.ops.hp<=0:return
 	if world.ops.lock_target:
 		if event.is_action_pressed("pause"):world.ops.cancel_theft()
-		elif event.is_action_pressed("interact") or event.is_action_pressed("jump") or (event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT):
-			world.ops.theft_hit()
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseButton and event.pressed and not world.mobile and Input.mouse_mode!=Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode=Input.MOUSE_MODE_CAPTURED
 		get_viewport().set_input_as_handled()
 		return
-	if event is InputEventMouseMotion and Input.mouse_mode==Input.MOUSE_MODE_CAPTURED:
+	if not world.mobile and event is InputEventMouseMotion and Input.mouse_mode==Input.MOUSE_MODE_CAPTURED:
 		yaw-=event.relative.x*.0023
 		pitch=clampf(pitch-event.relative.y*.0023,-1.30,1.18)
 	if event.is_action_pressed("interact") and not (vehicle and vehicle.aircraft):
@@ -69,7 +68,7 @@ func interact():
 	if near:world.ops.request_vehicle(near)
 func _physics_process(dt):
 	if not world.started:return
-	if world.ops.modal or world.ops.puzzle or world.ops.lock_target:
+	if world.ops.modal or world.ops.puzzle or (world.ops.lock_target and world.ops.entry_latched):
 		if not vehicle:velocity=Vector3.ZERO
 		return
 	if not vehicle and swimming and Input.is_action_just_pressed("jump") and position.y>world.wave_height(position.x,position.z)-1.55 and try_mantle():return
@@ -80,7 +79,14 @@ func _physics_process(dt):
 	super(dt)
 func _process(dt):
 	if not world.started:return
-	if vehicle and vehicle.aircraft:
+	if world.ops.lock_target and world.ops.entry_latched:
+		var car=world.ops.lock_target
+		var t=world.ops.lock_time
+		var outside=car.driver_door()+Vector3.UP*(1.6-.25*sin(clampf(t/.58,0,1)*PI))
+		outside=(position+Vector3.UP*1.65).lerp(outside,smoothstep(0.,.32,t))
+		camera.global_position=outside.lerp(car.to_global(Vector3(-.43,1.32,-.14)),smoothstep(1.02,1.91,t))
+		camera.rotation=Vector3(-.12,lerp_angle(yaw,car.rotation.y,smoothstep(.72,1.90,t)),0)
+	elif vehicle and vehicle.aircraft:
 		var focus=vehicle.position+Vector3.UP*1.6
 		var behind=Vector3(sin(yaw),.28,cos(yaw))*vehicle.camera_distance
 		camera.global_position=focus+behind
