@@ -1,0 +1,48 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://flight.gd" id="1"]
+[ext_resource type="PackedScene" path="res://meshes/midtown.scn" id="2"]
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 1
+background_color = Color(0.70, 0.81, 0.85, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.84, 0.88, 0.91, 1)
+ambient_light_energy = 0.75
+reflected_light_source = 1
+fog_enabled = true
+fog_light_color = Color(0.70, 0.81, 0.85, 1)
+fog_density = 0.00016
+
+[sub_resource type="StandardMaterial3D" id="GroundMat"]
+albedo_color = Color(0.52, 0.56, 0.54, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="GroundMesh"]
+size = Vector3(2150, 1, 2450)
+material = SubResource("GroundMat")
+
+[node name="Midtown" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
+
+[node name="Afternoon" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-43, -39, 0)
+light_color = Color(1.0, 0.94, 0.84, 1)
+light_energy = 1.05
+shadow_enabled = true
+directional_shadow_max_distance = 1400.0
+
+[node name="Terrain" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.52, 0)
+mesh = SubResource("GroundMesh")
+
+[node name="Survey" parent="." instance=ExtResource("2")]
+
+[node name="Camera" type="Camera3D" parent="."]
+current = true
+near = 0.18
+far = 7500
+fov = 69.0

@@ -1,7 +1,7 @@
-name: Test and publish game
+name: Publish Midtown freecam
 on:
   push:
-    branches: [main]
+    branches: [codex/midtown-freecam]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,8 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Check Classic
-        run: node tests/acceptance.cjs
       - name: Cache Godot editor and Web export template
         id: godot
         uses: actions/cache@v4
@@ -39,15 +37,17 @@ jobs:
           template_dir=~/.local/share/godot/export_templates/4.7.1.stable
           mkdir -p "$template_dir"
           unzip -j -q templates.zip templates/web_nothreads_release.zip -d "$template_dir"
-      - name: Check the native city and export for the browser
+      - name: Export Midtown free flight
         run: |
-          export GODOT_BIN="$HOME/.local/bin/godot"
-          node scripts/godot.cjs test
-          node scripts/build.cjs
+          mkdir -p dist/midtown
+          ~/.local/bin/godot --headless --path preview --editor --import --quit
+          ~/.local/bin/godot --headless --path preview --export-release Web ../dist/midtown/midtown.html
+          mv dist/midtown/midtown.html dist/midtown/index.html
+          test -s dist/midtown/midtown.pck && test -s dist/midtown/midtown.wasm
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: dist/site
+          path: dist/midtown
   deploy:
     needs: build
     runs-on: ubuntu-latest

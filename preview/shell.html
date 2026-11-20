@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Midtown Manhattan · Kestrel Bay</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#adbec3;color:#fff;font:16px/1.35 system-ui,sans-serif}#canvas{display:block;width:100%;height:100%;outline:0;touch-action:none}
+.panel{position:fixed;background:#14242bee;color:#f4f5f1;border:1px solid #ffffff40;border-radius:10px;box-shadow:0 3px 16px #15242920;padding:12px 16px}
+h1{font-size:clamp(18px,2.2vw,27px);margin:0;letter-spacing:-.04em;font-weight:650}.place{top:max(14px,env(safe-area-inset-top));left:max(14px,env(safe-area-inset-left));pointer-events:none}.place small{color:#b6cccd}
+.speed{right:max(14px,env(safe-area-inset-right));top:max(14px,env(safe-area-inset-top));width:min(235px,44vw)}label{display:flex;justify-content:space-between;gap:8px;font-size:15px}output{font-variant-numeric:tabular-nums;color:#a7e4cd}input{display:block;width:100%;margin:4px 0 0;accent-color:#9cdec6;height:25px}
+.help{left:14px;bottom:max(14px,env(safe-area-inset-bottom));font-size:14px}.touch{display:none}a{color:inherit}footer{position:fixed;right:12px;bottom:max(14px,env(safe-area-inset-bottom));color:white;background:#172a30c9;border-radius:5px;padding:4px 8px;font-size:12px}
+#loading{position:fixed;inset:0;display:grid;place-content:center;text-align:center;background:#192d35;color:#fffaec;z-index:3;padding:2rem}#loading[hidden]{display:none}progress{display:block;margin:14px auto;accent-color:#96d3bd}
+#pad,#rise{display:none}button{border:1px solid #ffffff55;border-radius:9px;background:#14242be6;color:#fff;font:600 19px system-ui;min-height:44px;min-width:44px;touch-action:none;user-select:none;-webkit-user-select:none}button:active{background:#2b5651}
+@media(pointer:coarse){.help{display:none}.place,.speed{padding:8px 12px}.speed label{font-size:14px}#pad,#rise{display:grid;position:fixed;bottom:max(29px,env(safe-area-inset-bottom));gap:3px}#pad{left:max(12px,env(safe-area-inset-left));grid-template-columns:repeat(3,44px)}#rise{right:max(12px,env(safe-area-inset-right))}#pad button:first-child{grid-column:2}#pad button:nth-child(2){grid-column:1}.touch{display:inline}footer{bottom:1px}}
+</style></head><body>
+<canvas id="canvas" tabindex="0" aria-label="Midtown Manhattan free flight"></canvas>
+<header class="panel place"><h1>Midtown Manhattan</h1><small>Free flight<span class="touch"> · Drag to look</span></small></header>
+<div class="panel speed"><label for="speed">Flight speed <output for="speed" id="readout">95 mph</output></label><input id="speed" type="range" min="2" max="600" value="95" step="1" aria-label="Flight speed in miles per hour"></div>
+<div class="panel help">WASD fly · Q / E down / up · Drag to look · Double-click for mouse look</div>
+<div id="pad" aria-label="Flight movement"><button data-axis="Z" data-dir="-1" aria-label="Forward">↑</button><button data-axis="X" data-dir="-1" aria-label="Left">←</button><button data-axis="Z" data-dir="1" aria-label="Backward">↓</button><button data-axis="X" data-dir="1" aria-label="Right">→</button></div>
+<div id="rise"><button data-axis="Y" data-dir="1" aria-label="Ascend">＋</button><button data-axis="Y" data-dir="-1" aria-label="Descend">−</button></div>
+<footer><a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
+<div id="loading" role="status"><span id="message">Loading Midtown Manhattan…</span><progress id="loadbar"></progress></div>
+<script src="$GODOT_URL"></script>
+<script>
+const canvas=document.getElementById('canvas'), speed=document.getElementById('speed'), output=document.getElementById('readout');
+window.midtownReady=false;window.midtownSpeed=95;window.midtownInControls=false;window.midtownLocked=false;
+window.midtownX=window.midtownY=window.midtownZ=0;
+const held=new Map();
+function updateMovement(){
+  const axes={X:0,Y:0,Z:0};for(const b of held.values())axes[b.dataset.axis]+=Number(b.dataset.dir);
+  for(const key of Object.keys(axes))window['midtown'+key]=Math.sign(axes[key]);
+}
+for(const b of document.querySelectorAll('button[data-axis]')){
+  b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);held.set(e.pointerId,b);updateMovement()});
+  b.addEventListener('lostpointercapture',e=>{held.delete(e.pointerId);updateMovement()});
+}
+window.addEventListener('blur',()=>{held.clear();updateMovement()});
+speed.addEventListener('input',()=>{window.midtownSpeed=Number(speed.value);output.textContent=speed.value+' mph'});
+speed.addEventListener('focus',()=>{window.midtownInControls=true});
+speed.addEventListener('blur',()=>{window.midtownInControls=false});
+speed.addEventListener('pointerup',()=>canvas.focus());
+canvas.addEventListener('dblclick',()=>{if(canvas.requestPointerLock)canvas.requestPointerLock()?.catch?.(()=>{})});
+document.addEventListener('pointerlockchange',()=>{window.midtownLocked=document.pointerLockElement===canvas});
+const loading=document.getElementById('loading'),message=document.getElementById('message'),bar=document.getElementById('loadbar');
+const config=$GODOT_CONFIG;
+const engine=new Engine(config);
+function failed(reason){loading.hidden=false;message.textContent=String(reason);bar.hidden=true}
+canvas.addEventListener('webglcontextlost',()=>failed('Graphics connection lost. Reload to return to Midtown.'));
+engine.startGame({canvas,onProgress:(loaded,total)=>{if(total){bar.max=total;bar.value=loaded}}}).then(()=>{
+  function ready(){if(window.midtownReady){loading.hidden=true;canvas.focus();performance.mark('midtown-first-view')}else requestAnimationFrame(ready)}
+  requestAnimationFrame(ready)
+}).catch(failed);
+</script></body></html>

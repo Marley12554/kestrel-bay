@@ -1,0 +1,16 @@
+config_version=5
+
+[application]
+config/name="Midtown Freecam"
+run/main_scene="res://map.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+[display]
+window/size/viewport_width=1200
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.68,0.79,0.83,1)
+lights_and_shadows/directional_shadow/size=2048
