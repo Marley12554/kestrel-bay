@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const {createHash} = require('node:crypto');
 const {spawnSync} = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const project = path.join(root, 'godot-prototype');
@@ -41,6 +42,17 @@ function build() {
   if (!page.includes(engineScript)) throw Error('Missing Godot loader script');
   fs.copyFileSync(path.join(__dirname, 'web-recovery.js'), path.join(output, 'web-recovery.js'));
   page = page.replace(engineScript, '<script src="web-recovery.js"></script>\n' + engineScript);
+  // Pages caches the pack independently of the HTML. Keep its virtual path
+  // stable for Godot, but give the browser a new URL when the pack changes.
+  const pack = 'index.pck';
+  const digest = createHash('sha256').update(fs.readFileSync(path.join(output, pack))).digest('hex').slice(0, 16);
+  const engineInit = 'const engine = new Engine(GODOT_CONFIG);';
+  if (!page.includes(engineInit)) throw Error('Missing Godot engine initialization');
+  page = page.replace(engineInit, `const packURL = 'index.pck?v=${digest}';
+GODOT_CONFIG.fileSizes[packURL] = GODOT_CONFIG.fileSizes['index.pck'];
+${engineInit}
+const preload = engine.preloadFile.bind(engine);
+engine.preloadFile = (source, target) => preload(source === 'index.pck' ? packURL : source, target);`);
   fs.writeFileSync(shell, page);
   buildClassic();
   fs.writeFileSync(path.join(output, '.nojekyll'), '');
