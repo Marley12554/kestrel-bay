@@ -5,6 +5,7 @@ const Atlas=preload("res://bay/atlas.gd")
 var atlas
 var chunks={}
 var fixture_surfaces={}
+var signal_post_mesh:ArrayMesh
 var fixture_body:StaticBody3D
 var post_shape=CylinderShape3D.new()
 var root_node=Node3D.new()
@@ -150,9 +151,14 @@ func begin_post(at:Vector3):
 	fixture_body.add_child(collider)
 	collider.owner=root_node
 
-func finish_piece(label:String):
-	var mesh=ArrayMesh.new()
-	for surface in fixture_surfaces.values():surface.commit(mesh)
+func finish_piece(label:String,signal_post:bool=false):
+	var mesh: ArrayMesh=signal_post_mesh if signal_post else null
+	if mesh==null:
+		mesh=ArrayMesh.new()
+		for surface in fixture_surfaces.values():
+			surface.index()
+			surface.commit(mesh)
+		if signal_post:signal_post_mesh=mesh
 	fixture_surfaces.clear()
 	var instance=MeshInstance3D.new()
 	instance.name=label
@@ -178,12 +184,12 @@ func intersection(node:int, origin:Vector3, width:float):
 		finish_piece("Post")
 		fixture_body=null
 		return
-	finish_piece("Post")
+	finish_piece("Post",true)
 	var first_anchor=fixture_body
 	var far=pos-side*(width+1.1)
 	begin_post(far)
 	segment(far,far+Vector3.UP*6.8,.085,Color("535852"))
-	finish_piece("Post")
+	finish_piece("Post",true)
 	fixture_body.set_meta("signal_support",fixture_body.get_path_to(first_anchor))
 	fixture_body=first_anchor
 	var center=stop+side*width*.25+Vector3.UP*5.15
@@ -325,6 +331,7 @@ func bake():
 		trees.add_child(c);c.owner=root_node
 	for key in chunks:
 		var mesh=MeshInstance3D.new()
+		chunks[key].index()
 		mesh.mesh=chunks[key].commit()
 		mesh.name="Tile_%s_%s_%s"%[key.x,key.y,key.z]
 		root_node.add_child(mesh)

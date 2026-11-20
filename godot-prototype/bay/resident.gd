@@ -41,8 +41,7 @@ func configure(w,kind:String,points:PackedVector3Array,color:Color):
 	add_child(cap)
 	add_child(upper)
 	var jacket=world.box(upper,Vector3(0,1.06,0),Vector3(.43,.55,.26),color)
-	var head=world.cylinder(upper,Vector3(0,1.55,0),.145,.30,Color(["b78d72","d4ac8a","916c59"][get_instance_id()%3]))
-	head.mesh.radial_segments=8
+	world.cylinder(upper,Vector3(0,1.55,0),.145,.30,Color(["b78d72","d4ac8a","916c59"][get_instance_id()%3]),8)
 	for side in [-1,1]:
 		var leg=Node3D.new()
 		add_child(leg);leg.position=Vector3(side*.12,.84,0)

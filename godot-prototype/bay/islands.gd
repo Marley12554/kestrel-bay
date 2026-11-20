@@ -70,6 +70,7 @@ func update_render_budget():
 	get_viewport().scaling_3d_scale=minf(.68 if low_graphics else (.72 if mobile else 1.),sqrt(budget/maxf(1.,float(pixels.x)*pixels.y)))
 
 func lighting_warmup_views()->Array:
+	if low_graphics:return []
 	var views=super()
 	# Four distinct material paths, each exercised in daylight and at night.
 	return [views[0],views[5],views[7],views[8]]

@@ -5,6 +5,9 @@ const Player = preload("res://player.gd")
 var player: CharacterBody3D
 var vehicles: Array = []
 var materials = {}
+var box_meshes = {}
+var cylinder_meshes = {}
+var building_startup_meshes = true
 var ops: Node3D
 var footprints: Array = []
 var clock = 0.0
@@ -60,6 +63,7 @@ func _ready() -> void:
 	ops.configure(self)
 	loading_stage("batching")
 	_batch_static_visuals()
+	building_startup_meshes = false
 	player.set_process(false)
 	for v in vehicles:
 		v.set_physics_process(false)
@@ -165,8 +169,11 @@ func material(color: Color, emissive: bool=false) -> StandardMaterial3D:
 
 func box(parent: Node3D, at: Vector3, size: Vector3, color: Color, solid: bool=false) -> MeshInstance3D:
 	var mesh = MeshInstance3D.new()
-	var shape = BoxMesh.new()
-	shape.size = size
+	var shape: BoxMesh = box_meshes.get(size)
+	if shape == null:
+		shape = BoxMesh.new()
+		shape.size = size
+		if building_startup_meshes: box_meshes[size] = shape
 	mesh.mesh = shape
 	mesh.material_override = material(color)
 	parent.add_child(mesh)
@@ -181,13 +188,18 @@ func box(parent: Node3D, at: Vector3, size: Vector3, color: Color, solid: bool=f
 		body.add_child(collider)
 	return mesh
 
-func cylinder(parent: Node3D, at: Vector3, radius: float, height: float, color: Color) -> MeshInstance3D:
+func cylinder(parent: Node3D, at: Vector3, radius: float, height: float, color: Color, sides: int=10) -> MeshInstance3D:
 	var mesh = MeshInstance3D.new()
-	var shape = CylinderMesh.new()
-	shape.top_radius = radius
-	shape.bottom_radius = radius
-	shape.height = height
-	shape.radial_segments = 10
+	var key = Vector3(radius,height,sides)
+	var shape: CylinderMesh = cylinder_meshes.get(key)
+	if shape == null:
+		shape = CylinderMesh.new()
+		shape.top_radius = radius
+		shape.bottom_radius = radius
+		shape.height = height
+		shape.radial_segments = sides
+		shape.rings = 0
+		if building_startup_meshes: cylinder_meshes[key] = shape
 	mesh.mesh = shape
 	mesh.material_override = material(color)
 	parent.add_child(mesh)
