@@ -12,7 +12,7 @@ h1{font-size:clamp(18px,2.2vw,27px);margin:0;letter-spacing:-.04em;font-weight:6
 </style></head><body>
 <canvas id="canvas" tabindex="0" aria-label="Midtown Manhattan free flight"></canvas>
 <header class="panel place"><h1>Midtown Manhattan</h1><small>Free flight<span class="touch"> · Drag to look</span></small></header>
-<div class="panel speed"><label for="speed">Flight speed <output for="speed" id="readout">95 mph</output></label><input id="speed" type="range" min="2" max="600" value="95" step="1" aria-label="Flight speed in miles per hour"></div>
+<div class="panel speed"><label for="speed">Flight speed <output for="speed" id="readout">95 mph</output></label><input id="speed" type="range" min="2" max="272" aria-valuetext="95 mph" value="95" step="1" aria-label="Flight speed in miles per hour"></div>
 <div class="panel help">WASD fly · Q / E down / up · Drag to look · Double-click for mouse look</div>
 <div id="pad" aria-label="Flight movement"><button data-axis="Z" data-dir="-1" aria-label="Forward">↑</button><button data-axis="X" data-dir="-1" aria-label="Left">←</button><button data-axis="Z" data-dir="1" aria-label="Backward">↓</button><button data-axis="X" data-dir="1" aria-label="Right">→</button></div>
 <div id="rise"><button data-axis="Y" data-dir="1" aria-label="Ascend">＋</button><button data-axis="Y" data-dir="-1" aria-label="Descend">−</button></div>
@@ -33,7 +33,17 @@ for(const b of document.querySelectorAll('button[data-axis]')){
   b.addEventListener('lostpointercapture',e=>{held.delete(e.pointerId);updateMovement()});
 }
 window.addEventListener('blur',()=>{held.clear();updateMovement()});
-speed.addEventListener('input',()=>{window.midtownSpeed=Number(speed.value);output.textContent=speed.value+' mph'});
+function updateSpeed(){
+  const tick=Number(speed.value);
+  let mph=tick;
+  if(tick>200) mph=600+(tick-200)*25;
+  else if(tick>100) mph=100+(tick-100)*5;
+  window.midtownSpeed=mph;
+  output.textContent=mph.toLocaleString('en-US')+' mph';
+  speed.setAttribute('aria-valuetext',output.textContent);
+}
+speed.addEventListener('input',updateSpeed);
+updateSpeed();
 speed.addEventListener('focus',()=>{window.midtownInControls=true});
 speed.addEventListener('blur',()=>{window.midtownInControls=false});
 speed.addEventListener('pointerup',()=>canvas.focus());
