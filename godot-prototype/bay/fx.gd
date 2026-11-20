@@ -1,4 +1,8 @@
 extends Node3D
+
+const TRACER_LENGTH = 1.35
+const TRACER_WIDTH = .105
+const TRACER_SPEED = 155.
 var w
 var rng=RandomNumberGenerator.new()
 var clouds=[]
@@ -6,6 +10,8 @@ var short_lived=[]
 var skid_marks=[]
 var free_sprites=[]
 var live=[]
+var free_tracers: Array[MeshInstance3D] = []
+var tracers: Array[Dictionary] = []
 var textures={}
 var smoke_fade=[]
 var shots=0
@@ -36,6 +42,24 @@ func configure(world):
 		sprite.mesh=quad;sprite.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		sprite.hide();add_child(sprite);free_sprites.append(sprite)
 
+	var tracer_mesh = CylinderMesh.new()
+	tracer_mesh.top_radius = .5
+	tracer_mesh.bottom_radius = .035
+	tracer_mesh.height = 1.
+	tracer_mesh.radial_segments = 6
+	tracer_mesh.rings = 0
+	var tracer_material = StandardMaterial3D.new()
+	tracer_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	tracer_material.albedo_color = Color("ffae52")
+	tracer_mesh.material = tracer_material
+	for i in 24:
+		var tracer = MeshInstance3D.new()
+		tracer.mesh = tracer_mesh
+		tracer.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		tracer.hide()
+		add_child(tracer)
+		free_tracers.append(tracer)
+
 func warm_up(camera:Camera3D,visible_now:bool):
 	# Exercise the alpha-blended effects pipeline while the loading cover is up.
 	for i in textures.size():
@@ -45,6 +69,13 @@ func warm_up(camera:Camera3D,visible_now:bool):
 			sprite.global_position=camera.to_global(Vector3((i-2)*.16,0,-1.4))
 			sprite.material_override=textures[textures.keys()[i]]
 			sprite.scale=Vector3.ONE*.14
+
+	var tracer = free_tracers.back()
+	tracer.visible = visible_now
+	if visible_now:
+		var origin = camera.to_global(Vector3(-.4, -.4, -3.2))
+		var direction = (camera.global_basis.x-camera.global_basis.z).normalized()
+		place_tracer(tracer, origin, direction, .7, 0.)
 
 func puff(kind:String,at:Vector3,motion:Vector3,size:float,growth:float,life:float):
 	if free_sprites.is_empty():return
@@ -61,6 +92,30 @@ func shot(a:Vector3,b:Vector3,impact:bool):
 	shots+=1
 	if shots%3==0 and delta.length()>6:
 		puff("spark",a+f*.7,f*180.,.115,0.,minf(.075,(delta.length()-.8)/180.))
+
+func hostile_shot(from: Vector3, to: Vector3):
+	var distance = from.distance_to(to)
+	if distance <= .03:
+		return
+	var direction = (to-from)/distance
+	puff("flash", from+direction*minf(.16,distance), Vector3.ZERO, .32, .8, .085)
+	if free_tracers.is_empty():
+		return
+	var tracer = free_tracers.pop_back()
+	var head = minf(.5,distance*.3)
+	# Give short shots time to register on screen. The streak follows the
+	# resolved ray and ends at the same point as the shot.
+	var speed = minf(TRACER_SPEED,(distance+TRACER_LENGTH)/.10)
+	place_tracer(tracer, from, direction, head, 0.)
+	tracer.show()
+	tracers.append({"mesh":tracer, "origin":from, "direction":direction,
+		"distance":distance, "head":head, "speed":speed})
+
+func place_tracer(mesh: MeshInstance3D, origin: Vector3, direction: Vector3, head: float, tail: float):
+	var up = Vector3.RIGHT if absf(direction.dot(Vector3.UP)) > .98 else Vector3.UP
+	var facing = Basis.looking_at(direction,up) * Basis(Vector3.RIGHT,-PI*.5)
+	mesh.transform = Transform3D(facing.scaled_local(Vector3(TRACER_WIDTH, head-tail, TRACER_WIDTH)),
+		origin+direction*(head+tail)*.5)
 
 var wall_scars=[]
 func crash(at:Vector3,normal:Vector3,force:float,masonry:bool):
@@ -153,6 +208,16 @@ func wake(at):
 	short_lived.append([n,w.clock+.38])
 func _process(dt):
 	if not w or not w.started:return
+	for i in range(tracers.size()-1,-1,-1):
+		var tracer = tracers[i]
+		tracer.head += tracer.speed*dt
+		var tail = maxf(0.,tracer.head-TRACER_LENGTH)
+		if tail >= tracer.distance:
+			tracer.mesh.hide()
+			free_tracers.append(tracer.mesh)
+			tracers.remove_at(i)
+			continue
+		place_tracer(tracer.mesh,tracer.origin,tracer.direction,minf(tracer.head,tracer.distance),tail)
 	for i in range(live.size()-1,-1,-1):
 		var p=live[i]
 		p.age+=dt

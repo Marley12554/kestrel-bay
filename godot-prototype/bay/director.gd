@@ -598,7 +598,7 @@ func fire():
 		fx.shot(muzzle,point,not hit.is_empty())
 	report_shot(p.position)
 func _trace(a:Vector3,b:Vector3,_color:Color):
-	fx.shot(a,b,false)
+	fx.hostile_shot(a,b)
 func aim_points()->Array:
 	var p=world.player
 	var start=p.camera.global_position

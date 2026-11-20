@@ -74,6 +74,24 @@ func run():
 	cop.deploy();o.alert(p.position,3);o.extract_timer=1.;o.arrest=.6
 	cop.react_to_fire(p.position);cop._physics_process(.02)
 	check(cop.role=="take cover" and o.arrest==0 and o.extract_timer==0,"Incoming fire interrupts arrest and extraction")
+	# A real officer shot animates a short moving tracer up to the first obstruction.
+	var shot_origin=Vector3(0,600,0)
+	var backstop=w.box(w,shot_origin+Vector3.RIGHT*8.,Vector3(1.,4.,4.),Color.GRAY,true)
+	await frames(2)
+	o.officer_shot(cop,shot_origin,shot_origin+Vector3.RIGHT*16.)
+	check(o.fx.tracers.size()==1,"An officer shot always shows a tracer")
+	if not o.fx.tracers.is_empty():
+		var tracer=o.fx.tracers[0]
+		var mesh=tracer.mesh
+		check(is_equal_approx(tracer.distance,7.5),"Shot ray stops at the wall")
+		var initial=mesh.position.x
+		o.fx._process(.04)
+		check(mesh.visible and mesh.position.x>initial and mesh.basis.y.length()<1.5,"Tracer advances as a short streak")
+		o.fx._process(.048)
+		check(mesh.visible and mesh.to_global(Vector3.UP*.5).x<=7.501,"Tracer does not extend through cover")
+		o.fx._process(.15)
+		check(not mesh.visible and o.fx.tracers.is_empty(),"Spent tracer returns to its pool")
+	backstop.queue_free()
 	o.clear_strip();o.strip_unit=cruiser;o.strip_officer=cop;o.strip_goal=cop.position
 	o.strip_deadline=w.clock+30;cop.under_fire_until=-1
 	o.update_strip(.6);check(not o.spikes.visible,"Strip cannot arm before deployment")
