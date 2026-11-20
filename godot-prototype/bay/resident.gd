@@ -20,6 +20,8 @@ var last_fire=0.
 var path=PackedVector3Array()
 var active=true
 var last_impact=-10.
+var notice_at=0.
+var refuge=Vector3.INF
 func configure(w,kind:String,points:PackedVector3Array,color:Color):
 	world=w
 	role=kind
@@ -99,6 +101,13 @@ func _physics_process(dt):
 		return
 	var target=route[index]
 	var speed=1.5
+	if role=="civilian" and not follow and world.clock>=notice_at:
+		notice_at=world.clock+.65+(get_instance_id()%7)*.04
+		if world.ops.armed and (not p.vehicle or p.leaning()) and distance<30 and (distance<8 or (p.position-position).normalized().dot(-global_basis.z)>-.15):
+			if world.ops.sees_player(position+Vector3.UP*1.55,[get_rid()]):
+				danger=p.position
+				frightened=world.clock+6.
+				refuge=world.ops.shelter(self,danger)
 	if guard:
 		var direction=p.position-position
 		var looking=direction.normalized().dot(-global_basis.z)>.29
@@ -130,11 +139,12 @@ func _physics_process(dt):
 			return
 	elif frightened>world.clock:
 		var away=(position-danger).normalized()
-		target=position+Vector3(away.x,0,away.z)*16
+		target=refuge if refuge!=Vector3.INF else position+Vector3(away.x,0,away.z)*16
 		speed=4.9
 	elif p.vehicle and p.vehicle.speed>7 and distance<16:
 		frightened=world.clock+5
 		danger=p.position-p.vehicle.global_basis.z*2
+	if frightened<=world.clock:refuge=Vector3.INF
 	if not follow and target==route[index] and position.distance_to(target)<2.3:index=(index+1)%route.size()
 	var motion=target-position
 	motion.y=0

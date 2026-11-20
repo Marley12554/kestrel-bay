@@ -50,6 +50,11 @@ func _ready():
 	glass.cull_mode=BaseMaterial3D.CULL_DISABLED
 	glass.roughness=.2
 	super()
+	environment.glow_enabled=true
+	environment.glow_intensity=0.
+	environment.glow_hdr_threshold=.86
+	environment.glow_blend_mode=Environment.GLOW_BLEND_MODE_ADDITIVE
+	environment.glow_bloom=.04
 	player.camera.far=5600
 	player.camera.near=.16
 	if mobile:get_viewport().scaling_3d_scale=.62
@@ -78,7 +83,16 @@ func _build_shore():
 	plane.size=Vector2(30000,30000)
 	distant_sea.mesh=plane
 	distant_sea.material_override=material(Color("376678"))
+	distant_sea.set_meta("dynamic",true)
+	distant_sea.name="HorizonWater"
 	distant_sea.position.y=-1.2
+	var bottom=MeshInstance3D.new()
+	bottom.mesh=plane
+	var sand=ShaderMaterial.new()
+	sand.shader=preload("res://bay/sand.gdshader")
+	bottom.material_override=sand
+	bottom.position.y=-11.4
+	add_child(bottom)
 	add_child(distant_sea)
 	for index in atlas.outlines.size():
 		var outline=atlas.outlines[index]
@@ -143,6 +157,7 @@ func _build_district():
 	for p in atlas.data.parcels:
 		var body=StaticBody3D.new()
 		add_child(body)
+		body.set_meta("masonry",true)
 		body.position=p.at
 		var first=0
 		while first<int(p.floors):
@@ -423,21 +438,27 @@ func _process(dt):
 		sky.sky_top_color=Color("385d75").lerp(Color("081522"),blend)
 		sky.sky_horizon_color=Color("c1d2d3").lerp(Color("243e51"),blend)
 	RenderingServer.global_shader_parameter_set("kb_eye",player.camera.global_position)
-	RenderingServer.global_shader_parameter_set("kb_dark",maxf(0,dusk))
+	var lamp_power=1. if night_lock else smoothstep(316.,341.,day_time)*(1.-smoothstep(578.,598.,day_time))
+	RenderingServer.global_shader_parameter_set("kb_dark",lamp_power)
+	environment.glow_intensity=.78*lamp_power
+	get_node("HorizonWater").visible=not environment.fog_enabled
+	for lamp in lamps:lamp.visible=lamp_power>.05
 	var sea=get_node_or_null("TidalWater")
 	if sea:sea.position=Vector3(round(player.position.x/4)*4,0,round(player.position.z/4)*4)
 	update_rooms()
 	if clock>=next_light:
 		next_light=clock+.45
 		var near=[]
-		if night:
+		if lamp_power>.02:
 			for pt in street_fixtures:
 				if pt.distance_squared_to(player.position)<6400:near.append(pt)
 			near.sort_custom(func(a,b):return a.distance_squared_to(player.position)<b.distance_squared_to(player.position))
 		for i in street_lights.size():
 			var light=street_lights[i]
 			light.visible=i<near.size()
-			if light.visible:light.position=near[i]
+			if light.visible:
+				light.position=near[i]
+				light.light_energy=1.7*lamp_power
 	for i in towers.size():
 		var t=towers[i]
 		t.visible=night and not ops.campaign.power_off

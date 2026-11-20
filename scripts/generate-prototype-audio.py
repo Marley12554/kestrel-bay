@@ -9,7 +9,11 @@ def write(name,duration,fn):
   samples.append(struct.pack('<h',int(value*32767)))
  with wave.open(str(root/(name+'.wav')),'wb') as out:
   out.setnchannels(1);out.setsampwidth(2);out.setframerate(rate);out.writeframes(b''.join(samples))
-write('engine',1,lambda t,i: .35*(math.sin(math.tau*65*t)+.38*math.sin(math.tau*130*t)+.16*math.sin(math.tau*195*t))*(.82+.18*math.sin(math.tau*13*t)))
+# Integral cycle counts make both the waveform and its slope continuous at wrap.
+def ignition(t,i):
+ phase=math.tau*58*t+.12*math.sin(math.tau*t/4)
+ return .29*math.sin(phase)+.14*math.sin(phase*2+.4)+.085*math.sin(phase*3)+.04*math.sin(phase*5+.28*math.sin(math.tau*t/4))
+write('engine',4,ignition)
 # Preserve the seed position of the original incidental sound effects.
 for _ in range(int(.24*rate)):rng.random()
 write('reload',.23,lambda t,i: rng.uniform(-.4,.4)*sum(math.exp(-max(0,t-k)*120) if t>=k else 0 for k in [0,.10,.18]))
@@ -24,14 +28,9 @@ write('pressure',1.6,lambda t,i:envelope(t,1.6)*(.18*math.sin(math.tau*(610*t+62
 
 # Render the vehicle and weapon voices offline so a burst has no synthesis cost.
 def patrol_call(t, i):
- global phase
- rate_hz = .27 if t < 6 else 1.5
- sweep = .5-.5*math.cos(math.tau*rate_hz*(t if t<6 else t-6))
- freq=555+515*sweep
- phase+=math.tau*freq/rate
- horn=sum(math.sin(phase*n)*a for n,a in [(1,.40),(2,.22),(3,.14),(4,.083),(6,.04)])
- return math.tanh(horn*1.9)*(.85+.1*sweep)*envelope(t,8)
-phase=0
+ # Smooth sweep with exactly two wails and an integral number of carrier cycles.
+ phase=math.tau*780*t-880*math.sin(math.tau*t/4)
+ return .37*math.sin(phase)+.14*math.sin(2*phase+.3)+.055*math.sin(3*phase)
 write('siren',8,patrol_call)
 write('marine-engine',2,lambda t,i: (.25*math.sin(math.tau*43*t)+.16*math.sin(math.tau*86*t)+.12*math.sin(math.tau*129*t))*(.68+.32*math.cos(math.tau*10*t))+.06*rng.uniform(-1,1))
 def report(name, pitch, tail):
@@ -49,3 +48,14 @@ def report(name, pitch, tail):
   return (.78*dry+.24*echo)*min(1,t*8500)
  write(name,.65,sample)
 for voice,hz,tail in [('shot',96,.073),('shotgun',66,.135),('carbine',128,.057)]:report(voice,hz,tail)
+
+filtered=0.
+def impact(t,i):
+ global filtered
+ noise=rng.uniform(-1.,1.)
+ filtered=.72*filtered+.28*noise
+ body=.46*math.sin(math.tau*(48*t+1.4*(1-math.exp(-34*t))))*math.exp(-12*t)
+ crumple=filtered*(math.exp(-t*12)+.55*math.exp(-abs(t-.074)*35))
+ ring=.13*math.sin(math.tau*491*t)*math.exp(-19*t)
+ return (body+crumple+ring)*min(1,t*700)*min(1,(.64-t)*100)
+write('crash',.64,impact)

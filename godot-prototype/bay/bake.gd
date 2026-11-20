@@ -4,6 +4,9 @@ extends SceneTree
 const Atlas=preload("res://bay/atlas.gd")
 var atlas
 var chunks={}
+var fixture_surfaces={}
+var fixture_body:StaticBody3D
+var post_shape=CylinderShape3D.new()
 var root_node=Node3D.new()
 var standard=StandardMaterial3D.new()
 var signals=ShaderMaterial.new()
@@ -16,12 +19,14 @@ func _initialize():
 	call_deferred("bake")
 func buffer(p,mode):
 	var key=Vector3i(floori(p.x/180),mode,floori(p.z/180))
-	if not chunks.has(key):
+	var target=fixture_surfaces if fixture_body!=null else chunks
+	if fixture_body!=null:key=Vector3i(0,mode,0)
+	if not target.has(key):
 		var st=SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
 		st.set_material(signals if mode==2 else facades if mode==1 else standard)
-		chunks[key]=st
-	return chunks[key]
+		target[key]=st
+	return target[key]
 func quad(a:Vector3,b:Vector3,c:Vector3,d:Vector3,color:Color,normal:Vector3,mode=0,uv=Rect2(0,0,1,1),tag=Vector2.ZERO):
 	var s=buffer((a+c)*.5,mode)
 	var vs=[a,b,c,d]
@@ -33,7 +38,7 @@ func quad(a:Vector3,b:Vector3,c:Vector3,d:Vector3,color:Color,normal:Vector3,mod
 		s.set_normal(normal)
 		s.set_uv(uvs[n])
 		s.set_uv2(tag)
-		s.add_vertex(vs[n])
+		s.add_vertex(vs[n]-fixture_body.position if fixture_body!=null else vs[n])
 func box(p:Vector3,size:Vector3,col:Color):
 	var a=p-size*.5
 	var b=p+size*.5
@@ -131,6 +136,31 @@ func shell(p):
 		for side in [-1,1]:
 			for i in 5:
 				box(front+Vector3(side*(3+i*.4),3.5+i*.26,.7),Vector3(.20,6+i*.51,.48),Color("aa8850"))
+func begin_post(at:Vector3):
+	fixture_body=StaticBody3D.new()
+	fixture_body.set_script(preload("res://bay/roadside_post.gd"))
+	root_node.add_child(fixture_body,true)
+	fixture_body.owner=root_node
+	fixture_body.position=at
+	post_shape.radius=.16
+	post_shape.height=2.5
+	var collider=CollisionShape3D.new()
+	collider.shape=post_shape
+	collider.position.y=1.25
+	fixture_body.add_child(collider)
+	collider.owner=root_node
+
+func finish_piece(label:String):
+	var mesh=ArrayMesh.new()
+	for surface in fixture_surfaces.values():surface.commit(mesh)
+	fixture_surfaces.clear()
+	var instance=MeshInstance3D.new()
+	instance.name=label
+	instance.mesh=mesh
+	instance.visibility_range_end=235.
+	fixture_body.add_child(instance)
+	instance.owner=root_node
+
 func intersection(node:int, origin:Vector3, width:float):
 	var control=atlas.junction_control(node,origin)
 	if control==0:return
@@ -140,16 +170,36 @@ func intersection(node:int, origin:Vector3, width:float):
 	var stop=end-f*12
 	var pos=stop+side*(width*.5+.55)
 	strip(stop+Vector3.UP*.16+side*.3,stop+Vector3.UP*.16+side*width*.49,.25,Color("e6e1c7"))
-	segment(pos,pos+Vector3.UP*(2.4 if control==1 else 4.),.085,Color("535852"))
+	begin_post(pos)
+	segment(pos,pos+Vector3.UP*(2.4 if control==1 else 6.8),.085,Color("535852"))
 	if control==1:
 		var face=pos+Vector3.UP*2.35
 		quad(face-side*.45+Vector3.UP*.45,face+side*.45+Vector3.UP*.45,face+side*.45-Vector3.UP*.45,face-side*.45-Vector3.UP*.45,Color.WHITE,-f,2,Rect2(0,0,1,1),Vector2(0,-1))
+		finish_piece("Post")
+		fixture_body=null
 		return
-	var center=pos+Vector3.UP*4.
+	finish_piece("Post")
+	var first_anchor=fixture_body
+	var far=pos-side*(width+1.1)
+	begin_post(far)
+	segment(far,far+Vector3.UP*6.8,.085,Color("535852"))
+	finish_piece("Post")
+	fixture_body.set_meta("signal_support",fixture_body.get_path_to(first_anchor))
+	fixture_body=first_anchor
+	var center=stop+side*width*.25+Vector3.UP*5.15
+	var sag=stop+Vector3.UP*5.75
+	var attachment=pos+Vector3.UP*6.8
+	var tap=attachment.lerp(sag,.53)
+	segment(attachment,tap,.039,Color("373d40"),5)
+	segment(tap,sag,.039,Color("373d40"),5)
+	segment(sag,far+Vector3.UP*6.8,.039,Color("373d40"),5)
+	segment(tap,center+Vector3.UP*.62,.037,Color("373d40"),5)
 	box(center,Vector3(.5,1.25,.5),Color("343733"))
 	for lamp in 3:
 		var c=center-f*.37+Vector3.UP*(.37-lamp*.37)
 		quad(c-side*.16+Vector3.UP*.16,c+side*.16+Vector3.UP*.16,c+side*.16-Vector3.UP*.16,c-side*.16-Vector3.UP*.16,[Color("ff4a39"),Color("ffc243"),Color("4ef486")][lamp],-f,2,Rect2(0,0,1,1),Vector2(node%7+(12 if control==3 else 0),lamp))
+	finish_piece("Span")
+	fixture_body=null
 func street(e):
 	var a=atlas.points[int(e[0])]
 	var b=atlas.points[int(e[1])]
@@ -164,8 +214,14 @@ func street(e):
 	if not bridge:strip(a+up*.023,b+up*.023,width+7,Color("92918a"))
 	strip(a+up*lift-forward*width*.42,b+up*lift+forward*width*.42,width,Color("384148"))
 	var dist=a.distance_to(b)
-	for j in range(9,int(dist)-5,12):
-		strip(a+forward*j+up*(lift+.06),a+forward*(j+4.2)+up*(lift+.06),.16,Color("ddbb79"))
+	var divided=width>=16.
+	for j in range(11,int(dist)-10,12):
+		for offset in ([-width*.25,width*.25] if divided else [0.]):
+			var start=a+forward*j+right*offset+up*(lift+.06)
+			strip(start,start+forward*4.2,.16,Color("e1dfcc") if divided else Color("ddbb79"))
+	if divided and dist>19:
+		for offset in [-.16,.16]:
+			strip(a+forward*9+right*offset+up*(lift+.06),b-forward*9+right*offset+up*(lift+.06),.12,Color("dfb254"))
 	for side in [-1,1]:
 		var off=right*side*(width*.5-.28)
 		strip(a+off+up*(lift+.035),b+off+up*(lift+.035),.13,Color("d0cab8"))
@@ -226,7 +282,15 @@ func bake():
 			box(Vector3(tx,44,65+side*11),Vector3(10,2.2,5.4),TRIM)
 			for k in range(-5,6):
 				if k==0:continue
-				var foot=Vector3(tx+k*22,19.5,65+side*9)
+				var x=tx+k*22.
+				var foot=Vector3(x,0,65+side*8.8)
+				for i in range(1,atlas.data.bridge.size()):
+					var a=atlas.points[int(atlas.data.bridge[i-1])]
+					var b=atlas.points[int(atlas.data.bridge[i])]
+					if x>=minf(a.x,b.x) and x<=maxf(a.x,b.x) and a.x!=b.x:
+						foot.y=lerpf(a.y,b.y,(x-a.x)/(b.x-a.x))+.23
+						break
+				box(foot,Vector3(.9,.45,.62),Color("757b75"))
 				segment(Vector3(tx,43,65+side*11),foot,.16,Color("555f61"),4)
 		box(Vector3(tx,40.5,65),Vector3(8,4.8,22),Color("ab9e89"))
 		for z in [59,71]:
@@ -241,7 +305,10 @@ func bake():
 		for k in range(22,int(a.distance_to(b))-10,52):
 			var at=a+f*k+side*(e[2]*.5+1.6)
 			segment(at,at+Vector3.UP*7,.10,Color("586366"),5,.75)
-			box(at+Vector3.UP*7-side*.6,Vector3(1.4,.14,.6),Color("d6c499"))
+			var lamp=at+Vector3.UP*7-side*.6
+			box(lamp,Vector3(1.4,.14,.6),Color("6c7068"))
+			var lens=lamp-Vector3.UP*.08
+			quad(lens+Vector3(-.64,0,-.26),lens+Vector3(.64,0,-.26),lens+Vector3(.64,0,.26),lens+Vector3(-.64,0,.26),Color.WHITE,Vector3.DOWN,2,Rect2(0,0,1,1),Vector2(0,-2))
 			if k%3==1:tree(at+f*6,7.5+rng.randf()*2.7)
 	root_node.name="NewYork"
 	var trees=StaticBody3D.new()

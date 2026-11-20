@@ -134,7 +134,8 @@ func set_underwater_fog(underwater: bool) -> void:
 	environment.fog_enabled = underwater
 	if underwater:
 		environment.fog_light_color = Color("126479")
-		environment.fog_density = .13
+		environment.fog_density = .085
+		environment.fog_sky_affect = 1.
 
 func _bind_controls() -> void:
 	var actions = {
@@ -356,8 +357,6 @@ func _build_hotel() -> void:
 		for sx in [-8,0,8]:
 			box(self,Vector3(x+sx,y+3.6,z),Vector3(1.4,.08,.6),Color("fff0bb"))
 	box(self,Vector3(x,11.25,z),Vector3(29,.35,27),Color("344550"),true)
-	make_sign(self,Vector3(x,6.3,z+13.3),"THE BREAKWATER",.048)
-	make_sign(self,Vector3(x,4.6,z-12.7),"RECEPTION  /  WATERFRONT LOUNGE",.019)
 	# Exterior stair uses a continuous physical slope under visible treads.
 	var steps = 24
 	var top = 6.8
@@ -667,7 +666,8 @@ func _process(dt: float) -> void:
 	hud.text = ("NIGHT" if night else "DAY")+"   /   "+("PURSUIT TEST ACTIVE" if chase else "FREE EXPLORATION")
 	hint.text = ("E · Exit vehicle    Shift / Space · Handbrake" if v and not v.boat else "E · Exit onto deck" if v else "E · Enter nearby vehicle    Shift · Sprint    Space · Jump / Surface")+"\nN · Lighting    P · Pursuit    B · Dock    R · Reset    Esc · Release mouse"
 	speed_label.text = "%02d MPH" % roundi(v.speed*2.23694) if v else ("OXYGEN %d%%" % roundi(player.breath) if player.swimming else "ON FOOT")
-	set_underwater_fog(player.submerged)
+	var eye=player.camera.global_position
+	set_underwater_fog(eye.y<wave_height(eye.x,eye.z)-.08)
 	if not night_switches.is_empty():
 		var latest = night_switches.back()
 		if Time.get_ticks_msec()-latest.at_ms<3000:

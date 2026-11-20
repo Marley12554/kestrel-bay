@@ -77,5 +77,49 @@ func run():
 		if car.pass_until>w.clock:shifted=true
 	check(o.hp>=hp and absf(p.position.x-18.)<.5,"Civilian brakes without pushing the pedestrian")
 	check(shifted and car.position.x>22.,"Civilian passes a persistent obstruction when clear, ended %s"%car.position)
+	# A right turn from Water Street must exit southbound in its west lane.
+	car.position=Vector3(32,2.63,67.5);car.rotation.y=-PI/2
+	car.velocity=Vector3.RIGHT*7.;car.speed=7.;car.traffic_lane=0;car.lane_width=13.
+	car.lane_origin=Vector3(-15,2.6,65);car.junction_id=-1;car.pass_until=0;car.pass_offset=0
+	car.turning_path.clear();car.driving_npc=true
+	car.traffic_route=PackedVector3Array([Vector3(55,2.6,65),Vector3(55,2.6,125)])
+	for i in 1900:
+		await physics_frame;await process_frame
+		if car.position.z>86.:break
+	check(car.position.z>86. and car.position.x>48.5 and car.position.x<55.,"Right turn exits on the right, ended %s"%car.position)
+	car.position=Vector3(-50,2.63,67.5);car.rotation.y=-PI/2
+	car.velocity=Vector3.RIGHT*7;car.speed=7;car.steer=0.
+	p.board(car);p.analog=Vector2(0,-1)
+	Input.action_press("handbrake");await frames(100);Input.action_release("handbrake")
+	check(car.speed>8.,"Throttle keeps pulling through held handbrake")
+	p.analog=Vector2.ZERO;p.reset_player(car.driver_door())
+	# A depleted older save gets the spawn loadout; switching weapons cannot refill it.
+	o.campaign.restore({"cash":20,"magazines":[0,0,0,0,0],"reserves":[0,0,0,0,0]})
+	check(o.magazines[1]==12 and o.reserves[1]>0,"Loaded pistol and spare ammunition on spawn")
+	o.select_slot(1);o.ammo=0;o.reserve=0;o.select_slot(0);o.select_slot(1)
+	check(o.ammo==0 and o.reserve==0,"Holstering does not issue more ammo")
+	var post=w.get_node("NewYork").get_children().filter(func(n):return n.has_method("knock_down"))[0]
+	post.knock_down(Vector3.RIGHT)
+	await frames(40)
+	check(post.collision_layer==0 and absf(post.get_node("Post").rotation.z)>1.,"Struck post falls clear")
+	check(w.atlas.lane_center(18.,0)>0 and w.atlas.lane_center(18.,1)>w.atlas.lane_center(18.,0)+3.,"Distinct travel lanes on the right")
+	car.driving_npc=false;car.owned=true;car.mission_driver=false
+	var parcel=w.atlas.plots["Copper Kettle"]
+	car.position=parcel.at+Vector3(parcel.w*.5+4.,.09,5.)
+	car.rotation.y=PI*.5;car.velocity=Vector3.LEFT*19.;car.speed=19.
+	p.board(car);p.position=car.position
+	w.update_rooms(true)
+	var initial_hp=car.health
+	var marks=o.fx.wall_scars.size()
+	await frames(26)
+	check(car.health<initial_hp and car.engine_mesh.has_meta("undamaged") and o.fx.wall_scars.size()>marks,"Impact dents car and marks streamed building")
+	p.reset_player(car.driver_door())
+	car.position=Vector3(-500,0.,300);car.rotation=Vector3.ZERO
+	car.speed=0.;car.velocity=Vector3.ZERO;car.spike=false;car.flat_count=0
+	p.board(car)
+	await frames(32)
+	check(car.flooded and p.vehicle==car,"Submersion gives a brief interval before ejection")
+	await frames(70)
+	check(not p.vehicle and car.flooded and car.position.y<p.position.y+.2,"Swimmer and sinking car separate")
 	print("WATERFRONT_CHECKS failures=",failures)
 	quit(0 if failures.is_empty() else 1)

@@ -1,7 +1,7 @@
 extends Node
 
 var world: Node3D
-var sounds = {"horn":preload("res://audio/horn.wav"),"air":preload("res://audio/air.wav"),"blast":preload("res://audio/blast.wav"),"pressure":preload("res://audio/pressure.wav"),"shotgun":preload("res://audio/shotgun.wav"),"carbine":preload("res://audio/carbine.wav"),"shot":preload("res://audio/shot.wav"),"reload":preload("res://audio/reload.wav"),"click":preload("res://audio/click.wav"),"glass":preload("res://audio/glass.wav")}
+var sounds = {"crash":preload("res://audio/crash.wav"),"horn":preload("res://audio/horn.wav"),"air":preload("res://audio/air.wav"),"blast":preload("res://audio/blast.wav"),"pressure":preload("res://audio/pressure.wav"),"shotgun":preload("res://audio/shotgun.wav"),"carbine":preload("res://audio/carbine.wav"),"shot":preload("res://audio/shot.wav"),"reload":preload("res://audio/reload.wav"),"click":preload("res://audio/click.wav"),"glass":preload("res://audio/glass.wav")}
 var road_engine
 var marine_engine
 var voices=[]
@@ -44,7 +44,8 @@ func configure(owner_world: Node3D) -> void:
 			player.unit_size = 14
 			player.max_distance = 150
 			player.position.y = 1.5
-			player.playback_type=AudioServer.PLAYBACK_TYPE_STREAM
+			player.max_db=-8.
+			player.playback_type=AudioServer.PLAYBACK_TYPE_SAMPLE if OS.has_feature("web") else AudioServer.PLAYBACK_TYPE_STREAM
 			sirens.append({"car":car,"player":player})
 
 func _loop(source: AudioStreamWAV) -> AudioStreamWAV:
@@ -84,7 +85,7 @@ func _process(dt: float) -> void:
 		return
 	var car = world.player.vehicle
 	var volume = -80.0
-	if car and car.health>0:
+	if car and car.health>0 and not ("flooded" in car and car.flooded):
 		var motor_sound=marine_engine if car.boat else road_engine
 		if engine.stream!=motor_sound:
 			engine.stream=motor_sound
@@ -98,9 +99,12 @@ func _process(dt: float) -> void:
 			responding=world.ops.dispatched(s.car)
 		if responding and not headless:
 			if not s.player.playing:
-				s.player.volume_db=-3
+				s.player.volume_db=-36
 				s.player.play(fmod(world.clock+s.car.get_instance_id()%7,8.))
-		elif s.player.playing:s.player.stop()
+			s.player.volume_db=move_toward(s.player.volume_db,-9.,65.*dt)
+		elif s.player.playing:
+			s.player.volume_db=move_toward(s.player.volume_db,-65.,240.*dt)
+			if s.player.volume_db<=-60.:s.player.stop()
 
 func _exit_tree() -> void:
 	if is_instance_valid(engine):

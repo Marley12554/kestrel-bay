@@ -146,6 +146,7 @@ func _pack(n):
 	# Batch each streamed floor into two draw calls. Colliders retain the exact
 	# transforms of the visible elements, including sloped exterior flights.
 	var body=StaticBody3D.new()
+	body.set_meta("masonry",true)
 	n.add_child(body)
 	var batches=[[],[]]
 	for child in n.get_children():

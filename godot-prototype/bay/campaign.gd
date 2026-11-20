@@ -365,3 +365,4 @@ func restore(data):
 	for i in range(1,4):
 		if mags is Array and mags.size()>i:o.magazines[i]=clampi(int(mags[i]),0,o.capacities[i])
 		if ammo is Array and ammo.size()>i:o.reserves[i]=maxi(0,int(ammo[i]))
+	o.issue_spawn_ammo()

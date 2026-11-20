@@ -12,5 +12,10 @@ void fragment(){
 	float mottling=noise2d(shore.xz*.52)*.55+grain*.45;
 	float dry=smoothstep(.14,.92,shore.y+.20*noise2d(shore.xz*.33));
 	ALBEDO=mix(vec3(.18,.14,.092),vec3(.47,.36,.22),dry)*(.78+.34*mottling);
+	if(shore.y < -3.1){
+		float ribs=sin(shore.x*2.7+sin(shore.z*.72)*1.5+grain*.64);
+		float caustic=pow(max(0.,sin(shore.z*1.3+TIME*.65+sin(shore.x*1.7-TIME*.41))),8.);
+		ALBEDO=vec3(.14,.24,.21)*(.65+.38*mottling+.2*ribs)+vec3(.055,.16,.14)*caustic;
+	}
 	ROUGHNESS=mix(.53,.96,dry);
 }

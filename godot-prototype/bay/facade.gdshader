@@ -47,5 +47,5 @@ void fragment() {
 	glass=mix(glass,stone*.64,max(mullion,sash)*.84);
 	ALBEDO=mix(stone,glass,pane);
 	ROUGHNESS=mix(.86,curtain?.21:.39,pane);
-	EMISSION=pane*lit*vec3(.95,.78,.34);
+	EMISSION=pane*lit*vec3(3.8,2.65,.64)*(1.-.76*max(mullion,sash));
 }

@@ -7,6 +7,7 @@ var marks={}
 var plots={}
 var by_cell={}
 var road_cells={}
+var edge_widths={}
 var outlines=[]
 var shore_toes=[]
 var tide_lines=[]
@@ -23,6 +24,7 @@ func _init():
 	for i in data.roads.size():
 		var e=data.roads[i]
 		graph.connect_points(int(e[0]),int(e[1]))
+		edge_widths[Vector2i(mini(e[0],e[1]),maxi(e[0],e[1]))]=float(e[2])
 		var a=points[int(e[0])]
 		var b=points[int(e[1])]
 		for k in range(1+ceili(a.distance_to(b)/65)):
@@ -52,6 +54,9 @@ func _init():
 			tide.append(point.lerp(toe,BASE/(BASE+3.)))
 		outlines.append(outline);shore_toes.append(toes);tide_lines.append(tide)
 	park_shape=polygon(data.parks[0][1])
+static func lane_center(width:float,index:int)->float:
+	if width>=16.:return width*(.125 if index%2==0 else .375)
+	return minf(2.5,width*.25)
 # 0 = priority, 1 = stop, 2/3 = the two signal phases.
 func junction_control(node:int, incoming:Vector3)->int:
 	var links=graph.get_point_connections(node)

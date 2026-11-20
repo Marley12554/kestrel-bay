@@ -62,6 +62,26 @@ func shot(a:Vector3,b:Vector3,impact:bool):
 	if shots%3==0 and delta.length()>6:
 		puff("spark",a+f*.7,f*180.,.115,0.,minf(.075,(delta.length()-.8)/180.))
 
+var wall_scars=[]
+func crash(at:Vector3,normal:Vector3,force:float,masonry:bool):
+	for i in clampi(int(force*.4),2,10):
+		puff("dust",at+normal*.09,normal*rng.randf_range(.5,2.)+Vector3.UP*rng.randf_range(.3,1.5),.14,1.8,.48)
+	if not masonry:return
+	var side=normal.cross(Vector3.UP).normalized()
+	var st=SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 7:
+		var start=at+normal*.038+side*rng.randf_range(-.51,.51)+Vector3.UP*rng.randf_range(-.17,.24)
+		var end=start+side*rng.randf_range(-.25,.35)+Vector3.UP*rng.randf_range(.16,.43)
+		for p in [start-side*.042,end,start+side*.04]:st.set_normal(normal);st.add_vertex(p-at)
+	var scar=MeshInstance3D.new()
+	scar.mesh=st.commit()
+	var mat=w.material(Color("534c45")).duplicate()
+	mat.cull_mode=BaseMaterial3D.CULL_DISABLED
+	scar.material_override=mat
+	add_child(scar);scar.position=at
+	wall_scars.append(scar)
+	if wall_scars.size()>32:wall_scars.pop_front().queue_free()
 func rim_sparks(at:Vector3,motion:Vector3):
 	for i in 3:
 		var offset=Vector3(rng.randf_range(-1.,1.),rng.randf_range(.6,2.1),rng.randf_range(-1.,1.))

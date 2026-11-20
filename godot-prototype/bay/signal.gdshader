@@ -1,9 +1,13 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 global uniform float kb_traffic_clock;
+global uniform float kb_dark;
 uniform sampler2D stop_face : source_color, filter_linear_mipmap;
 void fragment(){
-	if(UV2.y<0.0){
+	if(UV2.y < -1.5){
+		ALBEDO=mix(vec3(.35,.34,.31),vec3(1.,.83,.45),kb_dark);
+		EMISSION=vec3(3.6,2.3,.72)*kb_dark;
+	}else if(UV2.y<0.0){
 		vec4 sign_color=texture(stop_face,UV);
 		if(sign_color.a<0.5) discard;
 		ALBEDO=sign_color.rgb;

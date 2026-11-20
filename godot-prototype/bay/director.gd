@@ -84,8 +84,9 @@ func _create_population():
 		var a=world.atlas.points[int(road[0])]
 		var b=world.atlas.points[int(road[1])]
 		var f=(b-a).normalized()
-		var v=world.spawn_vehicle(model,a.lerp(b,.31+.023*i)+f.cross(Vector3.UP)*2.6+Vector3.UP*.2)
+		var v=world.spawn_vehicle(model,a.lerp(b,.31+.023*i)+f.cross(Vector3.UP)*world.atlas.lane_center(road[2],i)+Vector3.UP*.2)
 		v.driving_npc=true
+		v.lane_origin=a;v.lane_width=road[2];v.traffic_lane=i%2
 		v.traffic_route=PackedVector3Array([b])
 		v.rotation.y=atan2(-f.x,-f.z);v.home_heading=v.rotation.y
 		traffic.append(v)
@@ -410,7 +411,15 @@ func path_goal(path,position3,tolerance):
 	return path[0] if path.size()>0 else position3
 func traffic_goal(car)->Vector3:
 	var route=car.traffic_route
-	if not route.is_empty() and flat_distance(car.position,route[0])<maxf(6.,car.speed*.48):
+	# Follow the selected lane through a corner before tracking the outbound edge.
+	while not car.turning_path.is_empty():
+		if flat_distance(car.position,car.turning_path[0])>4.2:return car.turning_path[0]
+		car.turning_path.remove_at(0)
+	var incoming=-car.global_basis.z
+	if not route.is_empty() and car.lane_origin!=Vector3.INF:
+		incoming=(route[0]-car.lane_origin).slide(Vector3.UP).normalized()
+	var at_junction=not route.is_empty() and (route[0]-car.position).dot(incoming)<6.5
+	if at_junction:
 		car.junction_id=-1;car.entered_junction=false;car.stopped_since=-1.
 		car.lane_origin=route[0]
 		route.remove_at(0)
@@ -418,17 +427,31 @@ func traffic_goal(car)->Vector3:
 		if car.mission_driver:
 			car.driving_npc=false
 			return car.position
-		var node=road_graph.get_closest_point(car.position)
+		var node=road_graph.get_closest_point(car.lane_origin if car.lane_origin!=Vector3.INF else car.position)
+		var junction=road_graph.get_point_position(node)
 		var links=road_graph.get_point_connections(node)
 		if links.is_empty():return car.position
-		var forward=-car.global_basis.z
 		var options=[]
 		for link in links:
-			var delta=road_graph.get_point_position(link)-road_graph.get_point_position(node)
-			if delta.normalized().dot(forward)>-.45:options.append(link)
+			var delta=road_graph.get_point_position(link)-junction
+			if delta.normalized().dot(incoming)>-.65:options.append(link)
 		var link=links[0] if options.is_empty() else options[rng.randi()%options.size()]
-		car.lane_origin=road_graph.get_point_position(node)
+		car.lane_origin=junction
 		route.append(road_graph.get_point_position(link))
+	if at_junction:
+		var junction=car.lane_origin
+		var node=road_graph.get_closest_point(junction)
+		var link=road_graph.get_closest_point(route[0])
+		var outgoing=(route[0]-junction).slide(Vector3.UP).normalized()
+		var previous_offset=world.atlas.lane_center(car.lane_width,car.traffic_lane)
+		car.lane_width=world.atlas.edge_widths.get(Vector2i(mini(node,link),maxi(node,link)),13.)
+		car.pass_until=0.;car.pass_offset=0.
+		if absf(incoming.dot(outgoing))<.82:
+			var start=junction-incoming*6.5+incoming.cross(Vector3.UP)*previous_offset
+			var finish=junction+outgoing*8.+outgoing.cross(Vector3.UP)*world.atlas.lane_center(car.lane_width,car.traffic_lane)
+			var center=start+incoming*((finish-start).cross(outgoing).y/incoming.cross(outgoing).y)
+			for t in [.5,1.]:car.turning_path.append(start.lerp(center,t).lerp(center.lerp(finish,t),t))
+			return car.turning_path[0]
 	var dest=route[0]
 	if car.lane_origin==Vector3.INF:car.lane_origin=car.position
 	var edge=dest-car.lane_origin
@@ -439,8 +462,8 @@ func traffic_goal(car)->Vector3:
 		car.junction_kind=world.atlas.junction_control(car.junction_id,car.lane_origin)
 
 	var side=dir.cross(Vector3.UP).normalized()
-	var offset=2.5
-	if wanted>0 and active_units.any(func(c):return c.responding and c.position.distance_squared_to(car.position)<500):offset=4.65
+	var offset=world.atlas.lane_center(car.lane_width,car.traffic_lane)
+	if wanted>0 and active_units.any(func(c):return c.responding and c.position.distance_squared_to(car.position)<500):offset=minf(car.lane_width*.5-1.45,offset+1.5)
 	var lookahead=maxf(4.0,car.speed*.65) if car.pass_until>world.clock else maxf(13,car.speed*.95)
 	var lead=clampf((car.position-car.lane_origin).dot(dir)+lookahead,0,edge.length())
 	return car.lane_origin+dir*lead+side*(offset+car.pass_offset)
@@ -709,6 +732,16 @@ func interaction_hint()->String:
 	var v=nearest_vehicle()
 	if v:return ("F · Enter aircraft" if v.aircraft else "E · Board launch" if v.boat else "E · Enter vehicle" if v.owned else "Hold · Take driver’s seat" if v.driving_npc or v.crew.any(func(n):return n.boarded and n.hp>0) else "E · Open driver’s door")
 	return ""
+func issue_spawn_ammo():
+	if magazines[1]==0 and reserves[1]==0:
+		magazines[1]=capacities[1]
+		reserves[1]=capacities[1]*3
+	elif magazines[1]==0:
+		magazines[1]=mini(capacities[1],reserves[1])
+		reserves[1]-=magazines[1]
+	if weapon_slot==1:
+		ammo=magazines[1]
+		reserve=reserves[1]
 func reset_run():
 	if modal:close_modal()
 	if lock_target:cancel_theft()
@@ -716,6 +749,7 @@ func reset_run():
 	cash=maxi(0,cash-mini(300,roundi(cash*.1)))
 	super()
 	clear_strip();surrendered=false;recent_threat=-100.;weapon_slot=0;active_units.clear();reports.clear();world.night_lock=false
+	issue_spawn_ammo()
 	campaign.save_progress()
 func _physics_process(dt):
 	if not world.started or get_tree().paused:return
@@ -791,12 +825,13 @@ func _repopulate():
 			if pool==traffic:
 				at-=d.cross(Vector3.UP)*(e[2]*.5+1.5)
 				if reverse:d=-d
-				at+=d.cross(Vector3.UP)*2.5
+				at+=d.cross(Vector3.UP)*world.atlas.lane_center(e[2],item.traffic_lane)
 				if world.vehicles.any(func(v):return v!=item and v.position.distance_squared_to(at)<25.*25.):continue
 			if at.distance_to(p.position)<55 or visible_spawn(at):continue
 			if pool==traffic:
 				item.position=at+Vector3.UP*.2;item.velocity=Vector3.ZERO;item.rotation.y=atan2(-d.x,-d.z)
 				item.junction_id=-1;item.stopped_since=-1.;item.entered_junction=false;item.blocked_since=-1.
+				item.turning_path.clear();item.lane_width=e[2]
 				item.speed=0;item.pass_until=0;item.pass_offset=0;item.lane_origin=world.atlas.points[int(e[1] if reverse else e[0])]
 				item.traffic_route=PackedVector3Array([world.atlas.points[int(e[0] if reverse else e[1])]])
 			else:item.position=at;item.route=pair;item.index=1

@@ -19,6 +19,10 @@ void vertex() {
 void fragment() {
     float ripple = sin(world.x * 1.4 + clock * 1.3) * sin(world.z * 1.9 - clock);
     ALBEDO = mix(vec3(0.035,0.16,0.20), vec3(0.09,0.29,0.34), ripple * 0.15 + 0.5);
-    ROUGHNESS = 0.24;
+    if (!FRONT_FACING) {
+		ALBEDO = vec3(.035,.27,.30);
+		EMISSION = vec3(.018,.11,.13)*(.75+.25*ripple);
+	}
+	ROUGHNESS = 0.24;
     METALLIC = 0.28;
 }

@@ -36,8 +36,8 @@ func _unhandled_input(event):
 		get_viewport().set_input_as_handled()
 		return
 	if not world.mobile and event is InputEventMouseMotion and Input.mouse_mode==Input.MOUSE_MODE_CAPTURED:
-		yaw-=event.relative.x*.0023
-		pitch=clampf(pitch-event.relative.y*.0023,-1.30,1.18)
+		yaw-=event.relative.x*.004025
+		pitch=clampf(pitch-event.relative.y*.004025,-1.30,1.18)
 	if event.is_action_pressed("interact") and not (vehicle and vehicle.aircraft):
 		press_interact()
 	if event.is_action_pressed("board_air"):
