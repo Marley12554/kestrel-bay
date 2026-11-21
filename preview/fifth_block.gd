@@ -95,7 +95,7 @@ func shop(x: float, width: float, decorated: bool) -> void:
 	for side in [-1,1]:
 		part(Vector3(x+side*width*.31,1.99,.53),Vector3(.065,3.36,.1),BRASS)
 	part(Vector3(x,.48,.53),Vector3(width,.18,.2),STEEL)
-	if decorated:
+	if decorated and not get_parent().has_node("Winter"):
 		for i in 3:
 			var t:=x+(i-1)*width*.23
 			part(Vector3(t,1.6,.54),Vector3(.82,1.85,.23),PINE,"cone")
@@ -198,6 +198,7 @@ func make_streets() -> void:
 			build_signal(Vector3(x,0,z),x<81,z < -45.8)
 
 func snow(x: float,z: float,i: int) -> void:
+	if get_parent().has_node("Winter"): return
 	var length:=3.75+.42*cos(i*1.4)
 	var along_fifth:=is_equal_approx(x,71.5) or is_equal_approx(x,90.5)
 	var size:=Vector3(length,.28+.14*sin(i*.7),.95+.24*cos(i))

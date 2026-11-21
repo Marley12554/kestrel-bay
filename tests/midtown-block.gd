@@ -47,10 +47,18 @@ func run() -> void:
 	var walker: CharacterBody3D = scene.walker
 	walker.position = block.to_global(Vector3(90.5,.15,-56.6))
 	var origin := walker.position
-	walker.velocity = -block.global_basis.x * (3.0 * scene.METRES_PER_SECOND_PER_MPH)
-	for tick in 850:
-		walker.move_and_slide()
-	check(absf(walker.position.distance_to(origin)-19.0)<.12, "walk the measured crossing at 3 mph")
+	scene.yaw = block.rotation.y + PI/2
+	movement_key(KEY_W,true)
+	for tick in 607:
+		scene._physics_process(1.0/60)
+	check(absf(walker.position.distance_to(origin)-19.0)<.12, "walk the crossing in 10.1 seconds")
+	walker.position = origin
+	movement_key(KEY_SHIFT,true)
+	for tick in 300:
+		scene._physics_process(1.0/60)
+	check(absf(walker.position.distance_to(origin)-19.0)<.12, "sprint the crossing in 5 seconds")
+	movement_key(KEY_SHIFT,false)
+	movement_key(KEY_W,false)
 	var waited := false
 	var yielded := false
 	var turned := false
@@ -68,3 +76,11 @@ func run() -> void:
 	check(crossed,"pedestrian completes crossing")
 	print(checks," Midtown checks, ",failures," failures")
 	quit(1 if failures else 0)
+
+func movement_key(code: Key, pressed: bool) -> void:
+	var event := InputEventKey.new()
+	event.physical_keycode = code
+	event.keycode = code
+	event.pressed = pressed
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()

@@ -17,6 +17,8 @@ var dragging := false
 var frames := 0
 var last_move_usec := 0
 const METRES_PER_SECOND_PER_MPH := 0.44704
+const WALK_MPH := 4.2
+const SPRINT_MPH := 8.5
 const MIN_HEIGHT := 1.7
 const MAX_HEIGHT := 1800.0
 
@@ -42,7 +44,8 @@ func _reset_clock() -> void:
 
 func _resize() -> void:
 	var pixels := get_window().size
-	get_viewport().scaling_3d_scale = minf(1.0, sqrt(2100000.0 / (float(pixels.x) * pixels.y)))
+	var budget := 900000.0 if OS.has_feature("web_ios") or OS.has_feature("web_android") else 2100000.0
+	get_viewport().scaling_3d_scale = minf(1.0, sqrt(budget / maxf(1.0, float(pixels.x) * pixels.y)))
 
 func _release() -> void:
 	_reset_clock()
@@ -182,6 +185,7 @@ func _physics_process(dt: float) -> void:
 	elif not body.visible:
 		var input:=input_direction()
 		var flat:=Basis(Vector3.UP,yaw)*Vector3(input.x,0,input.z).limit_length(1.0)
-		walker.velocity=flat*(3.0*METRES_PER_SECOND_PER_MPH)
+		var sprint := Input.is_physical_key_pressed(KEY_SHIFT) or (web != null and bool(web.midtownSprint))
+		walker.velocity = flat * ((SPRINT_MPH if sprint else WALK_MPH) * METRES_PER_SECOND_PER_MPH)
 		walker.move_and_slide()
 	block.street_user=block.to_local(walker.global_position)
