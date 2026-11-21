@@ -1,6 +1,6 @@
 # Midtown street preview
 
-Start on foot at Fifth Avenue and West 34th Street. Walk with WASD at 4.2 mph. Hold Shift to sprint at 8.5 mph, or tap Sprint on touchscreens to toggle it. Press **F** to leave your body and fly, and **F** again to return. In freecam, use the slider for 2–2,400 mph, E to climb and Q to descend. Drag to look or double-click for captured mouse look. Escape releases the pointer. Press E by the teal sedan to drive, then E while stopped to get out. H hides or restores the HUD. Touch controls provide the same actions.
+Start on foot at Fifth Avenue and West 34th Street. Walk with WASD at 4.2 mph. Hold Shift to sprint at 8.5 mph, or tap Sprint on touchscreens to toggle it. Press **F** to leave your body and fly, and **F** again to return. In freecam, use the slider for 2–2,400 mph, E to climb and Q to descend. Click the street once for mouse look with a centered crosshair. V or Escape releases the pointer. On touchscreens, drag to look. Press E by the teal sedan to drive, then E while stopped to get out. H hides or restores the HUD. Touch controls provide the same actions.
 
 The Fifth Avenue entrance, West 34th Street observatory entrance and holiday storefronts are modeled for this block. The [Fifth Avenue lobby reference](https://www.twotwelve.com/project/empire-state-building) and [visitor entrance directions](https://www.esbnyc.com/hours-directions) informed the layout.
 
@@ -10,6 +10,6 @@ The committed compressed Godot scene builds without the source ZIPs. To regenera
 
 ## Native winter block
 
-The browser build opens the winter block using Compatibility. The macOS build starts in the evening on Fifth Avenue and uses Metal with Forward+ lighting. Approach the sedan and press E to drive. Hold the left mouse button and drag to look. F toggles freecam on foot. H hides the control hint. The downloadable art credits are in [winter/CREDITS.txt](winter/CREDITS.txt).
+The browser build opens the winter block using Compatibility. The macOS build starts in the evening on Fifth Avenue and uses Metal with Forward+ lighting. Approach the sedan and press E to drive. The Mac build captures the mouse at startup. Press V to release it and click the street to capture it again. F toggles freecam on foot. H hides the control hint. The downloadable art credits are in [winter/CREDITS.txt](winter/CREDITS.txt).
 
 With the Godot 4.7.1 macOS release template installed, run `godot --headless --path preview --editor --import --quit`, then `godot --headless --path preview --export-release "Mac Native" "../dist/native/Fifth Avenue.app"` after creating the destination directory.

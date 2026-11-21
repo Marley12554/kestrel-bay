@@ -13,7 +13,8 @@ var yaw := 0.0
 var pitch := 0.0
 var web: JavaScriptObject
 var look_finger := -1
-var dragging := false
+@onready var crosshair: Label = $Overlay/Crosshair
+var hud_visible := true
 var frames := 0
 var last_move_usec := 0
 const METRES_PER_SECOND_PER_MPH := 0.44704
@@ -36,6 +37,8 @@ func _ready() -> void:
 		web = JavaScriptBridge.get_interface("window")
 		_resize()
 		get_window().size_changed.connect(_resize)
+	elif not DisplayServer.is_touchscreen_available() and DisplayServer.get_name() != "headless":
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	get_window().focus_exited.connect(_release)
 	get_window().focus_entered.connect(_reset_clock)
 
@@ -50,7 +53,8 @@ func _resize() -> void:
 func _release() -> void:
 	_reset_clock()
 	look_finger = -1
-	dragging = false
+	if not web:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func look(delta: Vector2) -> void:
 	if driving: return
@@ -59,7 +63,9 @@ func look(delta: Vector2) -> void:
 	camera.rotation = Vector3(pitch, yaw, 0)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F:
+	if not web and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_V, KEY_ESCAPE]:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F:
 		toggle_body()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E:
 		if not body.visible: interact()
@@ -71,10 +77,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventScreenDrag and event.index == look_finger:
 		look(event.screen_relative)
 	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION and event.button_index == MOUSE_BUTTON_LEFT:
-		dragging = event.pressed
+		if not web and event.pressed:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
-		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or dragging or (web and bool(web.midtownLocked)):
+		if mouse_captured():
 			look(event.screen_relative)
+
+func mouse_captured() -> bool:
+	return bool(web.midtownLocked) if web else Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 
 func toggle_body() -> void:
 	if driving:
@@ -101,6 +111,7 @@ func toggle_body() -> void:
 	update_hud()
 
 func _process(_dt: float) -> void:
+	crosshair.visible = mouse_captured() and not driving and (not bool(web.midtownHudHidden) if web else hud_visible)
 	if web and bool(web.midtownToggleBody):
 		web.midtownToggleBody = false
 		toggle_body()

@@ -287,12 +287,13 @@ func add_controls() -> void:
 	hint.position=Vector2(18,get_viewport().get_visible_rect().size.y-39)
 	hint.add_theme_font_size_override("font_size",14)
 	hint.add_theme_constant_override("outline_size",4)
-	hint.text="WASD  Move      Shift  Sprint      Drag  Look      E  Drive / exit      F  Freecam      H  Hide"
+	hint.text="WASD  Move      Shift  Sprint      V  Unlock mouse  /  Click to capture      E  Drive / exit      F  Freecam      H  Hide"
 	get_viewport().size_changed.connect(func(): hint.position.y=get_viewport().get_visible_rect().size.y-39)
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode==KEY_H and hint:
 		hint.visible=not hint.visible
+		city.hud_visible=hint.visible
 
 func fitting(at: Vector3, size: Vector3, material: Material) -> MeshInstance3D:
 	var item:=MeshInstance3D.new()

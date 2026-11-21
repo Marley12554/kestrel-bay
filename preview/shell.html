@@ -18,7 +18,7 @@ h1{font-size:clamp(18px,2.2vw,27px);margin:0;letter-spacing:-.04em;font-weight:6
 <canvas id="canvas" tabindex="0" aria-label="Midtown Manhattan street preview"></canvas>
 <header class="panel place"><h1>Fifth Avenue</h1><small>West 34th Street</small></header>
 <div class="panel speed"><div id="flight-speed"><label for="speed">Flight speed <output for="speed" id="readout">95 mph</output></label><input id="speed" type="range" min="2" max="272" aria-valuetext="95 mph" value="95" step="1" aria-label="Flight speed in miles per hour"></div><div class="controls-row"><button type="button" id="body-control"><span id="body-action">Freecam</span> <kbd>· F</kbd></button><button id="car-control" hidden><span>Drive</span> <kbd>· E</kbd></button></div></div>
-<div class="panel help" id="help">WASD walk · Shift sprint · Drag to look · H hide HUD</div>
+<div class="panel help" id="help">WASD walk · Shift sprint · Click to look · H hide HUD</div>
 <button type="button" id="sprint" aria-pressed="false">Sprint</button>
 <div id="pad" aria-label="Flight movement"><button data-axis="Z" data-dir="-1" aria-label="Forward">↑</button><button data-axis="X" data-dir="-1" aria-label="Left">←</button><button data-axis="Z" data-dir="1" aria-label="Backward">↓</button><button data-axis="X" data-dir="1" aria-label="Right">→</button></div>
 <div id="rise"><button data-axis="Y" data-dir="1" aria-label="Ascend">＋</button><button data-axis="Y" data-dir="-1" aria-label="Descend">−</button></div>
@@ -39,14 +39,21 @@ const carButton=document.getElementById('car-control');
 window.midtownStreetMode=(mode,nearCar)=>{
   document.body.dataset.mode=mode;
   if(mode!=='walk')setSprint(false);
+  updateHelp();
   const flying=mode==='fly',driving=mode==='drive';
   document.getElementById('body-action').textContent=flying?'Return to body':'Freecam';
   carButton.hidden=!driving && (!nearCar || flying);
   carButton.querySelector('span').textContent=driving?'Park & exit':'Drive';
-  document.getElementById('help').textContent=driving?'W / S accelerate & brake · A / D steer · Stop to exit · H hide HUD':(flying?'WASD fly · Q / E down / up · Drag to look · H hide HUD':'WASD walk · Shift sprint · Drag to look · H hide HUD');
 };
+function updateHelp(){
+  const mode=document.body.dataset.mode;
+  const movement=mode==='drive'?'W / S accelerate & brake · A / D steer · Stop to exit':
+    mode==='fly'?'WASD fly · Q / E down / up':'WASD walk · Shift sprint';
+  const mouse=window.midtownLocked?'V unlock mouse':'Click street to capture mouse';
+  document.getElementById('help').textContent=movement+' · '+mouse+' · H hide HUD';
+}
 carButton.addEventListener('click',()=>{window.midtownInteract=true;canvas.focus()});
-function toggleHud(){ document.body.classList.toggle('clean');canvas.focus() }
+function toggleHud(){ window.midtownHudHidden=document.body.classList.toggle('clean');canvas.focus() }
 document.getElementById('hide-ui').addEventListener('click',toggleHud);
 document.addEventListener('keydown',e=>{if(e.code==='KeyH'&&!e.repeat)toggleHud()},true);
 canvas.addEventListener('pointerup',()=>{if(document.body.classList.contains('clean') && matchMedia('(pointer:coarse)').matches) toggleHud()});
@@ -78,8 +85,27 @@ updateSpeed();
 speed.addEventListener('focus',()=>{window.midtownInControls=true});
 speed.addEventListener('blur',()=>{window.midtownInControls=false});
 speed.addEventListener('pointerup',()=>canvas.focus());
-canvas.addEventListener('dblclick',()=>{if(canvas.requestPointerLock)canvas.requestPointerLock()?.catch?.(()=>{})});
-document.addEventListener('pointerlockchange',()=>{window.midtownLocked=document.pointerLockElement===canvas});
+window.midtownHudHidden=false;
+canvas.addEventListener('pointerdown',event=>{
+  if(event.pointerType!=='mouse'||event.button!==0||document.pointerLockElement===canvas)return;
+  canvas.focus();
+  canvas.requestPointerLock?.()?.catch?.(()=>{});
+});
+function releaseMouse(){
+  if(document.pointerLockElement===canvas)document.exitPointerLock();
+}
+document.addEventListener('keydown',event=>{
+  if(event.code==='KeyV' && document.pointerLockElement===canvas){
+    event.preventDefault();
+    releaseMouse();
+  }
+},true);
+document.addEventListener('pointerlockchange',()=>{
+  window.midtownLocked=document.pointerLockElement===canvas;
+  updateHelp();
+});
+window.addEventListener('blur',releaseMouse);
+updateHelp();
 const loading=document.getElementById('loading'),message=document.getElementById('message'),bar=document.getElementById('loadbar');
 const config=$GODOT_CONFIG;
 const engine=new Engine(config);
