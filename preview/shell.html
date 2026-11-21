@@ -10,14 +10,16 @@ h1{font-size:clamp(18px,2.2vw,27px);margin:0;letter-spacing:-.04em;font-weight:6
 #pad,#rise{display:none}button{border:1px solid #ffffff55;border-radius:9px;background:#14242be6;color:#fff;font:600 19px system-ui;min-height:44px;min-width:44px;touch-action:none;user-select:none;-webkit-user-select:none}button:active{background:#2b5651}
 #body-control{width:100%;margin-top:4px;font-size:14px;min-height:32px;cursor:pointer}kbd{font:inherit;opacity:.75}
 @media(pointer:coarse){#body-control{min-height:44px}kbd{display:none}.help{display:none}.place,.speed{padding:8px 12px}.speed label{font-size:14px}#pad,#rise{display:grid;position:fixed;bottom:max(29px,env(safe-area-inset-bottom));gap:3px}#pad{left:max(12px,env(safe-area-inset-left));grid-template-columns:repeat(3,44px)}#rise{right:max(12px,env(safe-area-inset-right))}#pad button:first-child{grid-column:2}#pad button:nth-child(2){grid-column:1}.touch{display:inline}footer{bottom:1px}}
-</style></head><body>
-<canvas id="canvas" tabindex="0" aria-label="Midtown Manhattan free flight"></canvas>
-<header class="panel place"><h1>Midtown Manhattan</h1><small>Free flight<span class="touch"> · Drag to look</span></small></header>
-<div class="panel speed"><label for="speed">Flight speed <output for="speed" id="readout">95 mph</output></label><input id="speed" type="range" min="2" max="272" aria-valuetext="95 mph" value="95" step="1" aria-label="Flight speed in miles per hour"><button type="button" id="body-control"><span id="body-action">Exit body</span> <kbd>· 4</kbd></button></div>
-<div class="panel help">WASD fly · Q / E down / up · Drag to look · Double-click for mouse look</div>
+[hidden]{display:none!important}.controls-row{display:flex;gap:5px}.controls-row button{flex:1;white-space:nowrap;font-size:14px;min-height:32px}#body-control{margin:0;width:auto}.controls-row button{flex:1 0 auto;padding:3px 9px}body:not([data-mode="fly"]) #flight-speed,body:not([data-mode="fly"]) #rise,body[data-mode="drive"] #body-control{display:none}#flight-speed{margin-bottom:6px}.speed{width:auto;min-width:142px}body[data-mode="fly"] .speed{width:min(235px,44vw)}body.clean .panel,body.clean footer,body.clean #pad,body.clean #rise{display:none}.clean-hint{background:none;border:0;font-size:13px;color:#d5dad6;min-height:0;min-width:0;padding:0 3px;text-decoration:underline}.speed .controls-row button{color:#f5eee3}.place small{line-height:1.6}
+@media(pointer:coarse){.controls-row button{min-height:44px}.speed{min-width:0;max-width:46vw}.controls-row{flex-wrap:wrap}.clean-hint{min-height:24px}}
+</style></head><body data-mode="walk">
+<canvas id="canvas" tabindex="0" aria-label="Midtown Manhattan street preview"></canvas>
+<header class="panel place"><h1>Fifth Avenue</h1><small>West 34th Street</small></header>
+<div class="panel speed"><div id="flight-speed"><label for="speed">Flight speed <output for="speed" id="readout">95 mph</output></label><input id="speed" type="range" min="2" max="272" aria-valuetext="95 mph" value="95" step="1" aria-label="Flight speed in miles per hour"></div><div class="controls-row"><button type="button" id="body-control"><span id="body-action">Freecam</span> <kbd>· F</kbd></button><button id="car-control" hidden><span>Drive</span> <kbd>· E</kbd></button></div></div>
+<div class="panel help" id="help">WASD walk · Drag to look · H hide HUD</div>
 <div id="pad" aria-label="Flight movement"><button data-axis="Z" data-dir="-1" aria-label="Forward">↑</button><button data-axis="X" data-dir="-1" aria-label="Left">←</button><button data-axis="Z" data-dir="1" aria-label="Backward">↓</button><button data-axis="X" data-dir="1" aria-label="Right">→</button></div>
 <div id="rise"><button data-axis="Y" data-dir="1" aria-label="Ascend">＋</button><button data-axis="Y" data-dir="-1" aria-label="Descend">−</button></div>
-<footer><a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
+<footer><button class="clean-hint" id="hide-ui">Hide HUD</button> · <a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
 <div id="loading" role="status"><span id="message">Loading Midtown Manhattan…</span><progress id="loadbar"></progress></div>
 <script src="$GODOT_URL"></script>
 <script>
@@ -25,9 +27,21 @@ const canvas=document.getElementById('canvas'), speed=document.getElementById('s
 window.midtownReady=false;window.midtownSpeed=95;window.midtownInControls=false;window.midtownLocked=false;
 window.midtownX=window.midtownY=window.midtownZ=0;
 window.midtownToggleBody=false;
-window.midtownBodyChanged=detached=>{
-  document.getElementById('body-action').textContent=detached?'Return to body':'Exit body';
+window.midtownInteract=false;
+const carButton=document.getElementById('car-control');
+window.midtownStreetMode=(mode,nearCar)=>{
+  document.body.dataset.mode=mode;
+  const flying=mode==='fly',driving=mode==='drive';
+  document.getElementById('body-action').textContent=flying?'Return to body':'Freecam';
+  carButton.hidden=!driving && (!nearCar || flying);
+  carButton.querySelector('span').textContent=driving?'Park & exit':'Drive';
+  document.getElementById('help').textContent=driving?'W / S accelerate & brake · A / D steer · Stop to exit · H hide HUD':(flying?'WASD fly · Q / E down / up · Drag to look · H hide HUD':'WASD walk · Drag to look · H hide HUD');
 };
+carButton.addEventListener('click',()=>{window.midtownInteract=true;canvas.focus()});
+function toggleHud(){ document.body.classList.toggle('clean');canvas.focus() }
+document.getElementById('hide-ui').addEventListener('click',toggleHud);
+document.addEventListener('keydown',e=>{if(e.code==='KeyH'&&!e.repeat)toggleHud()},true);
+canvas.addEventListener('pointerup',()=>{if(document.body.classList.contains('clean') && matchMedia('(pointer:coarse)').matches) toggleHud()});
 document.getElementById('body-control').addEventListener('click',()=>{
   window.midtownToggleBody=true;
   canvas.focus();

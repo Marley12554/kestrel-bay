@@ -1,8 +1,20 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://flight.gd" id="1"]
 [ext_resource type="PackedScene" path="res://meshes/midtown.scn" id="2"]
 [ext_resource type="PackedScene" path="res://body.tscn" id="3"]
+
+[ext_resource type="Script" path="res://fifth_block.gd" id="4"]
+[ext_resource type="Shape3D" path="res://meshes/footprints.res" id="5"]
+
+[ext_resource type="Shader" path="res://street_surface.gdshader" id="6"]
+
+[sub_resource type="CapsuleShape3D" id="WalkerHull"]
+radius = 0.27
+height = 1.72
+
+[sub_resource type="ShaderMaterial" id="StreetSurvey"]
+shader = ExtResource("6")
 
 [sub_resource type="Environment" id="Env"]
 background_mode = 1
@@ -25,6 +37,7 @@ material = SubResource("GroundMat")
 
 [node name="Midtown" type="Node3D"]
 script = ExtResource("1")
+survey_material = SubResource("StreetSurvey")
 
 [node name="Environment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env")
@@ -44,6 +57,23 @@ mesh = SubResource("GroundMesh")
 
 [node name="Body" parent="." instance=ExtResource("3")]
 visible = false
+
+[node name="Block" type="Node3D" parent="."]
+script = ExtResource("4")
+
+[node name="Walls" type="StaticBody3D" parent="."]
+
+[node name="Shape" type="CollisionShape3D" parent="Walls"]
+shape = ExtResource("5")
+
+[node name="Walker" type="CharacterBody3D" parent="."]
+motion_mode = 1
+collision_layer = 0
+collision_mask = 3
+
+[node name="Shape" type="CollisionShape3D" parent="Walker"]
+position = Vector3(0,0.9,0)
+shape = SubResource("WalkerHull")
 
 [node name="Camera" type="Camera3D" parent="."]
 current = true
