@@ -22,7 +22,7 @@ h1{font-size:clamp(18px,2.2vw,27px);margin:0;letter-spacing:-.04em;font-weight:6
 <button type="button" id="sprint" aria-pressed="false">Sprint</button>
 <div id="pad" aria-label="Flight movement"><button data-axis="Z" data-dir="-1" aria-label="Forward">↑</button><button data-axis="X" data-dir="-1" aria-label="Left">←</button><button data-axis="Z" data-dir="1" aria-label="Backward">↓</button><button data-axis="X" data-dir="1" aria-label="Right">→</button></div>
 <div id="rise"><button data-axis="Y" data-dir="1" aria-label="Ascend">＋</button><button data-axis="Y" data-dir="-1" aria-label="Descend">−</button></div>
-<footer><button class="clean-hint" id="hide-ui">Hide HUD</button> · <a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
+<footer><button type="button" class="clean-hint" id="motion">Camera motion</button> · <button class="clean-hint" id="hide-ui">Hide HUD</button> · <a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
 <div id="loading" role="status"><span id="message">Loading Midtown Manhattan…</span><progress id="loadbar"></progress></div>
 <script src="$GODOT_URL"></script>
 <script>
@@ -35,6 +35,14 @@ const sprintButton=document.getElementById('sprint');
 function setSprint(value){window.midtownSprint=value;sprintButton.setAttribute('aria-pressed',String(value))}
 setSprint(false);
 sprintButton.addEventListener('click',()=>setSprint(!window.midtownSprint));
+const levels=['Off','Low','Full'];
+const motionButton=document.getElementById('motion');
+window.midtownMotionLevel=matchMedia('(prefers-reduced-motion: reduce)').matches?0:2;
+function updateMotion(){motionButton.textContent='Camera motion · '+levels[window.midtownMotionLevel]}
+function cycleMotion(){window.midtownMotionLevel=(window.midtownMotionLevel+2)%3;updateMotion();canvas.focus()}
+motionButton.addEventListener('click',cycleMotion);
+document.addEventListener('keydown',e=>{if(e.code==='KeyB'&&!e.repeat)cycleMotion()},true);
+updateMotion();
 const carButton=document.getElementById('car-control');
 window.midtownStreetMode=(mode,nearCar)=>{
   document.body.dataset.mode=mode;

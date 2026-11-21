@@ -15,3 +15,6 @@ https://polyhaven.com/a/urban_street_04
 
 New York city survey geometry from Technical University of Munich and NYC Open Data.
 https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/
+
+Snow and concrete footfalls from Kenney’s Impact Sounds (CC0).
+https://kenney.nl/assets/impact-sounds

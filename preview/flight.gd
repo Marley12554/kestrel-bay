@@ -18,8 +18,8 @@ var hud_visible := true
 var frames := 0
 var last_move_usec := 0
 const METRES_PER_SECOND_PER_MPH := 0.44704
-const WALK_MPH := 4.2
-const SPRINT_MPH := 8.5
+@onready var stride = $Stride
+var motion_setting := 2
 const MIN_HEIGHT := 1.7
 const MAX_HEIGHT := 1800.0
 
@@ -35,6 +35,7 @@ func _ready() -> void:
 	pitch = camera.rotation.x
 	if OS.has_feature("web"):
 		web = JavaScriptBridge.get_interface("window")
+		set_motion_level(int(web.midtownMotionLevel))
 		_resize()
 		get_window().size_changed.connect(_resize)
 	elif not DisplayServer.is_touchscreen_available() and DisplayServer.get_name() != "headless":
@@ -65,6 +66,8 @@ func look(delta: Vector2) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not web and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_V, KEY_ESCAPE]:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	elif not web and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_B:
+		set_motion_level((motion_setting + 2) % 3)
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F:
 		toggle_body()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E:
@@ -83,12 +86,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mouse_captured():
 			look(event.screen_relative)
 
+func set_motion_level(level: int) -> void:
+	motion_setting = clampi(level, 0, 2)
+	stride.strength = [0.0, 0.45, 1.0][motion_setting]
+
 func mouse_captured() -> bool:
 	return bool(web.midtownLocked) if web else Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 
 func toggle_body() -> void:
 	if driving:
 		return
+	stride.reset()
+	walker.velocity = Vector3.ZERO
 	if body.visible:
 		camera.transform = return_view
 		body.hide()
@@ -112,6 +121,8 @@ func toggle_body() -> void:
 
 func _process(_dt: float) -> void:
 	crosshair.visible = mouse_captured() and not driving and (not bool(web.midtownHudHidden) if web else hud_visible)
+	if web and int(web.midtownMotionLevel) != motion_setting:
+		set_motion_level(int(web.midtownMotionLevel))
 	if web and bool(web.midtownToggleBody):
 		web.midtownToggleBody = false
 		toggle_body()
@@ -183,6 +194,8 @@ func interact() -> void:
 		camera.rotation=Vector3(pitch,yaw,0)
 	elif walker.position.distance_to(block.parked.global_position)<5.8:
 		driving=true
+		walker.velocity = Vector3.ZERO
+		stride.reset()
 	block.driven=driving
 	update_hud()
 
@@ -197,6 +210,27 @@ func _physics_process(dt: float) -> void:
 		var input:=input_direction()
 		var flat:=Basis(Vector3.UP,yaw)*Vector3(input.x,0,input.z).limit_length(1.0)
 		var sprint := Input.is_physical_key_pressed(KEY_SHIFT) or (web != null and bool(web.midtownSprint))
-		walker.velocity = flat * ((SPRINT_MPH if sprint else WALK_MPH) * METRES_PER_SECOND_PER_MPH)
-		walker.move_and_slide()
+		walk(flat, sprint, dt)
 	block.street_user=block.to_local(walker.global_position)
+
+func walk(direction: Vector3, sprint: bool, dt: float) -> void:
+	var target: Vector3 = direction * (stride.SPRINT_SPEED if sprint else stride.WALK_SPEED)
+	var acceleration := 14.0 if target.length_squared() > walker.velocity.length_squared() else 28.0
+	var intended := walker.velocity.move_toward(target, acceleration * dt)
+	var remaining := intended * dt
+	var start := walker.position
+	# Floating move_and_slide restores full speed along the surface after contact.
+	# Project only the unconsumed motion, retaining its tangential magnitude.
+	for contact in 3:
+		if remaining.length_squared() < 0.00000001:
+			break
+		var hit := walker.move_and_collide(remaining)
+		if not hit:
+			break
+		var normal := hit.get_normal()
+		if intended.dot(normal) < 0.0:
+			intended = intended.slide(normal)
+		remaining = hit.get_remainder().slide(normal)
+	walker.velocity = intended
+	var travelled := walker.position - start
+	stride.advance(walker.global_position, Vector2(travelled.x, travelled.z).length(), dt)

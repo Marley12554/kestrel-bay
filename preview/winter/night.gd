@@ -9,6 +9,9 @@ const DISPLAY := preload("res://winter/assets/christmas_photo_studio_01_hdri.exr
 var lamp_metal := StandardMaterial3D.new()
 var hot_glass := StandardMaterial3D.new()
 var hint: Label
+const SNOW_DEPTH := preload("res://winter/snow_depth.png")
+var depth_samples: Image
+var banks: Array[Dictionary] = []
 
 func _ready() -> void:
 	city.ready.connect(dress_street)
@@ -59,6 +62,8 @@ func dress_street() -> void:
 	moon.directional_shadow_max_distance = 85
 	var survey := ShaderMaterial.new()
 	survey.shader = preload("res://winter/avenue.gdshader")
+	depth_samples = SNOW_DEPTH.get_image()
+	survey.set_shader_parameter("snow_depth", SNOW_DEPTH)
 	survey.set_shader_parameter("asphalt", preload("res://winter/assets/asphalt_snow_Diffuse.jpg"))
 	survey.set_shader_parameter("asphalt_normal", preload("res://winter/assets/asphalt_snow_nor_gl.jpg"))
 	survey.set_shader_parameter("asphalt_rough", preload("res://winter/assets/asphalt_snow_Rough.jpg"))
@@ -108,10 +113,10 @@ func dress_street() -> void:
 		probe.box_projection = true
 		add_child(probe)
 		probe.position = Vector3(85,5,7)
-	city.walker.position = to_global(Vector3(93.1,.15,11.7))
+	city.walker.position = to_global(Vector3(94.0,.15,23.5))
 	city.camera.position = city.walker.position + Vector3.UP * 1.68
 	city.camera.fov = 62
-	city.camera.look_at(to_global(Vector3(81.7,2.56,5.6)))
+	city.camera.look_at(to_global(Vector3(90.2,1.55,-9.0)))
 	city.yaw = city.camera.rotation.y
 	city.pitch = city.camera.rotation.x
 	snowfall()
@@ -211,6 +216,7 @@ func display_window(at: Vector3, angle: float, width: float, index: int) -> void
 	pane.rotation.y=angle
 
 func bank(a: Vector2,b: Vector2,width: float) -> void:
+	banks.append({"a":a,"b":b,"width":width})
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var noise:=FastNoiseLite.new()
@@ -287,7 +293,7 @@ func add_controls() -> void:
 	hint.position=Vector2(18,get_viewport().get_visible_rect().size.y-39)
 	hint.add_theme_font_size_override("font_size",14)
 	hint.add_theme_constant_override("outline_size",4)
-	hint.text="WASD  Move      Shift  Sprint      V  Unlock mouse  /  Click to capture      E  Drive / exit      F  Freecam      H  Hide"
+	hint.text="WASD  Move      Shift  Sprint      V  Unlock mouse  /  Click to capture      E  Drive / exit      F  Freecam      B  Camera motion      H  Hide"
 	get_viewport().size_changed.connect(func(): hint.position.y=get_viewport().get_visible_rect().size.y-39)
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -360,3 +366,31 @@ func curb_furniture() -> void:
 	var strand:=MultiMeshInstance3D.new()
 	strand.multimesh=bulbs
 	add_child(strand)
+
+# Sample the same tiled depth field, plowing pattern, and curb banks as the winter material.
+func snow_underfoot(world: Vector3, road: bool) -> float:
+	var local := to_local(world)
+	var foot := Vector2(local.x, local.z)
+	for bank_data in banks:
+		var closest := Geometry2D.get_closest_point_to_segment(foot, bank_data.a, bank_data.b)
+		if foot.distance_squared_to(closest) < bank_data.width * bank_data.width:
+			return 1.0
+	var delta := Vector2(world.x + 208.099, world.z - 573.891)
+	var p := Vector2(delta.dot(Vector2(.873,.488)), delta.dot(Vector2(-.488,.873)))
+	var size := depth_samples.get_width()
+	var texel := p * (size / 64.0) - Vector2(0.5, 0.5)
+	var cell := texel.floor()
+	var f := texel - cell
+	var x := posmod(int(cell.x), size)
+	var y := posmod(int(cell.y), size)
+	var xn := (x + 1) % size
+	var yn := (y + 1) % size
+	var top := lerpf(depth_samples.get_pixel(x,y).r, depth_samples.get_pixel(xn,y).r, f.x)
+	var bottom := lerpf(depth_samples.get_pixel(x,yn).r, depth_samples.get_pixel(xn,yn).r, f.x)
+	var drift := lerpf(top, bottom, f.y)
+	if not road:
+		return smoothstep(.17, .47, drift)
+	var lateral := p.x if absf(p.x-81.0)<9.0 else p.y+45.8
+	var wheel := absf(fposmod(lateral+.12*sin(p.y*.07+p.x*.09),3.85)-1.925)
+	var tracks := 1.0-smoothstep(.14,.53,absf(wheel-.78))
+	return smoothstep(.57,.83,drift-tracks*.27)

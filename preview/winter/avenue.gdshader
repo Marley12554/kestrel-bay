@@ -1,5 +1,6 @@
 shader_type spatial;
 render_mode cull_disabled;
+uniform sampler2D snow_depth : filter_linear, repeat_enable;
 uniform sampler2D asphalt : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D asphalt_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D asphalt_rough : filter_linear_mipmap, repeat_enable;
@@ -21,7 +22,7 @@ void fragment() {
 	vec3 p=street; vec3 base=COLOR.rgb;
 	if(abs(direction.y)>.68 && p.y<1.0){
 		vec2 uv=p.xz*.54;
-		float drift=noise(p.xz*.46)*.63+noise(p.xz*2.8)*.25+noise(p.xz*13.0)*.12;
+		float drift=texture(snow_depth,p.xz/64.0).r;
 		bool road=p.y<.09 && base.r<.3;
 		float lateral=abs(p.x-81.)<9.0?p.x:p.z+45.8;
 		float wheel=abs(mod(lateral+.12*sin(p.z*.07+p.x*.09),3.85)-1.925);

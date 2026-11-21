@@ -49,16 +49,47 @@ func run() -> void:
 	var origin := walker.position
 	scene.yaw = block.rotation.y + PI/2
 	movement_key(KEY_W,true)
-	for tick in 607:
+	for tick in 536:
 		scene._physics_process(1.0/60)
-	check(absf(walker.position.distance_to(origin)-19.0)<.12, "walk the crossing in 10.1 seconds")
+	check(absf(walker.position.distance_to(origin)-19.0)<.12, "walk the crossing from rest in 8.9 seconds")
 	walker.position = origin
+	walker.velocity = Vector3.ZERO
 	movement_key(KEY_SHIFT,true)
-	for tick in 300:
+	for tick in 174:
 		scene._physics_process(1.0/60)
-	check(absf(walker.position.distance_to(origin)-19.0)<.12, "sprint the crossing in 5 seconds")
+	check(absf(walker.position.distance_to(origin)-19.0)<.12, "sprint the crossing from rest in 2.9 seconds")
 	movement_key(KEY_SHIFT,false)
 	movement_key(KEY_W,false)
+	# Push into the actual stationary sedan at several angles. Its face must
+	# preserve the requested fraction of tangential speed on both sides.
+	car.position = Vector3(88.7, .035, -31.6)
+	car.rotation.y = PI
+	await physics_frame
+	await physics_frame
+	var side: Vector3 = car.global_basis.x
+	var along: Vector3 = car.global_basis.z
+	var speeds: Array[float] = []
+	for degrees in [0, 5, 20, 45, -20]:
+		walker.global_position = car.global_position + side * 1.24 + Vector3.UP * .13
+		walker.velocity = Vector3.ZERO
+		var angle := deg_to_rad(degrees)
+		var heading := -side * cos(angle) + along * sin(angle)
+		for tick in 38:
+			scene.walk(heading, false, 1.0/60)
+		var before: Vector3 = walker.position
+		var phase: float = scene.stride.phase
+		for tick in 8:
+			scene.walk(heading, false, 1.0/60)
+		var actual := (walker.position-before).dot(along)*7.5
+		check(absf((walker.position-before).dot(side))<.002, "sedan blocks inward movement")
+		speeds.append(actual)
+		var expected: float = scene.stride.WALK_SPEED * sin(angle)
+		check(absf(actual-expected)<.10, "proportional tangent at %d degrees: %.3f" % [degrees,actual])
+		if degrees == 0:
+			check(is_equal_approx(phase, scene.stride.phase) and scene.stride.activity == 0, "no steps or bob pushing into sedan")
+	check(speeds[1]<speeds[2] and speeds[2]<speeds[3], "gradual movement along sedan")
+	scene.stride.reset()
+	check(not scene.stride.blur.visible and scene.camera.h_offset==0 and scene.camera.v_offset==0,"reset camera on leaving foot mode")
 	var waited := false
 	var yielded := false
 	var turned := false
@@ -74,6 +105,11 @@ func run() -> void:
 	check(yielded,"taxi yields to pedestrians")
 	check(turned,"taxi exits turn in the westbound lane")
 	check(crossed,"pedestrian completes crossing")
+	scene.queue_free()
+	await process_frame
+	await winter_stride_checks()
+	await process_frame
+	await process_frame
 	print(checks," Midtown checks, ",failures," failures")
 	quit(1 if failures else 0)
 
@@ -84,3 +120,34 @@ func movement_key(code: Key, pressed: bool) -> void:
 	event.pressed = pressed
 	Input.parse_input_event(event)
 	Input.flush_buffered_events()
+
+func winter_stride_checks() -> void:
+	var scene = load("res://winter/night.tscn").instantiate()
+	root.add_child(scene)
+	await physics_frame
+	scene.set_physics_process(false)
+	var start: Vector3 = scene.walker.position
+	var heading: Vector3 = Basis(Vector3.UP, scene.yaw) * Vector3.FORWARD
+	for i in 360:
+		scene.walk(heading, false, 1.0/60)
+	var displacement: Vector3 = scene.walker.position - start
+	check(displacement.dot(heading)>12.5 and displacement.cross(heading).length()<.02, "first six seconds of walking clear the parked car")
+	var winter = scene.get_node("Winter")
+	var road: Vector3 = scene.block.to_global(Vector3(81, 0, -45.8))
+	var bank: Vector3 = scene.block.to_global(Vector3(90.45,0,6))
+	check(scene.stride.ROADS.get_bitv(Vector2i(floori(road.x)+1350, floori(road.z)+1500)), "road mask matches the Fifth Avenue intersection")
+	check(winter.snow_underfoot(bank,false)==1.0 and winter.snow_underfoot(road,true)<.5, "snow bank and plowed asphalt sound different")
+	check(scene.stride.snow_steps.size()==5 and scene.stride.hard_steps.size()==5, "load varied clips for both surfaces")
+	scene.stride.play_step(bank,0,2)
+	check(scene.stride.snow.stream in scene.stride.snow_steps,"snow footfall uses snow audio")
+	scene.stride.play_step(road,1,7)
+	check(scene.stride.pavement.stream in scene.stride.hard_steps,"road footfall uses pavement audio")
+	for i in 60:
+		scene.walk(heading, true, 1.0/60)
+	check(scene.stride.blur.visible and scene.camera.fov>scene.stride.base_fov,"peripheral blur and FOV respond at sprint speed")
+	scene.set_motion_level(0)
+	scene.walk(heading,true,1.0/60)
+	check(not scene.stride.blur.visible and scene.camera.v_offset==0 and scene.camera.h_offset==0 and scene.camera.fov==scene.stride.base_fov,"camera motion off leaves footsteps independent")
+	scene.toggle_body()
+	check(not scene.stride.blur.visible and not scene.stride.snow.playing and not scene.stride.pavement.playing,"freecam clears the walking effects")
+	scene.queue_free()
