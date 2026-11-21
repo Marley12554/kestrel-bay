@@ -145,6 +145,18 @@ func winter_stride_checks() -> void:
 	for i in 60:
 		scene.walk(heading, true, 1.0/60)
 	check(scene.stride.blur.visible and scene.camera.fov>scene.stride.base_fov,"peripheral blur and FOV respond at sprint speed")
+	var previous: float = scene.camera.fov
+	var smooth_return := true
+	for tick in 96:
+		scene.walk(heading, false, 1.0/60)
+		var drop: float = previous - scene.camera.fov
+		smooth_return = smooth_return and drop >= -0.001 and drop < 0.13
+		previous = scene.camera.fov
+		if tick == 14:
+			check(scene.camera.fov > scene.stride.base_fov + 3.0 and scene.walker.velocity.length() < 2.2, "camera eases back independently of braking")
+	check(smooth_return and absf(scene.camera.fov-scene.stride.base_fov)<0.04,"sprint FOV settles gently without overshoot")
+	for tick in 36:
+		scene.walk(heading,true,1.0/60)
 	scene.set_motion_level(0)
 	scene.walk(heading,true,1.0/60)
 	check(not scene.stride.blur.visible and scene.camera.v_offset==0 and scene.camera.h_offset==0 and scene.camera.fov==scene.stride.base_fov,"camera motion off leaves footsteps independent")

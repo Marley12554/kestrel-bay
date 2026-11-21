@@ -4,6 +4,7 @@ const ROADS: BitMap = preload("res://meshes/road_mask.res")
 const WALK_SPEED := 4.8 * 0.44704
 const SPRINT_SPEED := 16.0 * 0.44704
 const TAKES := 5
+const FOV_RELEASE_RATE := 4.8
 
 @onready var camera: Camera3D = $"../Camera"
 @onready var blur: ColorRect = $"../Overlay/SprintBlur"
@@ -17,6 +18,8 @@ var phase := 0.5
 var strength := 1.0
 var activity := 0.0
 var run_mix := 0.0
+var fov_target := 0.0
+var fov_mix := 0.0
 var base_fov := 0.0
 
 func _ready() -> void:
@@ -44,7 +47,12 @@ func advance(at: Vector3, distance: float, dt: float) -> void:
 	var amplitude := activity * strength
 	camera.h_offset = sin(phase * PI) * lerpf(0.009, 0.022, run_mix) * amplitude
 	camera.v_offset = -cos(phase * TAU) * lerpf(0.017, 0.034, run_mix) * amplitude
-	camera.fov = base_fov + 4.0 * run_mix * strength
+	# Two easing stages let the lens begin and end its return gently.
+	# The rising sprint cue still follows the player's acceleration directly.
+	var release := 1.0 - exp(-FOV_RELEASE_RATE * dt)
+	fov_target = maxf(run_mix, lerpf(fov_target, run_mix, release))
+	fov_mix = maxf(run_mix, lerpf(fov_mix, fov_target, release))
+	camera.fov = base_fov + 4.0 * fov_mix * strength
 	var smear := run_mix * strength
 	blur.visible = smear > 0.02
 	if blur.visible:
@@ -73,6 +81,8 @@ func reset() -> void:
 	phase = 0.5
 	activity = 0.0
 	run_mix = 0.0
+	fov_target = 0.0
+	fov_mix = 0.0
 	camera.h_offset = 0.0
 	camera.v_offset = 0.0
 	if base_fov > 0.0:
