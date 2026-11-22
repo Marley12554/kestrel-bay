@@ -2,7 +2,7 @@ extends Node3D
 
 const FIELD: Image = preload("res://winter/snowpack.res")
 const ORIGIN := Vector2(-240,-136)
-const SUPPORT_Y := [0.,.1524,.2124,.159]
+const SUPPORT_Y := [0.,.1524,.2124,preload("res://winter/sidewalk_snow.gd").CURB_TOP]
 const TILE := 8
 const PIXELS_PER_METRE := 40
 const MASK_SIZE := TILE*PIXELS_PER_METRE

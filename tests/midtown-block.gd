@@ -238,21 +238,33 @@ func winter_stride_checks() -> void:
 	for i in 90:
 		block.drive(1./60,-1,0)
 	check(block.backing and block.driver_speed<-1,"hold brake at rest to reverse")
-	scene.drive_audio.update(block.driver_speed,1,0,1./60)
-	check(scene.drive_audio.motor.playing and scene.drive_audio.tires.playing,"driving activates rolling and motor audio")
+	var drive_sound = scene.drive_audio
+	for tick in 120:
+		drive_sound.update(-4.0, -1.0, 0.0, 1.0 / 60.0)
+	check(drive_sound.motor.playing and drive_sound.tires.playing, "driving activates rolling and motor audio")
+	check(drive_sound.reverse_warning.playing and drive_sound.reverse_warning.volume_db > -10.0
+		and drive_sound.forward_warning.volume_db < -60.0, "reverse plays the recorded Tesla backing whine")
+	for tick in 120:
+		drive_sound.update(4.0, 1.0, 0.0, 1.0 / 60.0)
+	check(drive_sound.forward_warning.playing and drive_sound.forward_warning.volume_db > -11.0
+		and drive_sound.reverse_warning.volume_db < -60.0, "low-speed forward driving plays its own Tesla recording")
 	for tick in 60:
-		scene.drive_audio.update(13.4, 1.0, 0.0, 1.0 / 60.0)
-	var city_motor_pitch: float = scene.drive_audio.motor.pitch_scale
-	check(scene.drive_audio.motor.volume_db > scene.drive_audio.tires.volume_db + 10.0,
+		drive_sound.update(13.4, 1.0, 0.0, 1.0 / 60.0)
+	var city_motor_pitch: float = drive_sound.motor.pitch_scale
+	check(drive_sound.forward_warning.volume_db < -60.0, "the pedestrian alert fades above city speeds")
+	check(drive_sound.motor.volume_db > drive_sound.tires.volume_db + 10.0,
 		"sedan motor thrum leads the tire noise under acceleration")
 	for tick in 60:
-		scene.drive_audio.update(50.0, 0.0, 30.0, 1.0 / 60.0)
-	check(scene.drive_audio.motor.pitch_scale > city_motor_pitch + .4
-		and scene.drive_audio.motor.volume_db > scene.drive_audio.tires.volume_db + 4.0,
+		drive_sound.update(50.0, 0.0, 30.0, 1.0 / 60.0)
+	check(drive_sound.motor.pitch_scale > city_motor_pitch + .4
+		and drive_sound.motor.volume_db > drive_sound.tires.volume_db + 4.0,
 		"motor pitch rises at speed and the thrum stays audible during tire scrub")
+	drive_sound.play_turn_signal(true)
 	block.driver_speed=0
 	scene.interact()
-	check(not scene.driving and not scene.drive_audio.motor.playing,"parking stops the drive loops")
+	check(not scene.driving and not drive_sound.motor.playing and not drive_sound.tires.playing
+		and not drive_sound.forward_warning.playing and not drive_sound.reverse_warning.playing
+		and not drive_sound.turn_signal.playing, "parking stops all driving sounds")
 	block.street_user=Vector3.INF
 	block.cross_distance=block.south_stop-12
 	block.cross_speed=3.5
@@ -281,10 +293,21 @@ func winter_stride_checks() -> void:
 	winter.update_sedan_lights(1.0 / 60.0)
 	check(winter.brake_lenses.emission_energy_multiplier > 0, "S lights the brake lenses")
 	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 1, "D flashes the right indicators")
+	var signal_sound: AudioStreamPlayer = drive_sound.turn_signal
+	check(signal_sound.playing and is_equal_approx(signal_sound.pitch_scale, 1.0),
+		"the signal clicks when the indicator turns on")
+	signal_sound.stop()
+	winter.update_sedan_lights(1.0 / 60.0)
+	check(not signal_sound.playing, "the signal stays quiet between blink transitions")
 	winter.update_sedan_lights(0.4)
 	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 0, "held steering blinks the indicator off")
+	check(signal_sound.playing and signal_sound.pitch_scale < 1.0,
+		"the signal makes a lower click when the indicator turns off")
+	signal_sound.stop()
 	winter.update_sedan_lights(0.4)
 	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 1, "held steering blinks the indicator back on")
+	check(signal_sound.playing and is_equal_approx(signal_sound.pitch_scale, 1.0),
+		"the signal click repeats with the next blink")
 	movement_key(KEY_S, false)
 	movement_key(KEY_D, false)
 	movement_key(KEY_A, true)
@@ -292,10 +315,13 @@ func winter_stride_checks() -> void:
 	winter.update_sedan_lights(1.0 / 60.0)
 	check(is_zero_approx(winter.brake_lenses.emission_energy_multiplier), "releasing S turns off the brake emission")
 	check(winter.signal_lenses.get_shader_parameter("flashing_side") == -1, "A immediately selects the left indicators")
+	signal_sound.stop()
 	movement_key(KEY_A, false)
 	scene._physics_process(1.0 / 60.0)
 	winter.update_sedan_lights(1.0 / 60.0)
 	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 0, "releasing steering cancels the signal")
+	winter.update_sedan_lights(0.4)
+	check(not signal_sound.playing, "releasing steering stops new signal clicks")
 	for turn_key: Key in [KEY_D, KEY_A]:
 		sedan.transform = parked_spawn
 		if turn_key == KEY_A:
@@ -509,7 +535,64 @@ func winter_stride_checks() -> void:
 	check(absf(block.driver_speed - 5.8) < .05 and is_zero_approx(block.drift_angle)
 		and is_equal_approx(sedan.rotation.y, straight_yaw), "Shift alone brakes in a straight line")
 	movement_key(KEY_SHIFT, false)
+	curb_suspension_checks(scene, winter)
 	scene.queue_free()
+
+func curb_suspension_checks(scene, winter) -> void:
+	var block = scene.block
+	var car: CharacterBody3D = block.parked
+	var road_y: float = winter.road_ride_height
+	var curb_y: float = winter.sidewalks.CURB_TOP
+	var query := PhysicsRayQueryParameters3D.create(block.to_global(Vector3(91, .7, 16)),
+		block.to_global(Vector3(91, -.2, 16)), winter.sidewalks.CURB_SUPPORT_LAYER)
+	var hit := scene.get_world_3d().direct_space_state.intersect_ray(query) as Dictionary
+	check(curb_y >= .23 and not hit.is_empty() and absf(hit.position.y - curb_y) < .005,
+		"raised curb has a physical support surface at the stone height")
+
+	car.position = Vector3(86.5, road_y, 16)
+	car.rotation.y = -PI / 2.0
+	block.driver_speed = 2.5
+	block.reset_steering()
+	var front_climbed_first := false
+	var nose_lifted := false
+	movement_key(KEY_W, true)
+	for tick in 120:
+		scene._physics_process(1.0 / 60.0)
+		winter.update_sedan_suspension(1.0 / 60.0)
+		front_climbed_first = front_climbed_first or (winter.wheel_lift[0] > .17 and winter.wheel_lift[2] < .01)
+		nose_lifted = nose_lifted or winter.body_pitch > .035
+		if car.position.x >= 92.3:
+			break
+	movement_key(KEY_W, false)
+	check(car.position.x >= 92.3 and front_climbed_first and nose_lifted,
+		"front tires climb the curb first and the sedan pitches up")
+	block.driver_speed = 0.0
+	block.long_accel = 0.0
+	for tick in 60:
+		winter.update_sedan_suspension(1.0 / 60.0)
+	check(absf(car.position.y - curb_y) < .02 and absf(winter.heave_velocity) < .01
+		and absf(winter.body_pitch) < .01, "the car settles on the curb height after all four wheels climb")
+
+	movement_key(KEY_S, true)
+	for tick in 230:
+		scene._physics_process(1.0 / 60.0)
+		winter.update_sedan_suspension(1.0 / 60.0)
+		if car.position.x <= 86.5:
+			break
+	movement_key(KEY_S, false)
+	block.driver_speed = 0.0
+	block.long_accel = 0.0
+	for tick in 60:
+		winter.update_sedan_suspension(1.0 / 60.0)
+	check(car.position.x <= 86.5 and absf(car.position.y - road_y) < .013
+		and absf(winter.body_pitch) < .01, "reversing over the curb returns the sedan to road height")
+
+	car.position = Vector3(89.55, road_y, 16)
+	car.rotation.y = PI
+	for tick in 60:
+		winter.update_sedan_suspension(1.0 / 60.0)
+	check(winter.wheel_lift[0] > .08 and winter.wheel_lift[1] < .01 and winter.body_roll < -.045,
+		"wheels on one side lift independently and the body leans across the curb")
 
 func snow_contact_checks(scene, winter) -> void:
 	var pack= winter.pack
@@ -520,7 +603,7 @@ func snow_contact_checks(scene, winter) -> void:
 		if is_equal_approx(arrays[Mesh.ARRAY_TEX_UV2][i].x,1.):
 			flat=flat and is_equal_approx(arrays[Mesh.ARRAY_VERTEX][i].y,winter.sidewalks.CURB_TOP)
 	check(flat,"every top vertex of the paving stays at curb height")
-	scene.walker.global_position=scene.block.to_global(Vector3(90.48,.159,-2))
+	scene.walker.global_position=scene.block.to_global(Vector3(90.48,winter.sidewalks.CURB_TOP,-2))
 	scene.walker.velocity=Vector3.ZERO
 	scene.stride.reset()
 	for i in 190: scene.walk(scene.block.global_basis.z,false,1./60.)

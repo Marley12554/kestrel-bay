@@ -14,7 +14,9 @@ const CURBS = [
 	[Vector2(-96,-53.20), Vector2(65,-53.67), Vector2.UP, 2.4],
 	[Vector2(-96,-36.70), Vector2(65,-37.86), Vector2.DOWN, 2.4]
 ]
-const CURB_TOP := .159
+const CURB_TOP := .24
+const CURB_BEVEL := .025
+const CURB_SUPPORT_LAYER := 1 << 2
 var noise := FastNoiseLite.new()
 
 func _init() -> void:
@@ -40,11 +42,18 @@ func build(material: Material) -> void:
 	var st:=SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var cursor:=0
+	# The tires climb this layer. The car's horizontal hull still hits walls and traffic.
+	var support := StaticBody3D.new()
+	support.name = "CurbSupport"
+	support.collision_layer = CURB_SUPPORT_LAYER
+	support.collision_mask = 0
+	add_child(support)
 	for section in CURBS:
 		var start: Vector2=section[0]
 		var finish: Vector2=section[1]
 		var inward: Vector2=section[2]
 		var width: float=section[3]
+		add_curb_support(support, start, finish, inward, width)
 		var rows:=1
 		var cols:=1
 		# The stone is a flat slab with independent normals for its curb face.
@@ -57,6 +66,7 @@ func build(material: Material) -> void:
 			for j in range(-4,cols+1):
 				var inset:=maxf(0.,j*width/cols)
 				if j==-4: inset=-.36
+				if j in [-1, 0]: inset = CURB_BEVEL
 				var p:=edge+inward*inset
 				var y:=CURB_TOP if j>=-1 else .002
 				var surface:=1 if j>=0 else (2 if j>=-2 else 3)
@@ -70,9 +80,10 @@ func build(material: Material) -> void:
 		# Close both end cuts wherever the survey drops away at a corner.
 		for end in [start,finish]:
 			var other: Vector2=end+inward*width
+			var top_edge: Vector2=end+inward*CURB_BEVEL
 			st.set_smooth_group(4)
 			st.set_uv2(Vector2(2.,0.))
-			for corner: Vector3 in [Vector3(end.x,-.035,end.y),Vector3(end.x,CURB_TOP,end.y),
+			for corner: Vector3 in [Vector3(end.x,-.035,end.y),Vector3(top_edge.x,CURB_TOP,top_edge.y),
 					Vector3(other.x,-.035,other.y),Vector3(other.x,CURB_TOP,other.y)]:
 				st.add_vertex(corner)
 			for offset in [0,1,2,2,1,3]: st.add_index(cursor+offset)
@@ -83,3 +94,18 @@ func build(material: Material) -> void:
 	mesh.mesh=st.commit()
 	mesh.material_override=material
 	add_child(mesh)
+
+func add_curb_support(body: StaticBody3D, start: Vector2, finish: Vector2, inward: Vector2, width: float) -> void:
+	var points := PackedVector3Array()
+	for edge: Vector2 in [start, finish]:
+		var top := edge + inward * CURB_BEVEL
+		var far := edge + inward * width
+		points.append(Vector3(edge.x, -.035, edge.y))
+		points.append(Vector3(top.x, CURB_TOP, top.y))
+		points.append(Vector3(far.x, -.035, far.y))
+		points.append(Vector3(far.x, CURB_TOP, far.y))
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = points
+	var collider := CollisionShape3D.new()
+	collider.shape = shape
+	body.add_child(collider)

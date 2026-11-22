@@ -4,7 +4,18 @@ const ASSET := "res://winter/assets/"
 const CAR := preload("res://winter/assets/sedan.glb")
 const LENS_SHADER := preload("res://winter/sedan_lens.gdshader")
 const SIGNAL_HALF_PERIOD := 0.38
+const TIRE_RADIUS := .345
+const TIRE_PROBE_HEIGHT := .30
+const TIRE_PROBE_TRAVEL := .46
 var wheel_pivots: Array[Node3D] = []
+var wheel_mounts := PackedVector3Array()
+var wheel_lift := PackedFloat32Array()
+var tire_probe := PhysicsShapeQueryParameters3D.new()
+var last_suspension_pose := Vector3.INF
+var last_suspension_steer := INF
+var road_ride_height := 0.0
+var body_heave := 0.0
+var heave_velocity := 0.0
 var tire_spray: Array[GPUParticles3D] = []
 var body_roll := 0.0
 var body_pitch := 0.0
@@ -116,6 +127,7 @@ func dress_street() -> void:
 		add_child(probe)
 		probe.position = Vector3(85,5,7)
 	city.walker.position = to_global(Vector3(94.0,.15,23.5))
+	city.walker.position.y = walking_height(city.walker.global_position)
 	city.camera.position = city.walker.position + Vector3.UP * 1.68
 	city.camera.fov = 62
 	city.camera.look_at(to_global(Vector3(90.2,1.55,-9.0)))
@@ -137,12 +149,22 @@ func dress_sedan() -> void:
 	chassis = model
 	chassis_rest = model.transform
 	var car: CharacterBody3D = block.parked
+	road_ride_height = car.position.y
+	var tire := CylinderShape3D.new()
+	tire.radius = TIRE_RADIUS
+	tire.height = .23
+	tire_probe.shape = tire
+	tire_probe.motion = Vector3.DOWN * TIRE_PROBE_TRAVEL
+	tire_probe.collision_mask = sidewalks.CURB_SUPPORT_LAYER
 	var powder_mesh := tire_powder_mesh()
 	for axle in ["Front", "Rear"]:
 		for side in ["Left", "Right"]:
 			var pivot := model.find_child("Wheel" + axle + side, true, false) as Node3D
 			wheel_pivots.append(pivot)
-			add_tire_spray(car, car.to_local(pivot.global_position), powder_mesh)
+			var mount := car.to_local(pivot.global_position)
+			wheel_mounts.append(mount)
+			wheel_lift.append(0.0)
+			add_tire_spray(car, mount, powder_mesh)
 
 	headlight_beams.name = "HeadlightBeams"
 	headlight_beams.hide()
@@ -263,7 +285,7 @@ func update_tire_spray() -> void:
 		spray.amount_ratio = rate
 		spray.emitting = rate >= .06
 		if spray.emitting:
-			spray.position.y = maxf(.06, walking_height(contact) + .02)
+			spray.position.y = maxf(.06, walking_height(contact) + .02) - block.parked.position.y
 			var motion := spray.process_material as ParticleProcessMaterial
 			if signf(motion.direction.z) != signf(speed):
 				motion.direction = Vector3(motion.direction.x, motion.direction.y, .54 * signf(speed))
@@ -309,6 +331,7 @@ func update_sedan_lights(dt: float) -> void:
 	headlight_lenses.set_shader_parameter("headlights_on", driving)
 	brake_lenses.emission_energy_multiplier = 3.0 if driving and city.brake_pressed else 0.0
 	var direction: int = city.steering_direction if driving else 0
+	var previous_side := indicator_direction if indicator_phase < SIGNAL_HALF_PERIOD else 0
 	if direction != indicator_direction or direction == 0:
 		indicator_phase = 0.0
 	else:
@@ -316,6 +339,8 @@ func update_sedan_lights(dt: float) -> void:
 	indicator_direction = direction
 	var flashing_side := direction if indicator_phase < SIGNAL_HALF_PERIOD else 0
 	signal_lenses.set_shader_parameter("flashing_side", flashing_side)
+	if direction != 0 and flashing_side != previous_side:
+		city.drive_audio.play_turn_signal(flashing_side != 0)
 
 func rod(a: Vector3, b: Vector3, bottom: float, top: float) -> void:
 	var mesh := CylinderMesh.new()
@@ -572,17 +597,62 @@ func plant_foot(world: Vector3, heading: Vector2, left: bool, effort: float) -> 
 	var local_direction:=global_basis.inverse()*Vector3(heading.x,0,heading.y)
 	pack.stamp(Vector2(foot.x,foot.z),Vector2(local_direction.x,local_direction.z).normalized(),left,effort)
 
+func sample_wheel_support(car: CharacterBody3D) -> void:
+	var space := get_world_3d().direct_space_state
+	var upright_tire := Basis(Vector3.FORWARD, PI / 2.0)
+	var base_y: float = block.global_position.y + road_ride_height
+	for i in wheel_mounts.size():
+		var mount := wheel_mounts[i]
+		var start := car.to_global(mount)
+		start.y = base_y + mount.y + TIRE_PROBE_HEIGHT
+		var steering: float = -block.steer if i < 2 else 0.0
+		tire_probe.transform = Transform3D(car.global_basis * Basis(Vector3.UP, steering) * upright_tire, start)
+		# Sweep the tire profile so a curb corner can support it before the hub crosses.
+		var contact := space.cast_motion(tire_probe)
+		wheel_lift[i] = maxf(0.0, TIRE_PROBE_HEIGHT - TIRE_PROBE_TRAVEL * contact[0])
+
+func update_sedan_suspension(dt: float) -> void:
+	var car: CharacterBody3D = block.parked
+	if absf(car.position.y - road_ride_height) > .5:
+		return
+	var pose := Vector3(car.position.x, car.rotation.y, car.position.z)
+	if not pose.is_equal_approx(last_suspension_pose) or not is_equal_approx(block.steer, last_suspension_steer):
+		sample_wheel_support(car)
+		last_suspension_pose = pose
+		last_suspension_steer = block.steer
+	var front := (wheel_lift[0] + wheel_lift[1]) * .5
+	var rear := (wheel_lift[2] + wheel_lift[3]) * .5
+	var left := (wheel_lift[0] + wheel_lift[2]) * .5
+	var right := (wheel_lift[1] + wheel_lift[3]) * .5
+
+	# The hubs follow the surface immediately while the sprung mass moves and settles.
+	var target_heave := (front + rear) * .5
+	heave_velocity += ((target_heave - body_heave) * 170.0 - heave_velocity * 15.0) * dt
+	body_heave += heave_velocity * dt
+	var lift := road_ride_height + body_heave - car.position.y
+	if absf(lift) > .0001:
+		car.move_and_collide(Vector3.UP * lift)
+	var terrain_roll := atan2(right - left, wheel_mounts[1].x - wheel_mounts[0].x)
+	var terrain_pitch := atan2(front - rear, wheel_mounts[2].z - wheel_mounts[0].z)
+	var corner_roll := clampf(-block.side_accel * .006, -.05, .05) if block.driven else 0.0
+	var brake_pitch := clampf(-block.long_accel * .0035, -.038, .038) if block.driven else 0.0
+	var weight := 1.0 - exp(-10.0 * dt)
+	body_roll = lerpf(body_roll, terrain_roll + corner_roll, weight)
+	body_pitch = lerpf(body_pitch, terrain_pitch + brake_pitch, weight)
+	var tilt := Basis(Vector3.BACK, body_roll) * Basis(Vector3.RIGHT, body_pitch)
+	var body_center := Vector3.UP * .6
+	chassis.transform = Transform3D(tilt, body_center - tilt * body_center) * chassis_rest
+
+	if block.driven:
+		wheel_roll = fmod(wheel_roll + block.driver_speed * dt / TIRE_RADIUS, TAU)
+	for i in wheel_pivots.size():
+		var pivot := wheel_pivots[i]
+		var angle: float = -block.steer if i < 2 else 0.0
+		pivot.basis = Basis(Vector3.BACK, angle) * Basis(Vector3.UP, wheel_roll)
+		pivot.global_position = car.to_global(wheel_mounts[i]) + Vector3.UP * (wheel_lift[i] + road_ride_height - car.position.y)
+
 func _physics_process(dt: float) -> void:
 	if not chassis: return
 	update_sedan_lights(dt)
+	update_sedan_suspension(dt)
 	update_tire_spray()
-	if block.driven or absf(body_roll)+absf(body_pitch)>.0001:
-		wheel_roll=fmod(wheel_roll+block.driver_speed*dt/.345,TAU)
-		for pivot in wheel_pivots:
-			var angle: float=-block.steer if "Front" in pivot.name else 0.0
-			pivot.basis=Basis(Vector3.BACK,angle)*Basis(Vector3.UP,wheel_roll)
-		var weight := 1.0-exp(-7.0*dt)
-		body_roll=lerpf(body_roll,clampf(-block.side_accel*.006,-.05,.05) if block.driven else 0.0,weight)
-		body_pitch=lerpf(body_pitch,clampf(-block.long_accel*.0035,-.038,.038) if block.driven else 0.0,weight)
-		var sprung_basis:=Basis(Vector3.BACK,body_roll)*Basis(Vector3.RIGHT,body_pitch)*chassis_rest.basis
-		chassis.transform=Transform3D(sprung_basis,sprung_basis*(chassis_rest.basis.inverse()*chassis_rest.origin))
