@@ -691,6 +691,7 @@ func reset_steering() -> void:
 func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, handbrake: bool = false) -> void:
 	var previous := driver_speed
 	var speed := absf(previous)
+	var steering_input := clampf(turn, -1.0, 1.0)
 	var opposite := (throttle > 0 and backing) or (throttle < 0 and not backing)
 	var service_braking := opposite or (throttle < 0 and not allow_shift)
 	if opposite and allow_shift and not handbrake and speed < .001:
@@ -707,7 +708,10 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 			smoothstep(12.0, 38.0, speed))
 		driver_speed = move_toward(previous, 0.0, brake_strength * absf(throttle) * dt)
 	elif handbrake:
-		driver_speed = move_toward(previous, 0.0, (CAR_HANDBRAKE_DECELERATION + 2.7 * absf(sin(drift_angle))) * dt)
+		# A powered turning slide can carry speed while the rear tires scrub.
+		var pull := 3.0 * maxf(throttle, 0.) * absf(steering_input) * smoothstep(2., 6., previous)
+		var drag := CAR_HANDBRAKE_DECELERATION + 2.7 * absf(sin(drift_angle))
+		driver_speed = move_toward(previous, 0.0, (drag - pull) * dt)
 	elif absf(throttle)>.001:
 		var limit := CAR_MAX_FORWARD_SPEED if throttle>0 else CAR_MAX_REVERSE_SPEED
 		var force := (5.1 if throttle>0 else 2.7)*absf(throttle)
@@ -721,7 +725,6 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 	var smooth_time := lerpf(CAR_PARKING_STEER_SMOOTH_TIME, CAR_STEER_SMOOTH_TIME, road_speed_weight)
 	var yaw_limit := CAR_MAX_YAW_RATE / (1.0 + steering_speed / CAR_STEERING_FALLOFF_SPEED)
 	var steering_limit := minf(max_steer, atan(yaw_limit * CAR_WHEELBASE / maxf(1.0, steering_speed)))
-	var steering_input := clampf(turn, -1.0, 1.0)
 	var target := steering_input * steering_limit
 	# A critically damped spring eases the wheels into the turn and back to center.
 	var offset := steer - target
@@ -738,15 +741,17 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 	var target_yaw_rate := -driver_speed * tan(steer) / CAR_WHEELBASE * (1.0 + .64 * drift_amount)
 	sliding = sliding or drift_amount > 0.0 or not is_zero_approx(drift_angle)
 	var grip := CAR_LATERAL_GRIP * lerpf(1., .57, rear_snow_cover)
+	# With the rear tires sliding, the rolling front axle can still bend the path.
+	var sliding_grip := grip * lerpf(.4, .79, absf(steer) / steering_limit) if handbrake else grip
+	var path_turn_limit := sliding_grip / maxf(3., steering_speed)
 	if sliding:
-		var path_turn_limit := grip * (.4 if handbrake else 1.) / maxf(3.,steering_speed)
 		if drift_amount > 0. and target_yaw_rate * drift_angle < 0.:
 			# At large slip the nose can keep turning, but front tire force
 			# saturates. Countersteer still has to arrest existing rotation.
 			var saturation := smoothstep(.48, .93, absf(drift_angle))
 			target_yaw_rate = lerpf(target_yaw_rate, signf(target_yaw_rate)*path_turn_limit, saturation)
 		elif not handbrake:
-			target_yaw_rate += clampf(drift_angle*2., -1., 1.)
+			target_yaw_rate += clampf(drift_angle * .85, -.75, .75)
 		yaw_velocity = move_toward(yaw_velocity, target_yaw_rate, CAR_SLIDE_YAW_ACCEL*lerpf(1.,.7,rear_snow_cover)*dt)
 	else:
 		yaw_velocity = target_yaw_rate
@@ -759,7 +764,7 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 		# Preserve the previous world travel direction. A bounded lateral
 		# tire force can bend that path, even when the wheel changes sides.
 		var slip_before_grip := angle_difference(parked.rotation.y, travel_yaw)
-		var path_turn := grip * (.4 if handbrake else 1.) * dt / maxf(3.,steering_speed)
+		var path_turn := path_turn_limit * dt
 		drift_angle = move_toward(slip_before_grip, 0., path_turn)
 		if drift_amount == 0. and is_zero_approx(drift_angle) and is_equal_approx(target_yaw_rate,yaw_velocity):
 			sliding = false

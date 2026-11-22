@@ -29,10 +29,10 @@ The indicator on/off samples are edited from NHumphrey's interior recording
 "Vehicle's Turning Signal - On.wav" (CC0).
 https://freesound.org/people/NHumphrey/sounds/200976/
 
-The rolling layer is a filtered, looped constant-speed excerpt from
+The rolling and sustained tire scuff layers use filtered excerpts from
 bmacphail's highway and wet pavement recording (CC0).
 https://freesound.org/people/bmacphail/sounds/795866/
-The skid loop is edited from RutgerMuller's "Tires Squeaking.aif" (CC0).
+The short breakaway chirp is edited from RutgerMuller's "Tires Squeaking.aif" (CC0).
 https://freesound.org/people/RutgerMuller/sounds/104026/
 
 The drivetrain and pedestrian-warning loops are original

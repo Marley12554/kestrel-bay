@@ -264,38 +264,41 @@ func winter_stride_checks() -> void:
 		block.drive(1./60,-1,0)
 	check(block.backing and block.driver_speed<-1,"hold brake at rest to reverse")
 	var drive_sound = scene.drive_audio
-	for source in [drive_sound.motor, drive_sound.tires, drive_sound.skid, drive_sound.turn_signal]:
+	for source in [drive_sound.chirp, drive_sound.tires, drive_sound.skid, drive_sound.turn_signal]:
 		check(source is AudioStreamPlayer3D and source.is_inside_tree() and source.max_distance > 0.,
 			"each driving sound has a world position and distance attenuation")
 	check(drive_sound.skid.position.z > 1. and drive_sound.tires.position.z < -1.,
 		"rolling and rear slip originate at distinct axle positions")
 	for tick in 120:
-		drive_sound.update(-4.0, -1.0, 0.0, 1.0 / 60.0)
-	check(drive_sound.motor.playing and drive_sound.tires.playing, "driving activates rolling and motor audio")
+		drive_sound.update(-4.0, 0.0, 1.0 / 60.0)
+	check(drive_sound.tires.playing, "driving activates rolling audio")
 	check(drive_sound.reverse_warning.playing and drive_sound.reverse_warning.volume_db > -10.0
 		and drive_sound.forward_warning.volume_db < -60.0, "reverse plays the Model 3 warning from the rear speaker")
 	for tick in 120:
-		drive_sound.update(4.0, 1.0, 0.0, 1.0 / 60.0)
+		drive_sound.update(4.0, 0.0, 1.0 / 60.0)
 	check(drive_sound.forward_warning.playing and drive_sound.forward_warning is AudioStreamPlayer3D and drive_sound.get_parent() == block.parked
-		and drive_sound.forward_warning.volume_db > -16.0 and drive_sound.forward_warning.volume_db < -12.0
+		and drive_sound.forward_warning.volume_db > -30. and drive_sound.forward_warning.volume_db < drive_sound.tires.volume_db - 8.
 		and drive_sound.reverse_warning.volume_db < -60.0, "low-speed forward driving plays the Model 3 forward warning")
 	for tick in 60:
-		drive_sound.update(13.4, 1.0, 0.0, 1.0 / 60.0)
-	var city_motor_pitch: float = drive_sound.motor.pitch_scale
-	check(drive_sound.forward_warning.volume_db < -60.0, "the pedestrian alert fades above city speeds")
-	var loaded_motor_db: float = drive_sound.motor.volume_db
-	check(loaded_motor_db > -25. and drive_sound.tires.volume_db > -35., "motor and rolling tires are audible under load")
-	for tick in 60:
-		drive_sound.update(50.0, 0.0, 30.0, 1.0 / 60.0)
-	check(drive_sound.motor.pitch_scale > city_motor_pitch + .4
-		and drive_sound.motor.volume_db < drive_sound.tires.volume_db - 8. and drive_sound.motor.volume_db < loaded_motor_db - 5.,
-		"speed raises motor pitch while road noise leads during highway coasting")
+		drive_sound.update(13.4, 0., 1./60.)
+	check(drive_sound.forward_warning.volume_db < -60. and drive_sound.tires.volume_db > -18.,
+		"rolling sound carries through the low-speed warning fade")
+	for tick in 20: drive_sound.update(14., 6., 1./60., .6)
+	check(drive_sound.skid.playing and drive_sound.chirp.playing and not drive_sound.chirp_armed,
+		"hard breakaway adds a single short rubber chirp over the rear scuff")
+	drive_sound.chirp.stop()
+	for tick in 120: drive_sound.update(14., 6., 1./60., .6)
+	check(drive_sound.skid.playing and not drive_sound.chirp.playing, "sustaining a slide cannot retrigger squeal")
+	for tick in 120: drive_sound.update(14., 0., 1./60.)
+	check(drive_sound.chirp_armed and not drive_sound.skid.playing, "regaining traction fades the scuff and rearms the chirp")
+	for tick in 20: drive_sound.update(14., 6., 1./60., .6, 1.)
+	check(drive_sound.skid.playing and not drive_sound.chirp.playing, "a packed-snow slide has scuff without pavement squeal")
 	movement_key(KEY_LEFT, true)
 	movement_key(KEY_LEFT, false)
 	winter.update_sedan_lights(0.0)
 	block.driver_speed=0
 	scene.interact()
-	check(not scene.driving and not drive_sound.motor.playing and not drive_sound.tires.playing
+	check(not scene.driving and not drive_sound.chirp.playing and not drive_sound.skid.playing and not drive_sound.tires.playing
 		and not drive_sound.forward_warning.playing and not drive_sound.reverse_warning.playing
 		and not drive_sound.turn_signal.playing and scene.turn_signal_direction == 0,
 		"parking clears the turn signal and stops all driving sounds")
@@ -591,9 +594,9 @@ func winter_stride_checks() -> void:
 		scene._physics_process(1.0 / 60.0)
 		var motion := (sedan.global_position - previous_position).normalized()
 		var slip := (-sedan.global_basis.z).signed_angle_to(motion, Vector3.UP) * direction
-		check(rad_to_deg(slip) > 19.0 and rad_to_deg(slip) < 45.0,
+		check(rad_to_deg(slip) > 13.0 and rad_to_deg(slip) < 45.0,
 			"Shift+%s produces a %.1f-degree slide at %d mph" % [OS.get_keycode_string(turn_key), rad_to_deg(slip), mph])
-		check(block.driver_speed < start_speed - 2.2 and block.driver_speed > start_speed - 3.4 and scene.brake_pressed,
+		check(block.driver_speed < start_speed - .95 and block.driver_speed > start_speed - 1.8 and scene.brake_pressed,
 			"the handbrake slows the sedan and lights the brake lamps while W is held")
 		movement_key(KEY_SHIFT, false)
 		movement_key(turn_key, false)
@@ -625,6 +628,22 @@ func winter_stride_checks() -> void:
 		for tick in 12: block.drive(1./60,0.,0.)
 		residual.append(block.drift_angle)
 	check(residual[1] > residual[0]+.04, "rear tires regain sideways grip more slowly on packed snow (dry %.3f, packed %.3f)" % residual)
+	# Measure the exit path in world space because the block is rotated.
+	for direction: float in [-1., 1.]:
+		sedan.position = Vector3(81, 1000, -31)
+		sedan.rotation.y = 0.
+		block.reset_steering()
+		block.drift_angle = 0.
+		block.driver_speed = 30. * scene.METRES_PER_SECOND_PER_MPH
+		block.rear_snow_cover = 0.
+		var initial_heading := -sedan.global_basis.z
+		for tick in 60: block.drive(1./60., 1., direction, true, true)
+		var release_speed: float = block.driver_speed / scene.METRES_PER_SECOND_PER_MPH
+		for tick in 90: block.drive(1./60., 1., 0.)
+		var exit_angle := -direction * rad_to_deg(initial_heading.signed_angle_to(sedan.velocity.normalized(), Vector3.UP))
+		check(exit_angle > 80. and exit_angle < 100. and release_speed > 17. and release_speed < 27.
+			and absf(block.drift_angle) < .02,
+			"30 mph handbrake corner exits at %.1f degrees, carrying %.1f mph at release" % [exit_angle, release_speed])
 	# Reverse the demanded steer while sliding. Both the body rotation and
 	# the world velocity must survive input frames, including a neutral frame.
 	for direction in [-1., 1.]:
@@ -646,7 +665,7 @@ func winter_stride_checks() -> void:
 				max_lateral_accel = maxf(max_lateral_accel, bend*absf(block.driver_speed)/dt)
 				if reverse_time == 0. and block.yaw_velocity*direction > 0.:
 					reverse_time = (tick+1)*dt
-			check(reverse_time > .20 and reverse_time < .8 and max_lateral_accel <= block.CAR_LATERAL_GRIP*.41,
+			check(reverse_time > .20 and reverse_time < .8 and max_lateral_accel <= block.CAR_LATERAL_GRIP*.80,
 				"%d Hz countersteer takes %.2f s and respects tire grip" % [hz,reverse_time])
 	block.reset_steering()
 	block.drift_angle = 0.
