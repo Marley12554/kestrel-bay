@@ -2,10 +2,17 @@ extends Node3D
 
 const ASSET := "res://winter/assets/"
 const CAR := preload("res://winter/assets/sedan.glb")
+const LENS_SHADER := preload("res://winter/sedan_lens.gdshader")
+const SIGNAL_HALF_PERIOD := 0.38
 var wheel_pivots: Array[Node3D] = []
 var body_roll := 0.0
 var body_pitch := 0.0
-var headlights: SpotLight3D
+var headlight_beams := Node3D.new()
+var headlight_lenses: ShaderMaterial
+var brake_lenses: StandardMaterial3D
+var signal_lenses: ShaderMaterial
+var indicator_direction := 0
+var indicator_phase := 0.0
 var wheel_roll := 0.0
 var chassis: Node3D
 var chassis_rest := Transform3D.IDENTITY
@@ -96,43 +103,7 @@ func dress_street() -> void:
 	hot_glass.emission_energy_multiplier = 5
 	hot_glass.albedo_color = Color("#ffd39a")
 	furnish()
-	var old: Node3D = block.parked.get_child(1)
-	old.hide()
-	var model := CAR.instantiate() as Node3D
-	block.parked.add_child(model)
-	# Original mesh uses +X for its nose and is offset from its authoring origin.
-	model.rotation.y = PI/2
-	model.scale = Vector3.ONE * (4.72/17.52)
-	model.position = -(model.basis * Vector3(-5.265,0,9.93))
-	headlights=SpotLight3D.new()
-	block.parked.add_child(headlights)
-	headlights.position=Vector3(0,.65,-2.22)
-	headlights.rotation_degrees.x=-7.5
-	headlights.light_color=Color("#e4edff")
-	headlights.light_energy=4.2
-	headlights.spot_angle=34
-	headlights.spot_range=31
-	headlights.spot_attenuation=1.18
-	headlights.visible=false
-	chassis=model
-	chassis_rest=model.transform
-	for axle in ["Front","Rear"]:
-		for side in ["Left","Right"]:
-			wheel_pivots.append(model.find_child("Wheel"+axle+side,true,false))
-	for panel: MeshInstance3D in model.find_children("*","MeshInstance3D",true,false):
-		for surface in panel.mesh.get_surface_count():
-			var source := panel.mesh.surface_get_material(surface) as StandardMaterial3D
-			if not source: continue
-			var paint := source.resource_name.to_lower()
-			if "geohoodsub00021" in paint or "geodoorl2sub11" in paint:
-				var coat := source.duplicate() as StandardMaterial3D
-				coat.albedo_texture = null
-				coat.albedo_color = Color("#566a70")
-				coat.metallic = .72
-				coat.roughness = .245
-				coat.clearcoat_enabled = true
-				coat.clearcoat = .84
-				panel.set_surface_override_material(surface,coat)
+	dress_sedan()
 	# Capture the actual lit shopfronts and skyline in the parked car's paint.
 	if not OS.has_feature("web"):
 		var probe := ReflectionProbe.new()
@@ -152,6 +123,114 @@ func dress_street() -> void:
 	snowfall()
 	if not OS.has_feature("web"):
 		add_controls()
+
+func dress_sedan() -> void:
+	var old: Node3D = block.parked.get_child(1)
+	old.hide()
+	var model := CAR.instantiate() as Node3D
+	block.parked.add_child(model)
+	# Original mesh uses +X for its nose and is offset from its authoring origin.
+	model.rotation.y = PI / 2
+	model.scale = Vector3.ONE * (4.72 / 17.52)
+	model.position = -(model.basis * Vector3(-5.265, 0, 9.93))
+	chassis = model
+	chassis_rest = model.transform
+	for axle in ["Front", "Rear"]:
+		for side in ["Left", "Right"]:
+			wheel_pivots.append(model.find_child("Wheel" + axle + side, true, false))
+
+	headlight_beams.name = "HeadlightBeams"
+	headlight_beams.hide()
+	block.parked.add_child(headlight_beams)
+	for side: float in [-1.0, 1.0]:
+		var beam := SpotLight3D.new()
+		beam.position = Vector3(side * .76, .68, -2.02)
+		beam.rotation_degrees.x = -6.0
+		beam.light_color = Color("#e4edff")
+		beam.light_energy = 2.6
+		beam.spot_angle = 28.0
+		beam.spot_range = 38.0
+		beam.spot_attenuation = 1.18
+		headlight_beams.add_child(beam)
+
+	for panel: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		for surface in panel.mesh.get_surface_count():
+			var source := panel.mesh.surface_get_material(surface) as StandardMaterial3D
+			if not source: continue
+			match source.resource_name.to_lower():
+				"geohoodsub00021mtl", "geodoorl2sub11mtl":
+					var coat := source.duplicate() as StandardMaterial3D
+					coat.albedo_texture = null
+					coat.albedo_color = Color("#f5f5f2")
+					coat.metallic = .20
+					coat.roughness = .28
+					coat.clearcoat_enabled = true
+					coat.clearcoat = .84
+					panel.set_surface_override_material(surface, coat)
+				"ln12mtl":
+					brake_lenses = source.duplicate() as StandardMaterial3D
+					brake_lenses.emission_enabled = true
+					brake_lenses.emission = Color("#ff080d")
+					brake_lenses.emission_energy_multiplier = 0.0
+					panel.set_surface_override_material(surface, brake_lenses)
+				"ln1mtl":
+					signal_lenses = sedan_lens_material(source)
+					signal_lenses.set_shader_parameter("amber_lens", true)
+					panel.set_surface_override_material(surface, signal_lenses)
+				"ln7mtl":
+					headlight_lenses = sedan_lens_material(source)
+					panel.set_surface_override_material(surface, headlight_lenses)
+
+	add_sedan_plate()
+
+func add_sedan_plate() -> void:
+	var backing := BoxMesh.new()
+	backing.size = Vector3(.33, .16, .012)
+	var finish := StandardMaterial3D.new()
+	finish.albedo_color = Color("#e8eaf0")
+	finish.roughness = .65
+	finish.emission_enabled = true
+	finish.emission = Color("#e8eaf0")
+	finish.emission_energy_multiplier = .25
+	backing.material = finish
+
+	var plate := MeshInstance3D.new()
+	plate.name = "LicensePlate"
+	plate.mesh = backing
+	chassis.add_child(plate)
+	var mount := Transform3D(Basis(Vector3.RIGHT, -.30), Vector3(0.0, .697, 2.286))
+	plate.transform = chassis_rest.affine_inverse() * mount
+
+	var lettering := Label3D.new()
+	lettering.text = "NYC"
+	lettering.font_size = 112
+	lettering.pixel_size = .0012
+	lettering.outline_size = 0
+	lettering.modulate = Color("#152743")
+	lettering.position.z = .008
+	plate.add_child(lettering)
+
+func sedan_lens_material(source: StandardMaterial3D) -> ShaderMaterial:
+	var lens := ShaderMaterial.new()
+	lens.shader = LENS_SHADER
+	lens.set_shader_parameter("lens_color", source.albedo_color)
+	lens.set_shader_parameter("lens_roughness", source.roughness)
+	lens.set_shader_parameter("lens_metallic", source.metallic)
+	return lens
+
+func update_sedan_lights(dt: float) -> void:
+	var driving: bool = city.driving
+	headlight_beams.visible = driving
+	headlight_lenses.set_shader_parameter("headlights_on", driving)
+	brake_lenses.emission_energy_multiplier = 3.0 if driving and city.brake_pressed else 0.0
+	var direction: int = city.steering_direction if driving else 0
+	if direction != indicator_direction or direction == 0:
+		indicator_phase = 0.0
+	else:
+		indicator_phase = fposmod(indicator_phase + dt, SIGNAL_HALF_PERIOD * 2.0)
+	indicator_direction = direction
+	var flashing_side := direction if indicator_phase < SIGNAL_HALF_PERIOD else 0
+	signal_lenses.set_shader_parameter("flashing_side", flashing_side)
 
 func rod(a: Vector3, b: Vector3, bottom: float, top: float) -> void:
 	var mesh := CylinderMesh.new()
@@ -289,7 +368,7 @@ func add_controls() -> void:
 	hint.position=Vector2(18,get_viewport().get_visible_rect().size.y-39)
 	hint.add_theme_font_size_override("font_size",14)
 	hint.add_theme_constant_override("outline_size",4)
-	hint.text="WASD  Move      Shift  Sprint      V  Unlock mouse  /  Click to capture      E  Drive / exit      F  Freecam      B  Camera motion      H  Hide"
+	hint.text="WASD  Move / drive     Arrows  Drive     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Enter / exit     F  Freecam     B  Camera motion     H  Hide"
 	get_viewport().size_changed.connect(func(): hint.position.y=get_viewport().get_visible_rect().size.y-39)
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -410,7 +489,7 @@ func plant_foot(world: Vector3, heading: Vector2, left: bool, effort: float) -> 
 
 func _physics_process(dt: float) -> void:
 	if not chassis: return
-	headlights.visible=block.driven
+	update_sedan_lights(dt)
 	if block.driven or absf(body_roll)+absf(body_pitch)>.0001:
 		wheel_roll=fmod(wheel_roll+block.driver_speed*dt/.345,TAU)
 		for pivot in wheel_pivots:

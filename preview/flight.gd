@@ -4,6 +4,8 @@ extends Node3D
 @onready var block = $Block
 @onready var walker: CharacterBody3D = $Walker
 var driving := false
+var brake_pressed := false
+var steering_direction := 0
 var can_enter_car := false
 var orbit_yaw := 0.0
 var orbit_pitch := .31
@@ -209,6 +211,29 @@ func input_direction() -> Vector3:
 		dir += Vector3(float(web.midtownX), float(web.midtownY), float(web.midtownZ))
 	return dir
 
+func drive_from_input(dt: float) -> void:
+	var accelerator := 0.0
+	var brake := 0.0
+	var turn := 0.0
+	var handbrake := false
+	if not web or not bool(web.midtownInControls):
+		accelerator = float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP))
+		brake = float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))
+		handbrake = Input.is_physical_key_pressed(KEY_SHIFT)
+		var left := Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)
+		var right := Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)
+		turn = float(right) - float(left)
+	if web:
+		var pedals := clampf(float(web.midtownZ), -1.0, 1.0)
+		accelerator = maxf(accelerator, -pedals)
+		brake = maxf(brake, pedals)
+		turn += float(web.midtownX)
+	brake_pressed = brake > 0.0 or handbrake
+	steering_direction = int(signf(turn))
+	var throttle := -brake if brake > 0.0 else accelerator
+	block.drive(dt, throttle, turn, accelerator == 0.0, handbrake)
+	drive_audio.update(block.driver_speed, minf(throttle, 0.0) if handbrake else throttle, block.side_accel, dt)
+
 func fly(dir: Vector3, elapsed: float) -> void:
 	var motion := camera.global_basis.x * dir.x + camera.global_basis.z * dir.z + Vector3.UP * dir.y
 	if (camera.position.y <= MIN_HEIGHT + 0.001 and motion.y < 0.0) or (camera.position.y >= MAX_HEIGHT - 0.001 and motion.y > 0.0):
@@ -241,11 +266,14 @@ func interact() -> void:
 		if not clear: return
 		walker.global_position = Vector3(exit_at.x,.15,exit_at.z)
 		driving = false
+		brake_pressed = false
+		steering_direction = 0
 		drive_audio.park()
 		gear_readout.hide()
 		block.reverse_wait=0
 		block.backing=false
 		block.steer=0
+		block.drift_angle=0.0
 		block.driver_speed=0
 		pitch=0
 		yaw=block.parked.global_rotation.y
@@ -265,10 +293,9 @@ func interact() -> void:
 func _physics_process(dt: float) -> void:
 	if warmup_frame >= 0: return
 	if driving:
-		var dir:=input_direction()
-		block.drive(dt,-dir.z,dir.x)
-		drive_audio.update(block.driver_speed,-dir.z,block.side_accel,dt)
-		chase_view(dt)
+		var previous_yaw: float = block.parked.global_rotation.y
+		drive_from_input(dt)
+		chase_view(dt, angle_difference(previous_yaw, block.parked.global_rotation.y))
 		gear_readout.visible=(not bool(web.midtownHudHidden) if web else hud_visible)
 		gear_readout.text="%s   %d mph" % ["R" if block.backing else "D",roundi(absf(block.driver_speed)/METRES_PER_SECOND_PER_MPH)]
 	elif not body.visible:
@@ -307,12 +334,15 @@ func on_road(world: Vector3) -> bool:
 	var pixel:=Vector2i(floori(world.x)+1350,floori(world.z)+1500)
 	return Rect2i(Vector2i.ZERO,stride.ROADS.get_size()).has_point(pixel) and stride.ROADS.get_bitv(pixel)
 
-func chase_view(dt: float) -> void:
+func chase_view(dt: float, car_yaw_change: float = 0.0) -> void:
 	var car: CharacterBody3D=block.parked
 	var speed: float=absf(block.driver_speed)
 	manual_look=maxf(0,manual_look-dt)
-	if manual_look<=0 and speed>1.0:
-		orbit_yaw=lerp_angle(orbit_yaw,car.global_rotation.y,1.0-exp(-2.6*dt))
+	if manual_look > 0.0:
+		orbit_yaw = wrapf(orbit_yaw + car_yaw_change, -PI, PI)
+	elif speed > 1.0:
+		var follow_rate := lerpf(6.0, 10.0, smoothstep(4.0, 28.0, speed))
+		orbit_yaw = lerp_angle(orbit_yaw, car.global_rotation.y, 1.0 - exp(-follow_rate * dt))
 	var paved:=on_road(car.global_position)
 	if paved!=last_road:
 		road_bump=minf(speed*.008,.07)
