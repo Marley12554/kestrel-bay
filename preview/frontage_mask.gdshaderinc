@@ -7,6 +7,13 @@ bool modeled_empire_base(vec3 p,vec3 n){
 	return front||corner;
 }
 
+// Faces of the surveyed Demarest shell beneath the two rebuilt elevations.
+bool demarest_wall(vec3 p,vec3 n){
+	if(abs(n.y)>.25 || p.y>22.66) return false;
+	return (p.x>96.05 && p.x<96.56 && p.z>=11.49 && p.z<29.15)
+		|| (p.z>28.92 && p.z<29.26 && p.x>=96.2 && p.x<=125.51);
+}
+
 // The set-back office shaft carries paired sashes between continuous limestone
 // piers. Its distant finish follows the same storey spacing all around the shaft.
 bool empire_shaft(vec3 p,vec3 n){

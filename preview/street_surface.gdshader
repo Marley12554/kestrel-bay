@@ -9,7 +9,7 @@ void vertex() {
 	face = normalize(MODEL_NORMAL_MATRIX*NORMAL);
 }
 void fragment() {
-	if(modeled_empire_base(street,face)) discard;
+	if(modeled_empire_base(street,face) || demarest_wall(street,face)) discard;
 	vec3 base = COLOR.rgb;
 	float near_block = 1.0-smoothstep(180.0,360.0,length(street.xz));
 	if(empire_shaft(street,face)){

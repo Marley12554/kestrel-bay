@@ -161,40 +161,19 @@ func east_bay(x: float, width: float, door: bool) -> void:
 
 func make_east_frontage() -> void:
 	facade_frame(Vector3(96.34,0,0),-PI/2)
-	for i in range(-6,7):
+	for i in range(-6,3):
 		var x := i*4.45
-		east_bay(x,4.45,i in [-5,-2,1,5])
-		if i<2:
-			for level in 4:
-				var y := 6.0+level*3.05
-				part(Vector3(x,y,.13),Vector3(3.75,2.38,.25),BASE)
-				for side in [-1,1]:
-					part(Vector3(x+side*.87,y,.29),Vector3(1.61,2.12,.09),GLASS)
-				part(Vector3(x,y-1.22,.4),Vector3(4.25,.17,.64),TRIM)
-	for i in range(2,7):
-		arched_bay(i*4.45)
-	for y in [4.5,15.1,15.46]:
-		part(Vector3(17.8,y,.48),Vector3(22.25,.24,1.12),TRIM)
-	# Return the corner frontage onto 33rd so it has a side elevation too.
-	facade_frame(Vector3(96.34,0,29.05),0)
-	for i in 5:
-		var x := 2.225+i*4.45
-		east_bay(x,4.45,i==3)
-		arched_bay(x)
-	part(Vector3(11.125,15.3,.5),Vector3(22.25,.56,1.14),TRIM)
+		east_bay(x,4.45,i in [-5,-2,1])
+		for level in 4:
+			var y := 6.0+level*3.05
+			part(Vector3(x,y,.13),Vector3(3.75,2.38,.25),BASE)
+			for side in [-1,1]:
+				part(Vector3(x+side*.87,y,.29),Vector3(1.61,2.12,.09),GLASS)
+			part(Vector3(x,y-1.22,.4),Vector3(4.25,.17,.64),TRIM)
 	context=FRONT
-
-func arched_bay(x: float) -> void:
-	part(Vector3(x,9.55,.19),Vector3(3.55,9.98,.36),Color("#51443c"))
-	part(Vector3(x,9.2,.42),Vector3(3.12,8.48,.10),GLASS)
-	for side in [-1,1]:
-		part(Vector3(x+side*1.73,8.94,.5),Vector3(.32,8.65,.85),STONE)
-	for j in 13:
-		var a := PI*(j+.5)/13.
-		part(Vector3(x+1.73*cos(a),13.22+1.73*sin(a),.53),Vector3(.46,.33,.83),TRIM,"box",Vector3(0,0,a+PI/2))
-	for y in [7.8,10.74,13.18]:
-		part(Vector3(x,y,.55),Vector3(3.24,.20,.42),BRASS)
-	part(Vector3(x,9.15,.52),Vector3(.095,8.3,.18),BASE)
+	var demarest := preload("res://demarest.gd").new()
+	demarest.name="Demarest"
+	add_child(demarest)
 
 func solid(at: Vector3, size: Vector3) -> void:
 	var body:=StaticBody3D.new()
@@ -209,9 +188,8 @@ func solid(at: Vector3, size: Vector3) -> void:
 func finish_sidewalks() -> void:
 	# Frontages extend beyond the survey wall. Collide with the dressed base
 	# while retaining space to step between projecting piers at doorways.
-	solid(Vector3(96.34,2.1,0),Vector3(.52,4.2,57.85))
-	solid(Vector3(107.46,2.1,29.42),Vector3(22.2,4.2,.68))
-	for i in range(-6,8):
+	solid(Vector3(96.34,2.1,-8.9),Vector3(.52,4.2,40.05))
+	for i in range(-6,4):
 		solid(Vector3(95.84,1.9,i*4.45-2.225),Vector3(.8,3.8,.28))
 	# Ribbed steel baskets and salt-stained granite planters mark the corners.
 	for pos in [Vector3(93.4,0,-33.3),Vector3(69.4,0,29.6),Vector3(93.55,0,47.55)]:
@@ -221,14 +199,14 @@ func finish_sidewalks() -> void:
 			part(pos+Vector3(.32*cos(a),.62,.32*sin(a)),Vector3(.045,.91,.045),STEEL)
 		part(pos+Vector3.UP*1.08,Vector3(.77,.10,.77),BASE,"ball")
 		solid(pos+Vector3.UP*.58,Vector3(.65,1.16,.65))
-	for z in [-19.4,2.0,24.4]:
+	for z in [-19.4,2.0]:
 		var loc:=Vector3(95.35,0,z)
 		part(loc+Vector3.UP*.37,Vector3(.94,.64,1.08),Color("#514c48"))
 		part(loc+Vector3.UP*.71,Vector3(.96,.10,1.10),SNOW)
 		for j in 3:
 			part(loc+Vector3(.13*sin(j*2.1),1.02+j*.23,.15*cos(j*2.1)),Vector3(.79-j*.14,.90-j*.10,.79-j*.14),PINE,"cone")
 		solid(loc+Vector3.UP*.42,Vector3(.94,.84,1.08))
-	for z in [-17.,12.]:
+	for z in [-17.]:
 		# Bronze storefront canopy rods, gate guides, and door kick plates.
 		facade_frame(Vector3(96.25,0,z),-PI/2)
 		part(Vector3(0,3.4,1.04),Vector3(3.75,.16,1.65),Color("#343b39"))

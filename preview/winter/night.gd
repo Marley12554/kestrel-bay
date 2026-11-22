@@ -214,8 +214,8 @@ func furnish() -> void:
 	for i in range(-14,15):
 		if i not in [4,5,6]:
 			display_window(Vector3(-9-i*5.,2.08,-30.58),PI,4.52,i+21)
-	for i in range(-6,7):
-		if i not in [-5,-2,1,5]:
+	for i in range(-6,3):
+		if i not in [-5,-2,1]:
 			display_window(Vector3(95.98,2.16,i*4.45),-PI/2,3.94,i)
 	# A broad wash from inside the closed display reaches the shelves and jambs.
 	var display_light:=OmniLight3D.new()

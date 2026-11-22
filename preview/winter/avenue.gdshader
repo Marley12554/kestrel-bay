@@ -21,7 +21,7 @@ void vertex() {
 	direction=normalize(MODEL_NORMAL_MATRIX*NORMAL);
 }
 void fragment() {
-	if(modeled_empire_base(street,direction)) discard;
+	if(modeled_empire_base(street,direction) || demarest_wall(street,direction)) discard;
 	vec3 p=street; vec3 base=COLOR.rgb;
 	if(abs(direction.y)>.68 && p.y<1.0){
 		vec2 uv=p.xz*.54;

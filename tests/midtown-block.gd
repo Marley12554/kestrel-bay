@@ -157,6 +157,15 @@ func winter_stride_checks() -> void:
 		var query:=PhysicsRayQueryParameters3D.create(scene.block.to_global(probe[0]),scene.block.to_global(probe[1]),1)
 		var hit:=space.intersect_ray(query)
 		check(not hit.is_empty() and frontage.is_ancestor_of(hit.collider),probe[2]+" meets the new frontage")
+	# Approach both exposed ground-floor faces from the public sidewalk.
+	var demarest := scene.block.get_node("Demarest") as Node3D
+	for probe in [
+		[Vector3(93,1.2,13.225), Vector3(97,1.2,13.225), "339 numbered entrance"],
+		[Vector3(93,1.2,24), Vector3(97,1.2,24), "Fifth retail glazing"],
+		[Vector3(119,1.2,33), Vector3(119,1.2,28), "33rd Street storefront"]]:
+		var query:=PhysicsRayQueryParameters3D.create(scene.block.to_global(probe[0]),scene.block.to_global(probe[1]),1)
+		var hit:=space.intersect_ray(query)
+		check(not hit.is_empty() and demarest.is_ancestor_of(hit.collider),probe[2]+" meets its modeled surface")
 	var road: Vector3 = scene.block.to_global(Vector3(81, 0, -45.8))
 	var bank: Vector3 = scene.block.to_global(Vector3(90.45,0,6))
 	check(scene.stride.ROADS.get_bitv(Vector2i(floori(road.x)+1350, floori(road.z)+1500)), "road mask matches the Fifth Avenue intersection")
