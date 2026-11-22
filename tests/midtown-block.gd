@@ -556,11 +556,47 @@ func street_fixture_checks(block, pack) -> void:
 	block.cycle=saved
 	block.update_lights()
 
+func check_revolving_entry(city, shop) -> void:
+	var drum = shop.get_node("ReserveRevolvingDoor")
+	var walker: CharacterBody3D = city.walker
+	var saved_yaw: float = drum.rotor.rotation.y
+	drum.set_physics_process(false)
+	var outermost: float = drum.position.z + drum.RADIUS
+	check(outermost < shop.FRONT_Z, "Reserve rotor clears the storefront throughout a full turn")
+	# Follow one compartment from Fifth into the shop, then the next half turn back.
+	var orbit_radius := .73
+	var clear := true
+	for pass_index in 2:
+		var start_angle := pass_index * PI
+		var facing := Vector3(sin(start_angle), 0, cos(start_angle))
+		drum.rotor.rotation.y = PI*.25 + start_angle
+		await physics_frame
+		var axle: Vector3 = drum.global_position
+		axle.y = shop.to_global(Vector3(0, shop.FLOOR_Y+.01, 0)).y
+		var radial: Vector3 = drum.global_basis * facing
+		var outside := axle + radial * 1.95
+		if pass_index == 0:
+			walker.global_position = outside
+		var entry := axle + radial * orbit_radius
+		clear = walker.move_and_collide(entry-walker.global_position) == null and clear
+		for step in range(1, 37):
+			var angle := start_angle + step*PI/36.
+			drum.rotor.rotation.y = PI*.25 + angle
+			await physics_frame
+			var target: Vector3 = axle + drum.global_basis * Vector3(sin(angle),0,cos(angle)) * orbit_radius
+			clear = walker.move_and_collide(target-walker.global_position) == null and clear
+		var exit_point := axle - radial * 1.95
+		clear = walker.move_and_collide(exit_point-walker.global_position) == null and clear
+	check(clear, "walking capsule can enter and exit through the rotating Reserve door")
+	drum.rotor.rotation.y = saved_yaw
+	drum.set_physics_process(true)
+
 func reserve_visit(city) -> void:
 	var shop=city.block.reserve
 	var walker:CharacterBody3D=city.walker
 	var inward:Vector3=-shop.global_basis.z
 	var x:float=shop.DOOR_X
+	await check_revolving_entry(city,shop)
 	walker.global_position=shop.to_global(Vector3(x,.16,1.65))
 	walker.velocity=Vector3.ZERO
 	for i in 90: city.walk(inward,false,1./60.)

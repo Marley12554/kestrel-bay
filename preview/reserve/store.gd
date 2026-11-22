@@ -4,6 +4,10 @@ extends "res://frontage_geometry.gd"
 # surveyed corner shell. Fit-out proportions follow the designer's entry photo.
 const WIDTH:=23.25
 const DEPTH:=18.
+const REVOLVING_DOOR := preload("res://revolving_door.gd")
+const DRUM_X := 13.42
+const FRONT_Z := .22
+const FLOOR_Y := .155
 const DOOR_X:=15.55
 const DOOR_WIDTH:=1.39
 const COUNTER:=Vector3(4.6,0,-9.)
@@ -113,20 +117,7 @@ func shell() -> void:
 			light.light_size=.42
 			light.shadow_enabled=(x>15. and z> -6.) or (x<10. and z< -10.)
 	# Glazing on both street frontages, including a full-height opening for the door.
-	var drum_x:=13.42
-	window_span(0.,drum_x-1.22)
-	window_span(drum_x+1.22,DOOR_X-DOOR_WIDTH*.5)
-	var revolving:=preload("res://revolving_door.gd").new()
-	revolving.name="ReserveRevolvingDoor"
-	var curved_glass:=ShaderMaterial.new()
-	curved_glass.shader=preload("res://winter/door_glass.gdshader")
-	revolving.finishes["rail"]=finishes["bronze"]
-	revolving.finishes["door_glass"]=curved_glass
-	revolving.traversable=true
-	revolving.position=Vector3(drum_x,.035,-.44)
-	add_child(revolving)
-	piece("bronze",Vector3(drum_x,2.81,-.44),Vector3(2.46,.18,2.46),Vector3.ZERO,"round")
-	pane(drum_x,3.53,.22,2.44,1.18)
+	install_revolving_entrance()
 	window_span(DOOR_X+DOOR_WIDTH*.5,WIDTH)
 	piece("bronze",Vector3(DOOR_X,3.23,.26),Vector3(DOOR_WIDTH,.09,.19))
 	pane(DOOR_X,3.65,.25,DOOR_WIDTH,.76)
@@ -137,6 +128,44 @@ func shell() -> void:
 	window_span(0.,DEPTH)
 	piece("black",Vector3(DEPTH*.5,4.43,.24),Vector3(DEPTH,.85,.55))
 	frame=Transform3D.IDENTITY
+
+func install_revolving_entrance() -> void:
+	var revolving := REVOLVING_DOOR.new()
+	var radius := revolving.RADIUS
+	var opening_half := sin(revolving.HALF_ARC) * radius
+	var drum_z := FRONT_Z - radius - .09
+	var mouth_z := drum_z + cos(revolving.HALF_ARC) * radius
+	var reveal := FRONT_Z - mouth_z
+	var head_y := FLOOR_Y + revolving.HEAD - revolving.SILL
+	var center_y := (FLOOR_Y + head_y) * .5
+	var height := head_y - FLOOR_Y
+	window_span(0., DRUM_X - opening_half)
+	window_span(DRUM_X + opening_half, DOOR_X - DOOR_WIDTH * .5)
+	revolving.name = "ReserveRevolvingDoor"
+	var glass := ShaderMaterial.new()
+	glass.shader = preload("res://winter/door_glass.gdshader")
+	revolving.finishes["rail"] = finishes["bronze"]
+	revolving.finishes["door_glass"] = glass
+	revolving.traversable = true
+	# Place the entry mat just above the terrazzo so the threshold is visible.
+	revolving.position = Vector3(DRUM_X, FLOOR_Y + .004 - revolving.SILL, drum_z)
+	add_child(revolving)
+	for side in [-1., 1.]:
+		var x: float = DRUM_X + side * opening_half
+		var at := Vector3(x, center_y, mouth_z + reveal * .5)
+		piece("glass", at, Vector3(reveal, height, 1), Vector3(0, PI * .5, 0), "pane")
+		collider(at, Vector3(.045, height, reveal))
+		piece("bronze", Vector3(x, center_y, FRONT_Z), Vector3(.052, height, .07))
+		for y in [FLOOR_Y + .035, head_y - .035]:
+			piece("bronze", Vector3(x, y, at.z), Vector3(.05, .07, reveal))
+	# The circular operator housing meets a rectangular glazed transom at the street.
+	piece("bronze", Vector3(DRUM_X, head_y + .065, drum_z), Vector3(2.*radius+.04, .13, 2.*radius+.04), Vector3.ZERO, "round")
+	piece("bronze", Vector3(DRUM_X, head_y + .065, mouth_z + reveal*.5), Vector3(2.*opening_half+.06, .13, reveal+.07))
+	var transom_bottom := head_y + .13
+	pane(DRUM_X, (transom_bottom+4.05)*.5, FRONT_Z, 2.*opening_half, 4.05-transom_bottom)
+	for side in [-1., 1.]:
+		piece("bronze", Vector3(DRUM_X + side*opening_half, (transom_bottom+4.05)*.5, FRONT_Z),
+			Vector3(.052, 4.05-transom_bottom, .07))
 
 func window_span(begin:float,end:float) -> void:
 	var width:=end-begin
