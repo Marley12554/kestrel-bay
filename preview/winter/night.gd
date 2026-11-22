@@ -330,7 +330,7 @@ func update_sedan_lights(dt: float) -> void:
 	headlight_beams.visible = driving
 	headlight_lenses.set_shader_parameter("headlights_on", driving)
 	brake_lenses.emission_energy_multiplier = 3.0 if driving and city.brake_pressed else 0.0
-	var direction: int = city.steering_direction if driving else 0
+	var direction: int = city.turn_signal_direction if driving else 0
 	var previous_side := indicator_direction if indicator_phase < SIGNAL_HALF_PERIOD else 0
 	if direction != indicator_direction or direction == 0:
 		indicator_phase = 0.0
@@ -478,7 +478,7 @@ func add_controls() -> void:
 	hint.position=Vector2(18,get_viewport().get_visible_rect().size.y-39)
 	hint.add_theme_font_size_override("font_size",14)
 	hint.add_theme_constant_override("outline_size",4)
-	hint.text="WASD  Move / drive     Arrows  Drive     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Enter / exit     F  Freecam     B  Camera motion     H  Hide"
+	hint.text="WASD  Move / drive     ← / →  Turn signals     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Enter / exit     F  Freecam     B  Camera motion     H  Hide"
 	get_viewport().size_changed.connect(func(): hint.position.y=get_viewport().get_visible_rect().size.y-39)
 
 func _unhandled_key_input(event: InputEvent) -> void:

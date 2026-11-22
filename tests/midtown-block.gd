@@ -128,11 +128,12 @@ func run() -> void:
 	print(checks," Midtown checks, ",failures," failures")
 	quit(1 if failures else 0)
 
-func movement_key(code: Key, pressed: bool) -> void:
+func movement_key(code: Key, pressed: bool, echo := false) -> void:
 	var event := InputEventKey.new()
 	event.physical_keycode = code
 	event.keycode = code
 	event.pressed = pressed
+	event.echo = echo
 	Input.parse_input_event(event)
 	Input.flush_buffered_events()
 
@@ -259,12 +260,18 @@ func winter_stride_checks() -> void:
 	check(drive_sound.motor.pitch_scale > city_motor_pitch + .4
 		and drive_sound.motor.volume_db > drive_sound.tires.volume_db + 4.0,
 		"motor pitch rises at speed and the thrum stays audible during tire scrub")
-	drive_sound.play_turn_signal(true)
+	movement_key(KEY_LEFT, true)
+	movement_key(KEY_LEFT, false)
+	winter.update_sedan_lights(0.0)
 	block.driver_speed=0
 	scene.interact()
 	check(not scene.driving and not drive_sound.motor.playing and not drive_sound.tires.playing
 		and not drive_sound.forward_warning.playing and not drive_sound.reverse_warning.playing
-		and not drive_sound.turn_signal.playing, "parking stops all driving sounds")
+		and not drive_sound.turn_signal.playing and scene.turn_signal_direction == 0,
+		"parking clears the turn signal and stops all driving sounds")
+	movement_key(KEY_LEFT, true)
+	movement_key(KEY_LEFT, false)
+	check(scene.turn_signal_direction == 0, "arrow keys cannot select a turn signal on foot")
 	block.street_user=Vector3.INF
 	block.cross_distance=block.south_stop-12
 	block.cross_speed=3.5
@@ -292,36 +299,53 @@ func winter_stride_checks() -> void:
 	scene._physics_process(1.0 / 60.0)
 	winter.update_sedan_lights(1.0 / 60.0)
 	check(winter.brake_lenses.emission_energy_multiplier > 0, "S lights the brake lenses")
-	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 1, "D flashes the right indicators")
+	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 0 and block.steer > 0.0,
+		"D steers right without activating a signal")
+	movement_key(KEY_D, false)
+	block.reset_steering()
+	movement_key(KEY_RIGHT, true)
+	scene._physics_process(1.0 / 60.0)
+	winter.update_sedan_lights(1.0 / 60.0)
+	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 1 and is_zero_approx(block.steer),
+		"Right arrow flashes the right indicators without steering")
 	var signal_sound: AudioStreamPlayer = drive_sound.turn_signal
 	check(signal_sound.playing and is_equal_approx(signal_sound.pitch_scale, 1.0),
 		"the signal clicks when the indicator turns on")
+	movement_key(KEY_RIGHT, true, true)
+	check(scene.turn_signal_direction == 1, "holding Right arrow ignores keyboard repeat")
+	movement_key(KEY_RIGHT, false)
 	signal_sound.stop()
 	winter.update_sedan_lights(1.0 / 60.0)
 	check(not signal_sound.playing, "the signal stays quiet between blink transitions")
 	winter.update_sedan_lights(0.4)
-	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 0, "held steering blinks the indicator off")
+	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 0, "the indicator blinks off after releasing Right arrow")
 	check(signal_sound.playing and signal_sound.pitch_scale < 1.0,
 		"the signal makes a lower click when the indicator turns off")
 	signal_sound.stop()
 	winter.update_sedan_lights(0.4)
-	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 1, "held steering blinks the indicator back on")
+	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 1, "the indicator keeps blinking after releasing Right arrow")
 	check(signal_sound.playing and is_equal_approx(signal_sound.pitch_scale, 1.0),
 		"the signal click repeats with the next blink")
 	movement_key(KEY_S, false)
-	movement_key(KEY_D, false)
 	movement_key(KEY_A, true)
 	scene._physics_process(1.0 / 60.0)
 	winter.update_sedan_lights(1.0 / 60.0)
 	check(is_zero_approx(winter.brake_lenses.emission_energy_multiplier), "releasing S turns off the brake emission")
-	check(winter.signal_lenses.get_shader_parameter("flashing_side") == -1, "A immediately selects the left indicators")
-	signal_sound.stop()
+	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 1 and block.steer < 0.0,
+		"steering left keeps the selected right signal")
 	movement_key(KEY_A, false)
-	scene._physics_process(1.0 / 60.0)
+	movement_key(KEY_LEFT, true)
+	movement_key(KEY_LEFT, false)
 	winter.update_sedan_lights(1.0 / 60.0)
-	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 0, "releasing steering cancels the signal")
+	check(winter.signal_lenses.get_shader_parameter("flashing_side") == -1,
+		"Left arrow switches directly to the left indicators")
+	signal_sound.stop()
+	movement_key(KEY_LEFT, true)
+	movement_key(KEY_LEFT, false)
+	winter.update_sedan_lights(1.0 / 60.0)
+	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 0, "pressing Left arrow again cancels the signal")
 	winter.update_sedan_lights(0.4)
-	check(not signal_sound.playing, "releasing steering stops new signal clicks")
+	check(not signal_sound.playing, "cancelling stops new signal clicks")
 	for turn_key: Key in [KEY_D, KEY_A]:
 		sedan.transform = parked_spawn
 		if turn_key == KEY_A:
@@ -365,7 +389,7 @@ func winter_stride_checks() -> void:
 			"W+%s turns %.1f degrees onto 33rd Street from 30 mph" % [OS.get_keycode_string(turn_key), turn_degrees])
 	# Check left and right steering on open Fifth Avenue pavement.
 	for config in [[65, KEY_W, KEY_A, -1.0], [100, KEY_W, KEY_D, 1.0],
-			[130, KEY_W, KEY_A, -1.0], [130, KEY_W, KEY_D, 1.0], [130, KEY_UP, KEY_RIGHT, 1.0]]:
+			[130, KEY_W, KEY_A, -1.0], [130, KEY_W, KEY_D, 1.0], [130, KEY_UP, KEY_D, 1.0]]:
 		var mph: int = config[0]
 		var accelerator: Key = config[1]
 		var steering_key: Key = config[2]
@@ -496,7 +520,7 @@ func winter_stride_checks() -> void:
 	movement_key(KEY_S, false)
 
 	# Compare chassis heading to actual motion while using the handbrake.
-	for config in [[30, KEY_A, -1.0], [30, KEY_D, 1.0], [130, KEY_RIGHT, 1.0]]:
+	for config in [[30, KEY_A, -1.0], [30, KEY_D, 1.0], [130, KEY_D, 1.0]]:
 		var mph: int = config[0]
 		var turn_key: Key = config[1]
 		var direction: float = config[2]

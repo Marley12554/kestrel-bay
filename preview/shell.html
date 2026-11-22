@@ -55,7 +55,7 @@ window.midtownStreetMode=(mode,nearCar)=>{
 };
 function updateHelp(){
   const mode=document.body.dataset.mode;
-  const movement=mode==='drive'?'W accelerate · S brake / reverse · A / D steer · Look to orbit · Stop to exit':
+  const movement=mode==='drive'?'W accelerate · S brake / reverse · A / D steer · ← / → toggle turn signals · Look to orbit · Stop to exit':
     mode==='fly'?'WASD fly · Q / E down / up':'WASD walk · Shift sprint';
   const mouse=window.midtownLocked?'V unlock mouse':'Click street to capture mouse';
   document.getElementById('help').textContent=movement+' · '+mouse+' · H hide HUD';

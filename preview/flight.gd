@@ -5,7 +5,7 @@ extends Node3D
 @onready var walker: CharacterBody3D = $Walker
 var driving := false
 var brake_pressed := false
-var steering_direction := 0
+var turn_signal_direction := 0
 var previous_steer_key := 0
 var steer_key_seconds := 0.0
 var can_enter_car := false
@@ -106,6 +106,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_body()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E:
 		if not body.visible: interact()
+	elif driving and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_LEFT, KEY_RIGHT]:
+		var direction := -1 if event.physical_keycode == KEY_LEFT else 1
+		turn_signal_direction = 0 if turn_signal_direction == direction else direction
 	elif event is InputEventScreenTouch:
 		if event.pressed and look_finger == -1:
 			look_finger = event.index
@@ -227,8 +230,8 @@ func drive_from_input(dt: float) -> void:
 		accelerator = float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP))
 		brake = float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))
 		handbrake = Input.is_physical_key_pressed(KEY_SHIFT)
-		var left := Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)
-		var right := Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)
+		var left := Input.is_physical_key_pressed(KEY_A)
+		var right := Input.is_physical_key_pressed(KEY_D)
 		steer_key = int(right) - int(left)
 	if steer_key == 0 or steer_key != previous_steer_key:
 		steer_key_seconds = 0.0
@@ -247,7 +250,6 @@ func drive_from_input(dt: float) -> void:
 		brake = maxf(brake, pedals)
 		turn += float(web.midtownX)
 	brake_pressed = brake > 0.0 or handbrake
-	steering_direction = int(signf(turn))
 	var throttle := -brake if brake > 0.0 else accelerator
 	block.drive(dt, throttle, turn, accelerator == 0.0, handbrake)
 	drive_audio.update(block.driver_speed, minf(throttle, 0.0) if handbrake else throttle, block.side_accel, dt)
@@ -285,7 +287,7 @@ func interact() -> void:
 		walker.global_position = Vector3(exit_at.x,.15,exit_at.z)
 		driving = false
 		brake_pressed = false
-		steering_direction = 0
+		turn_signal_direction = 0
 		drive_audio.park()
 		gear_readout.hide()
 		block.reverse_wait=0

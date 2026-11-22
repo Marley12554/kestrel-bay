@@ -10,7 +10,7 @@ The committed compressed Godot scene builds without the source ZIPs. To regenera
 
 ## Native winter block
 
-The browser build opens the winter block using Compatibility. The macOS build starts in the evening on Fifth Avenue and uses Metal with Forward+ lighting. Approach the sedan and press E to drive. W accelerates, S brakes and then selects reverse if held at rest, and A/D steer. Look or drag to orbit. The single-speed electric drivetrain, tire wash, wheel rotation and body pitch follow the car’s motion. The Mac build captures the mouse at startup. Press V to release it and click the street to capture it again. F toggles freecam on foot. H hides the control hint. The downloadable art credits are in [winter/CREDITS.txt](winter/CREDITS.txt).
+The browser build opens the winter block using Compatibility. The macOS build starts in the evening on Fifth Avenue and uses Metal with Forward+ lighting. Approach the sedan and press E to drive. W accelerates, S brakes and then selects reverse if held at rest, and A/D steer. Use the Left or Right arrow to select a turn signal and press the same arrow again to cancel it. Look or drag to orbit. The single-speed electric drivetrain, tire wash, wheel rotation and body pitch follow the car’s motion. The Mac build captures the mouse at startup. Press V to release it and click the street to capture it again. F toggles freecam on foot. H hides the control hint. The downloadable art credits are in [winter/CREDITS.txt](winter/CREDITS.txt).
 
 With the Godot 4.7.1 macOS release template installed, run `godot --headless --path preview --editor --import --quit`, then `godot --headless --path preview --export-release "Mac Native" "../dist/native/Fifth Avenue.app"` after creating the destination directory.
 
