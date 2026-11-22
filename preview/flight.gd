@@ -272,7 +272,7 @@ func interact() -> void:
 		gear_readout.hide()
 		block.reverse_wait=0
 		block.backing=false
-		block.steer=0
+		block.reset_steering()
 		block.drift_angle=0.0
 		block.driver_speed=0
 		pitch=0

@@ -278,22 +278,32 @@ func winter_stride_checks() -> void:
 		if turn_key == KEY_A:
 			sedan.position.x = 81.0 # Leave room for a left turn away from the curb.
 		block.driver_speed = 0.0
-		block.steer = 0.0
+		block.reset_steering()
 		var start_yaw := sedan.global_rotation.y
-		movement_key(KEY_W, true)
+		var parking_start := sedan.position
 		movement_key(turn_key, true)
-		for tick in 66:
+		for tick in 12:
 			scene._physics_process(1.0 / 60.0)
+		check(is_equal_approx(sedan.global_rotation.y, start_yaw) and sedan.position.is_equal_approx(parking_start),
+			"%s steers the front wheels without pivoting the parked sedan" % OS.get_keycode_string(turn_key))
+		block.reset_steering()
+		var travel_distance := 0.0
+		movement_key(KEY_W, true)
+		for tick in 66:
+			var prior_position := sedan.position
+			scene._physics_process(1.0 / 60.0)
+			travel_distance += sedan.position.distance_to(prior_position)
 		movement_key(turn_key, false)
 		movement_key(KEY_W, false)
 		var direction := 1.0 if turn_key == KEY_A else -1.0
 		var turn_degrees := rad_to_deg(angle_difference(start_yaw, sedan.global_rotation.y)) * direction
-		check(turn_degrees >= 90.0 and turn_degrees < 105.0, "W+%s turns %.1f degrees from rest in 1.1 s" % [OS.get_keycode_string(turn_key), turn_degrees])
+		check(turn_degrees > 29.0 and turn_degrees < 41.0 and travel_distance > 3.0,
+			"W+%s turns %.1f degrees over %.2f m from rest" % [OS.get_keycode_string(turn_key), turn_degrees, travel_distance])
 		# Start on Fifth Avenue and turn onto 33rd Street at city driving speed.
 		sedan.position = Vector3(81.0 - direction * 2.0, .035, 32.3)
 		sedan.rotation.y = PI
 		block.driver_speed = 30.0 * scene.METRES_PER_SECOND_PER_MPH
-		block.steer = 0.0
+		block.reset_steering()
 		start_yaw = sedan.global_rotation.y
 		movement_key(KEY_W, true)
 		movement_key(turn_key, true)
@@ -317,23 +327,58 @@ func winter_stride_checks() -> void:
 		var start_position := sedan.position
 		var right := sedan.basis.x
 		block.driver_speed = mph * scene.METRES_PER_SECOND_PER_MPH
-		block.steer = 0.0
+		block.reset_steering()
 		scene.manual_look = 0.0
 		scene.orbit_yaw = start_yaw
 		movement_key(accelerator, true)
 		movement_key(steering_key, true)
 		scene._physics_process(1.0 / 60.0)
-		check(absf(angle_difference(start_yaw, sedan.global_rotation.y)) > deg_to_rad(.45),
-			"%d mph steering responds on the first physics frame" % mph)
-		for tick in 29:
+		var initial_yaw := absf(angle_difference(start_yaw, sedan.global_rotation.y))
+		for tick in 5:
+			scene._physics_process(1.0 / 60.0)
+		var settled_yaw := sedan.global_rotation.y
+		scene._physics_process(1.0 / 60.0)
+		var settled_yaw_step := absf(angle_difference(settled_yaw, sedan.global_rotation.y))
+		check(initial_yaw > deg_to_rad(.10) and initial_yaw < deg_to_rad(.30) and settled_yaw_step > initial_yaw * 3.0,
+			"%d mph steering starts gently and builds through the first seven frames" % mph)
+		for tick in 23:
 			scene._physics_process(1.0 / 60.0)
 		movement_key(steering_key, false)
 		movement_key(accelerator, false)
 		var heading_change := absf(angle_difference(start_yaw, sedan.global_rotation.y))
 		var camera_change := absf(angle_difference(start_yaw, scene.orbit_yaw))
 		var lateral_distance := (sedan.position - start_position).dot(right) * turn_direction
-		check(lateral_distance > 4.7 and lateral_distance < 6.4, "%d mph keyboard turn shifts %.2f m in half a second" % [mph, lateral_distance])
+		check(lateral_distance > 4.2 and lateral_distance < 6.0, "%d mph keyboard turn shifts %.2f m in half a second" % [mph, lateral_distance])
 		check(camera_change > heading_change * 0.70, "%d mph chase camera follows the initial turn" % mph)
+
+	# Switch directions at speed and let the wheels return to center.
+	sedan.position = Vector3(81, 1000, -31)
+	sedan.rotation.y = PI
+	block.driver_speed = 100.0 * scene.METRES_PER_SECOND_PER_MPH
+	block.reset_steering()
+	movement_key(KEY_W, true)
+	movement_key(KEY_D, true)
+	for tick in 12:
+		scene._physics_process(1.0 / 60.0)
+	var right_lock: float = block.steer
+	movement_key(KEY_D, false)
+	movement_key(KEY_A, true)
+	scene._physics_process(1.0 / 60.0)
+	check(block.steer > right_lock * .55 and block.steer < right_lock * .8,
+		"switching to A eases the wheels out of right lock")
+	for tick in 11:
+		scene._physics_process(1.0 / 60.0)
+	var left_lock: float = block.steer
+	check(left_lock < -right_lock * .95, "holding A settles the wheels into left lock")
+	movement_key(KEY_A, false)
+	scene._physics_process(1.0 / 60.0)
+	check(block.steer < left_lock * .7 and block.steer > left_lock,
+		"releasing A starts a gradual return to center")
+	for tick in 16:
+		scene._physics_process(1.0 / 60.0)
+	check(absf(block.steer) < .001, "steering returns to center without leaving an offset")
+	movement_key(KEY_W, false)
+
 	# Clear of obstacles so deceleration comes from the brake.
 	movement_key(KEY_W, true)
 	movement_key(KEY_S, true)
@@ -345,7 +390,7 @@ func winter_stride_checks() -> void:
 		sedan.position = start_position
 		sedan.rotation.y = PI
 		block.driver_speed = mph * scene.METRES_PER_SECOND_PER_MPH
-		block.steer = 0.0
+		block.reset_steering()
 		var stop_ticks := 0
 		for tick in 420:
 			scene._physics_process(1.0 / 60.0)
@@ -388,7 +433,7 @@ func winter_stride_checks() -> void:
 		sedan.rotation.y = PI
 		var start_speed: float = mph * scene.METRES_PER_SECOND_PER_MPH
 		block.driver_speed = start_speed
-		block.steer = 0.0
+		block.reset_steering()
 		movement_key(KEY_W, true)
 		movement_key(KEY_SHIFT, true)
 		movement_key(turn_key, true)

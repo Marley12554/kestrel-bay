@@ -15,9 +15,11 @@ const FRONT := Transform3D.IDENTITY
 # Use the sedan wheelbase with arcade steering angles and speed-dependent yaw.
 const CAR_WHEELBASE := 2.875
 const CAR_MAX_STEER := 1.0
+const CAR_PARKING_MAX_STEER := 0.51
 const CAR_MAX_FORWARD_SPEED := 58.1152 # 130 mph in metres per second.
 const CAR_MAX_REVERSE_SPEED := 5.0
-const CAR_STEER_RESPONSE_TIME := 0.026
+const CAR_STEER_SMOOTH_TIME := 0.021
+const CAR_PARKING_STEER_SMOOTH_TIME := 0.058
 const CAR_MAX_YAW_RATE := 3.3
 const CAR_STEERING_FALLOFF_SPEED := 20.0
 const CAR_BRAKE_DECELERATION := 10.5
@@ -55,6 +57,7 @@ var yield_point := 0.0
 var driven := false
 var driver_speed := 0.0
 var steer := 0.0
+var steering_velocity := 0.0
 var drift_angle := 0.0
 var long_accel := 0.0
 var side_accel := 0.0
@@ -674,6 +677,10 @@ func _physics_process(dt: float) -> void:
 	update_taxi(dt)
 	update_cross_taxi(dt)
 
+func reset_steering() -> void:
+	steer = 0.0
+	steering_velocity = 0.0
+
 func drive(dt: float, throttle: float, turn: float, allow_reverse: bool = true, handbrake: bool = false) -> void:
 	var previous := driver_speed
 	var speed := absf(previous)
@@ -700,13 +707,23 @@ func drive(dt: float, throttle: float, turn: float, allow_reverse: bool = true, 
 	else:
 		driver_speed=move_toward(previous,0,(1.12+.001*speed*speed)*dt)
 	var steering_speed := absf(driver_speed)
-	# Taper maximum yaw at speed so holding a key stays useful without making taps twitchy.
+	# Use a parking-speed steering arc, then blend into the arcade response.
+	var road_speed_weight := smoothstep(4.5, 12.0, steering_speed)
+	var max_steer := lerpf(CAR_PARKING_MAX_STEER, CAR_MAX_STEER, road_speed_weight)
+	var smooth_time := lerpf(CAR_PARKING_STEER_SMOOTH_TIME, CAR_STEER_SMOOTH_TIME, road_speed_weight)
 	var yaw_limit := CAR_MAX_YAW_RATE / (1.0 + steering_speed / CAR_STEERING_FALLOFF_SPEED)
-	var steering_limit := minf(CAR_MAX_STEER, atan(yaw_limit * CAR_WHEELBASE / maxf(1.0, steering_speed)))
-	steer = clampf(steer, -steering_limit, steering_limit)
+	var steering_limit := minf(max_steer, atan(yaw_limit * CAR_WHEELBASE / maxf(1.0, steering_speed)))
 	var steering_input := clampf(turn, -1.0, 1.0)
 	var target := steering_input * steering_limit
-	steer = move_toward(steer, target, steering_limit * dt / CAR_STEER_RESPONSE_TIME)
+	# A critically damped spring eases the wheels into the turn and back to center.
+	var offset := steer - target
+	var velocity_step := (steering_velocity + offset / smooth_time) * dt
+	var decay := exp(-dt / smooth_time)
+	var next_steer := target + (offset + velocity_step) * decay
+	steering_velocity = (steering_velocity - velocity_step / smooth_time) * decay
+	steer = clampf(next_steer, -steering_limit, steering_limit)
+	if steer != next_steer:
+		steering_velocity = 0.0
 	var drift_amount := smoothstep(3.5, 8.0, driver_speed) * absf(steering_input) if handbrake else 0.0
 	var previous_yaw:=parked.rotation.y
 	var yaw_rate := -driver_speed * tan(steer) / CAR_WHEELBASE * (1.0 + .20 * drift_amount)
