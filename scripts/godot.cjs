@@ -26,6 +26,17 @@ function run(args) {
 function importProject() {
   run(['--editor', '--import', '--quit']);
 }
+function buildDesktop() {
+  const directory = path.join(root, 'dist', 'desktop');
+  const windows = path.join(directory, 'windows');
+  fs.mkdirSync(windows, {recursive: true});
+  importProject();
+  run(['--export-release', 'Mac Desktop', path.join(directory, 'Kestrel Bay-macOS.zip')]);
+  run(['--export-release', 'Windows Desktop', path.join(windows, 'Kestrel Bay.exe')]);
+  for (const file of ['Kestrel Bay-macOS.zip', 'windows/Kestrel Bay.exe', 'windows/Kestrel Bay.pck']) {
+    if (!fs.statSync(path.join(directory, file)).size) throw Error('Empty desktop export: ' + file);
+  }
+}
 function build() {
   fs.mkdirSync(output, {recursive: true});
   importProject();
@@ -92,8 +103,9 @@ if(require.main===module) {
       run(['--fixed-fps','60','--script','res://tests/'+test+'.gd','--','--qa']);
     }
     run(['--fixed-fps','60','--script','res://tests/drive.gd','--','--qa','--bridge']);
-  } else if (action==='build') build();
+  } else if (action==='desktop') buildDesktop();
+  else if (action==='build') build();
   else if (action==='serve') serve();
   else if (action==='bake') run(['--script','res://bay/bake.gd']);
-  else throw Error('Use test, bake, build, or serve.');
+  else throw Error('Use test, bake, build, desktop, or serve.');
 }

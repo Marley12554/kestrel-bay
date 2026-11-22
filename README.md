@@ -36,6 +36,12 @@ Open [the local game](http://127.0.0.1:8065/). The single-threaded export and Cl
 
 With that server running, `node tests/godot-web.cjs` exercises the exported game in Chrome. It checks touch input, pointer capture, the casebook, and a five-star nighttime crossing into a downtown hotel. It also reports frame intervals during the drive. The browser check uses Node 22 or later. Set `CHROME_BIN` for a different Chromium installation, or `KB_SHOTS` to keep screenshots.
 
+## Desktop builds and updates
+
+Install Kestrel Bay through the itch.io desktop app to receive updates. The Mac package supports Apple silicon and Intel. The Windows package targets 64-bit Intel and AMD PCs. Desktop saves live in Godot's per-user data directory, outside the game installation. [Kestrel Bay on itch.io](https://marley12554.itch.io/kestrel-bay)
+
+With Godot 4.7.1 and its release templates installed on a Mac, run `node scripts/godot.cjs desktop` to export both platforms under `dist/desktop`. The **Release desktop game to itch.io** workflow builds on main after changes to the game, checks each packaged executable on its own OS, then uploads through Butler to the existing `osx` and `windows` channels. The workflow reads the `BUTLER_API_KEY` repository secret. For a build-only run, start the workflow manually with publishing unchecked.
+
 ## Working on the city
 
 The city layout and the navigation atlas share one source, `scripts/design-city.py`. After changing it, run `python3 scripts/design-city.py` and `node scripts/godot.cjs bake`. The committed scene contains batched exterior geometry. Doors, elevators, nearby furnished floors, police, traffic and missions run in `godot-prototype/bay/`. The original waterfront scene and its regression checks are also part of the project.

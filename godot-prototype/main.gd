@@ -73,7 +73,7 @@ func _ready() -> void:
 		JavaScriptBridge.eval("window.kbGodotReady=true")
 	set_night(false)
 	_prepare_lighting.call_deferred()
-	print("GODOT_PROTOTYPE_READY vehicles=",vehicles.size()," renderer=Compatibility; units=meters")
+	print("GODOT_PROTOTYPE_READY vehicles=",vehicles.size()," renderer=",RenderingServer.get_current_rendering_method(),"; units=meters")
 
 func make_player() -> CharacterBody3D:
 	return Player.new()
