@@ -222,6 +222,7 @@ func update_hud() -> void:
 
 func interact() -> void:
 	if body.visible: return
+	if not driving and block.reserve.interact(): return
 	if driving:
 		if absf(block.driver_speed)>1.1: return
 		var side: Vector3 = block.parked.global_basis.x

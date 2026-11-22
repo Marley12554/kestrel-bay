@@ -20,11 +20,12 @@ func _ready() -> void:
 		for i in 8:
 			var x: float=sign_side*(PORTAL+(i+.5)*width)
 			office_stack(x,width,i)
+		if sign_side>0: continue # Reserve ground floor on the north side of the lobby.
 		for i in 4:
 			var x: float=sign_side*(PORTAL+(i*2+1)*width)
 			retail(x,width*2, i==2, sign_side<0)
 		var middle: float=sign_side*(PORTAL+HALF_FRONT)*.5
-		lettering("PHARMACY" if sign_side<0 else "HEARTLAND BREWERY",Vector3(middle,4.48,1.00),.37)
+		lettering("PHARMACY",Vector3(middle,4.48,1.00),.37)
 	entry()
 	frame=Transform3D(Basis.IDENTITY,Vector3(65.04,0,HALF_FRONT-.72))
 	# Retail wraps the corner. The loading entrance occupies two upper window bays.

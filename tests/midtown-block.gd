@@ -235,6 +235,7 @@ func winter_stride_checks() -> void:
 	check(block.cross_taxi.position.x<80 and block.cross_taxi.position.z>36,"33rd Street traffic crosses west on green")
 	snow_contact_checks(scene,winter)
 	street_fixture_checks(scene.block,winter.pack)
+	await reserve_visit(scene)
 	scene.queue_free()
 
 func snow_contact_checks(scene, winter) -> void:
@@ -316,3 +317,44 @@ func street_fixture_checks(block, pack) -> void:
 			check(mat.albedo_texture==sample[1] and is_equal_approx(mat.albedo_color.a,sample[2]),"pedestrian display follows walk, flashing clearance and steady stop")
 	block.cycle=saved
 	block.update_lights()
+
+func reserve_visit(city) -> void:
+	var shop=city.block.reserve
+	var walker:CharacterBody3D=city.walker
+	var inward:Vector3=-shop.global_basis.z
+	var x:float=shop.DOOR_X
+	walker.global_position=shop.to_global(Vector3(x,.16,1.65))
+	walker.velocity=Vector3.ZERO
+	for i in 90: city.walk(inward,false,1./60.)
+	check(shop.to_local(walker.global_position).z>.24,"closed Reserve door stops the walking capsule")
+	city.interact()
+	for i in 60: shop._physics_process(1./60.)
+	await physics_frame
+	check(shop.opened and shop.door.rotation.y>1.5,"E swings the Reserve door clear")
+	for i in 95: city.walk(inward,false,1./60.)
+	check(shop.inside(shop.to_local(walker.global_position)),"walk through the cut in the original survey wall")
+	for local_target in [Vector3(x,.16,-5.75),Vector3(6.5,.16,-5.75),Vector3(6.3,.16,-9.)]:
+		await walk_to_shop_point(city,shop,local_target)
+	city.interact()
+	check(shop.order==shop.Order.BREWING,"order a coffee at the staffed counter")
+	city.interact()
+	for i in 165: shop._physics_process(1./60.)
+	check(shop.order==shop.Order.READY and shop.cup.visible and shop.cup.get_parent()==shop,"barista presents one brewed cup")
+	city.interact()
+	check(shop.order==shop.Order.CARRIED and shop.cup.get_parent()==city.camera,"pick up the cup with the same interaction key")
+	for local_target in [Vector3(6.5,.16,-5.75),Vector3(x,.16,-5.75),Vector3(x,.16,1.8)]:
+		await walk_to_shop_point(city,shop,local_target)
+	check(not shop.inside(shop.to_local(walker.global_position)) and shop.cup.visible,"carry the same coffee back out onto Fifth")
+	city.toggle_body()
+	shop._physics_process(1./60.)
+	check(not shop.cup.visible,"leaving the body detaches the first-person cup from view")
+	city.toggle_body()
+
+func walk_to_shop_point(city,shop,point:Vector3) -> void:
+	var goal:Vector3=shop.to_global(point)
+	for i in 480:
+		var delta:Vector3=goal-city.walker.global_position
+		delta.y=0
+		if delta.length()<.10: break
+		city.walk(delta.normalized(),false,1./60.)
+	check(Vector2(shop.to_local(city.walker.global_position).x,shop.to_local(city.walker.global_position).z).distance_to(Vector2(point.x,point.z))<.18,"Reserve walking route reaches "+str(point))

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420">
+<defs>
+ <linearGradient id="sky" x2="0.86" y2="1"><stop stop-color="#144c50"/><stop offset=".56" stop-color="#4c7970"/><stop offset="1" stop-color="#adb89b"/></linearGradient>
+ <path id="leaf" d="M0 0Q-40-40-23-94Q18-66 0 0Z" fill="#497867" stroke="#172f32" stroke-width="3"/>
+ <g id="sprig"><path d="M0 0Q-9-86 46-194" fill="none" stroke="#b6a55e" stroke-width="4"/><use href="#leaf" transform="translate(0 -18) rotate(-44)"/><use href="#leaf" transform="translate(3 -43) scale(-.85 .85) rotate(-38)"/><use href="#leaf" transform="translate(9 -70) rotate(-33)"/><use href="#leaf" transform="translate(15 -96) scale(-.76 .76) rotate(-36)"/><use href="#leaf" transform="translate(28 -139) rotate(-12) scale(.65)"/><g fill="#bc4435"><circle cx="6" cy="-52" r="8"/><circle cx="-3" cy="-65" r="7"/><circle cx="14" cy="-97" r="8"/><circle cx="25" cy="-106" r="6"/></g></g>
+</defs>
+<rect width="1200" height="420" fill="url(#sky)"/>
+<circle cx="744" cy="158" r="119" fill="#e9ae48"/><circle cx="744" cy="158" r="99" fill="none" stroke="#b8833a" stroke-width="3"/>
+<path d="M0 290Q220 213 363 271T661 243T963 253T1200 234V420H0" fill="#224c57"/>
+<path d="M0 288Q143 220 281 288T575 290T854 261T1200 272V420H0" fill="#517778"/>
+<path d="M0 350Q227 258 365 336T702 311T988 311T1200 292V420H0" fill="#d4ae70"/>
+<path d="M0 401Q231 288 404 358T770 350T1065 334T1200 312V420H0" fill="#ad6746"/>
+<g fill="#203d3d"><path d="M530 302V211h16v-33h9v-41h6V83h4v54h6v41h10v33h17v91z"/><path d="M604 303v-90h17v-21h7v21h15v90zM460 300V232h41v68zM667 271v-42h17v-18h9v18h10v42z"/></g>
+<g fill="none" stroke="#d5ad67" stroke-width="2"><path d="M543 283v-60m9 57v-87m14 83V157m10 124v-73m44 69v-46m8 51v-51"/><path d="M227 333q103-48 215 3t250-7m-477 23q107-51 222-4t259-10m117-36q99-52 216-16"/></g>
+<use href="#sprig" transform="translate(68 439) scale(1.65) rotate(-18)"/><use href="#sprig" transform="translate(183 395) scale(1.37) rotate(11)"/><use href="#sprig" transform="translate(304 460) scale(1.18) rotate(-15)"/>
+<use href="#sprig" transform="translate(1081 447) scale(-1.68 1.68) rotate(-21)"/><use href="#sprig" transform="translate(935 460) scale(-1.29 1.29) rotate(8)"/><use href="#sprig" transform="translate(1212 460) scale(-1.75 1.75)"/>
+</svg>

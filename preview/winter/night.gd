@@ -213,7 +213,7 @@ func furnish() -> void:
 	curb_furniture()
 	# Full-height window glass sits inside the original bronze display frames.
 	for i in range(-14,15):
-		if i not in [4,5,6]:
+		if i> -11 and i not in [4,5,6]:
 			display_window(Vector3(-9-i*5.,2.08,-30.58),PI,4.52,i+21)
 	for i in range(-6,3):
 		if i not in [-5,-2,1]:
@@ -272,9 +272,9 @@ func snowfall() -> void:
 	flakes.process_material=motion
 	var mesh:=QuadMesh.new()
 	mesh.size=Vector2(.021,.029)
-	var ice:=StandardMaterial3D.new()
-	ice.billboard_mode=BaseMaterial3D.BILLBOARD_ENABLED
-	ice.albedo_color=Color("#d1d8e1")
+	var ice:=ShaderMaterial.new()
+	ice.shader=preload("res://reserve/snow_shelter.gdshader")
+	ice.set_shader_parameter("store_inverse",block.reserve.global_transform.affine_inverse())
 	mesh.material=ice
 	flakes.draw_pass_1=mesh
 	flakes.position=Vector3(0,4,-6)
@@ -365,6 +365,7 @@ func curb_furniture() -> void:
 
 # Sample the same tiled depth field, plowing pattern, and curb banks as the winter material.
 func snow_underfoot(world: Vector3, road: bool) -> float:
+	if block.reserve.inside(block.reserve.to_local(world)): return 0.
 	var local := to_local(world)
 	var foot := Vector2(local.x, local.z)
 	var surface:=pack.surface_at(foot)
@@ -394,6 +395,7 @@ func physical_block(p: Vector2) -> bool:
 	return Rect2(pack.ORIGIN,Vector2(pack.FIELD.get_size())/4.).has_point(p)
 
 func walking_height(world: Vector3) -> float:
+	if block.reserve.inside(block.reserve.to_local(world)): return .155
 	var local:=to_local(world)
 	var p:=Vector2(local.x,local.z)
 	var surface:=pack.surface_at(p)
@@ -401,6 +403,7 @@ func walking_height(world: Vector3) -> float:
 	return pack.SUPPORT_Y[int(surface.x)]+pack.remaining(p,surface)
 
 func plant_foot(world: Vector3, heading: Vector2, left: bool, effort: float) -> void:
+	if block.reserve.inside(block.reserve.to_local(world)): return
 	var foot:=to_local(world)
 	var local_direction:=global_basis.inverse()*Vector3(heading.x,0,heading.y)
 	pack.stamp(Vector2(foot.x,foot.z),Vector2(local_direction.x,local_direction.z).normalized(),left,effort)

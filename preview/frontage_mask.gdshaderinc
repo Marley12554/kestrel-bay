@@ -4,7 +4,8 @@ bool modeled_empire_base(vec3 p,vec3 n){
 	if(abs(n.y)>.32 || p.y>26.29) return false;
 	bool front=p.x>64.40 && p.x<65.25 && p.z>=-30.18 && p.z<=28.74;
 	bool corner=p.z>28.41 && p.z<29.36 && p.x>=32.54 && p.x<65.25;
-	return front||corner;
+	bool reserve_return=p.y<4.98 && p.z> -30.6 && p.z< -29.3 && p.x>46.95 && p.x<65.25;
+	return front||corner||reserve_return;
 }
 
 // Faces of the surveyed Demarest shell beneath the two rebuilt elevations.

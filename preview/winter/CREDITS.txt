@@ -22,3 +22,7 @@ https://kenney.nl/assets/impact-sounds
 Fifth Avenue frontage stone textures: White Sandstone Blocks 02 and Granite Tile 03, Poly Haven (CC0).
 https://polyhaven.com/a/white_sandstone_blocks_02
 https://polyhaven.com/a/granite_tile_03
+
+Starbucks Reserve ground-floor surface materials
+Terrazzo Tiles — https://polyhaven.com/a/terrazzo_tiles — CC0
+Marble 01 — https://polyhaven.com/a/marble_01 — CC0

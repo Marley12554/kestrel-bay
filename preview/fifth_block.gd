@@ -12,6 +12,7 @@ const PAINT := Color("#e8dfca")
 const SNOW := Color("#dfe9e9")
 const PINE := Color("#204c3e")
 const FRONT := Transform3D.IDENTITY
+var reserve: Node3D
 var shapes: Dictionary = {}
 var batches: Dictionary = {}
 var context := FRONT
@@ -129,12 +130,17 @@ func make_facades() -> void:
 	var empire:=preload("res://empire_frontage.gd").new()
 	empire.name="EmpireFrontage"
 	add_child(empire)
+	reserve=preload("res://reserve/store.gd").new()
+	reserve.name="StarbucksReserve"
+	reserve.transform=Transform3D(Basis(Vector3.UP,PI/2),Vector3(65.04,0,-6.92))
+	add_child(reserve)
 	facade_frame(Vector3(-9,0,-30.08),PI)
-	part(Vector3(0,3.5,0),Vector3(148,7,.32),STONE)
+	# The last 18 metres of this return are the Reserve's glazed 34th Street wall.
+	part(Vector3(9,3.5,0),Vector3(130,7,.32),STONE)
 	for i in range(-14,15):
-		if i in [4,5,6]: continue
+		if i<=-11 or i in [4,5,6]: continue
 		shop(i*5.0,4.85,i%3!=0)
-	label("S T A R B U C K S   R E S E R V E",Vector3(-55,4.75,.42),.48,BASE)
+
 	part(Vector3(25,3.6,.35),Vector3(14.6,7.2,.42),BASE)
 	for i in range(-2,3):
 		part(Vector3(25+i*2.6,2.34,.65),Vector3(2.34,4.48,.16),GLASS)

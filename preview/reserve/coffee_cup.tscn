@@ -1,0 +1,44 @@
+[gd_scene format=3]
+[sub_resource type="StandardMaterial3D" id="Paper"]
+albedo_color = Color(0.095, 0.055, 0.035, 1)
+roughness = 0.85
+[sub_resource type="StandardMaterial3D" id="Lid"]
+albedo_color = Color(0.16, 0.13, 0.105, 1)
+roughness = 0.39
+[sub_resource type="CylinderMesh" id="Vessel"]
+top_radius = 0.045
+bottom_radius = 0.0305
+height = 0.128
+rings = 1
+material = SubResource("Paper")
+[sub_resource type="CylinderMesh" id="Rim"]
+top_radius = 0.046
+bottom_radius = 0.0465
+height = 0.006
+rings = 1
+material = SubResource("Lid")
+[sub_resource type="CylinderMesh" id="Crown"]
+top_radius = 0.040
+bottom_radius = 0.044
+height = 0.01
+rings = 1
+material = SubResource("Lid")
+[node name="ReserveCup" type="Node3D"]
+[node name="PaperCup" type="MeshInstance3D" parent="."]
+position = Vector3(0,0.064,0)
+mesh = SubResource("Vessel")
+[node name="LidRim" type="MeshInstance3D" parent="."]
+position = Vector3(0,0.13,0)
+mesh = SubResource("Rim")
+[node name="LidTop" type="MeshInstance3D" parent="."]
+position = Vector3(0,0.137,0)
+mesh = SubResource("Crown")
+[node name="ReserveMark" type="Label3D" parent="."]
+position = Vector3(0,0.075,0.0405)
+rotation = Vector3(-0.112,0,0)
+font_size = 48
+pixel_size = 0.00036
+outline_size = 0
+text = "★\nR"
+line_spacing = -8.0
+modulate = Color(0.95,0.81,0.56,1)
