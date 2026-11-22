@@ -6,6 +6,22 @@ uniform sampler2D pressure : hint_default_black, filter_linear, repeat_disable;
 uniform sampler2D grain_map : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D powder_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform int support;
+uniform float support_plane;
+uniform sampler2D grade_base : filter_nearest, repeat_disable;
+uniform sampler2D grade_curb : filter_nearest, repeat_disable;
+uniform vec2 grade_origin;
+
+float support_height(vec2 world, float legacy) {
+	vec2 p=(world-grade_origin)*vec2(1.,-1.);
+	ivec2 cell=ivec2(floor(p));
+	ivec2 extent=textureSize(grade_base,0)-1;
+	if(any(lessThan(cell,ivec2(0))) || any(greaterThanEqual(cell,extent))) return legacy;
+	float a=texelFetch(grade_base,cell,0).r, b=texelFetch(grade_base,cell+ivec2(1,0),0).r;
+	float c=texelFetch(grade_base,cell+ivec2(0,1),0).r, d=texelFetch(grade_base,cell+ivec2(1,1),0).r;
+	vec2 f=fract(p);
+	float curb=textureLod(grade_curb,p/vec2(extent),0.).r*2.55;
+	return a+(b-a)*f.x+(d-b)*f.y+max(f.y-f.x,0.)*(c-a-d+b)+curb;
+}
 varying vec2 ground;
 
 float fresh_depth(vec2 p) {
@@ -21,7 +37,7 @@ void vertex(){
 	vec2 east=normalize(vec2(.873,.488));
 	vec2 offset=world.xz-vec2(-208.099,573.891);
 	ground=vec2(dot(offset,east),dot(offset,vec2(-east.y,east.x)));
-	VERTEX.y+=depth_at(ground,UV);
+	VERTEX.y+=support_height(world.xz,support_plane)-support_plane+depth_at(ground,UV);
 }
 void fragment(){
 	float depth=depth_at(ground,UV);

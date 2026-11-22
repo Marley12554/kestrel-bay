@@ -33,11 +33,11 @@ func _ready() -> void:
 	tires.position = Vector3(0.,.12,-1.30)
 	turn_signal.position = Vector3(-.36,.94,-.55)
 	for source in [scuff_voices[0], scuff_voices[1], tires]:
-		source.unit_size = 4.
+		source.unit_size = 5.5
 		source.max_distance = 95.
 		source.attenuation_filter_cutoff_hz = 6200.
-	turn_signal.volume_db = -14.
-	turn_signal.unit_size = 2.4
+	turn_signal.volume_db = -5.
+	turn_signal.unit_size = 4.
 	turn_signal.max_distance = 18.
 	turn_signal.attenuation_filter_cutoff_hz = 2400.
 	for speaker in [forward_warning, reverse_warning]:
@@ -56,7 +56,7 @@ func setup_loop(player: AudioStreamPlayer3D, clip: AudioStreamWAV) -> void:
 	player.volume_db = MUTED_DB
 	add_child(player)
 
-func update(speed: float, cornering: float, dt: float, reversing: bool, slip_angle: float = 0.0, snow_cover: float = 0.0) -> void:
+func update(speed: float, cornering: float, dt: float, reversing: bool, slip_angle: float = 0.0, snow_cover: float = 0.0, in_contact: bool = true) -> void:
 	if not tires.playing:
 		tires.play()
 		forward_warning.play()
@@ -68,15 +68,16 @@ func update(speed: float, cornering: float, dt: float, reversing: bool, slip_ang
 	var corner_load := clampf(absf(cornering) / 12., 0., 1.)
 	var road_gain := (.15 * smoothstep(0., 3.5, road_speed) + .18 * smoothstep(3.5, 27., road_speed))
 	road_gain *= (1. + .18 * corner_load) * lerpf(1., .70, snow_cover)
+	if not in_contact: road_gain = 0.
 	tires.pitch_scale = lerpf(tires.pitch_scale, .72 + .5 * pace, blend)
-	tires.volume_db = lerpf(tires.volume_db, linear_to_db(maxf(.00025, road_gain)), blend)
+	tires.volume_db = lerpf(tires.volume_db, linear_to_db(maxf(.00025, road_gain*2.5)), blend)
 
-	update_scuff(road_speed * absf(sin(slip_angle)), cornering, snow_cover, dt)
+	update_scuff(road_speed * absf(sin(slip_angle)) if in_contact else 0., cornering, snow_cover, dt)
 
 	# The exterior speaker stays active even when the brake holds the car at rest.
 	var forward_gain := lerpf(.027, .085, smoothstep(0., 9., road_speed)) * (1. - smoothstep(9., 11.18, road_speed))
 	var reverse_gain := lerpf(.085, .36, smoothstep(0., 5., road_speed))
-	var front_db := linear_to_db(maxf(.00025, forward_gain)) if not reversing else MUTED_DB
+	var front_db := linear_to_db(maxf(.00025, forward_gain*2.0)) if not reversing else MUTED_DB
 	reverse_warning.pitch_scale = lerpf(reverse_warning.pitch_scale, lerpf(1., 1.32, smoothstep(0., 5., road_speed)) if reversing else 1., blend)
 	var rear_db := linear_to_db(reverse_gain) if reversing else MUTED_DB
 	forward_warning.volume_db = lerpf(forward_warning.volume_db, front_db, blend)
@@ -85,7 +86,7 @@ func update(speed: float, cornering: float, dt: float, reversing: bool, slip_ang
 func update_scuff(slip_speed: float, cornering: float, snow: float, dt: float) -> void:
 	var intensity := slip_speed / (4. + slip_speed)
 	var load_factor := clampf(absf(cornering) / 10., 0., 1.)
-	var target_gain := intensity * smoothstep(.15, 1.5, slip_speed) * lerpf(.48, .25, snow) * lerpf(.82, 1., load_factor)
+	var target_gain := 2.0 * intensity * smoothstep(.15, 1.5, slip_speed) * lerpf(.48, .25, snow) * lerpf(.82, 1., load_factor)
 	var blend := 1. - exp(-dt * (12. if target_gain > scuff_gain else 7.))
 	scuff_gain = lerpf(scuff_gain, target_gain, blend)
 	if scuff_gain < .0005 and target_gain < .0005:

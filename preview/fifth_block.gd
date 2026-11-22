@@ -59,6 +59,7 @@ var cycle := 0.0
 var cross_stop := 0.0
 var yield_point := 0.0
 var day_on_grade := false
+var tires_airborne := false
 var driven := false
 var driver_speed := 0.0
 var steer := 0.0
@@ -721,6 +722,7 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 		driver_speed=move_toward(previous,signf(throttle)*limit,dt*force*maxf(.10,1.0-pow(speed/limit,1.6)))
 	else:
 		driver_speed=move_toward(previous,0,(1.12+.001*speed*speed)*dt)
+	if tires_airborne: driver_speed = previous
 	var steering_speed := absf(driver_speed)
 	# Use a parking-speed steering arc, then blend into the arcade response.
 	var road_speed_weight := smoothstep(4.5, 12.0, steering_speed)
@@ -747,7 +749,11 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 	# With the rear tires sliding, the rolling front axle can still bend the path.
 	var sliding_grip := grip * lerpf(.4, .79, absf(steer) / steering_limit) if handbrake else grip
 	var path_turn_limit := sliding_grip / maxf(3., steering_speed)
-	if sliding:
+	if tires_airborne:
+		# Preserve yaw momentum and the world travel direction until touchdown.
+		sliding = true
+		path_turn_limit = 0.
+	elif sliding:
 		if drift_amount > 0. and target_yaw_rate * drift_angle < 0.:
 			# At large slip the nose can keep turning, but front tire force
 			# saturates. Countersteer still has to arrest existing rotation.

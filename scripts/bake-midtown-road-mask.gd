@@ -14,8 +14,13 @@ func _initialize() -> void:
 			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 			for i in range(0, indices.size(), 3):
 				var j := indices[i]
-				if colors[j].r > 0.26 or absf(vertices[j].y) > 0.08:
+				var graded := colors[j].a < .9
+				var road := colors[j].a < .45 if graded else colors[j].r <= .26 and absf(vertices[j].y) <= .08
+				if not road:
 					continue
+				if graded:
+					var center: Vector3 = tile.transform*((vertices[j]+vertices[indices[i+1]]+vertices[indices[i+2]])/3.)
+					if center.y<preload("res://survey/grade.gd").height(center)-.32: continue
 				var triangle := PackedVector2Array()
 				for k in 3:
 					var p: Vector3 = tile.transform * vertices[indices[i+k]]

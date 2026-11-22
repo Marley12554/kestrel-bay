@@ -307,7 +307,7 @@ func drive_from_input(dt: float) -> void:
 		signal_turned = signal_turned or (turn_angle > deg_to_rad(28.) and not block.backing)
 		if signal_turned and absf(turn) < .1 and absf(block.steer) < .035:
 			turn_signal_direction = 0
-	drive_audio.update(block.driver_speed, block.side_accel, dt, block.backing, block.drift_angle, block.rear_snow_cover)
+	drive_audio.update(block.driver_speed, block.side_accel, dt, block.backing, block.drift_angle, block.rear_snow_cover, not block.tires_airborne)
 
 func fly(dir: Vector3, elapsed: float) -> void:
 	var motion := camera.global_basis.x * dir.x + camera.global_basis.z * dir.z + Vector3.UP * dir.y
@@ -335,7 +335,7 @@ func interact() -> void:
 		var clear := false
 		for offset in [side, -side, block.parked.global_basis.z*1.8]:
 			exit_at = block.parked.global_position + offset*1.65
-			exit_at.y = GRADE.height(exit_at,.15)
+			exit_at.y = stride.winter.walking_height(exit_at) if stride.winter else $HeraldSquare.walking_height(exit_at,.15)
 			params.transform = Transform3D(Basis.IDENTITY, exit_at + Vector3.UP*.94)
 			if space.intersect_shape(params,1).is_empty():
 				clear = true
@@ -389,8 +389,13 @@ func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 	var target: Vector3 = direction * (stride.SPRINT_SPEED if sprint else stride.WALK_SPEED)
 	for door in revolving_doors:
 		target = door.walking_velocity(walker.global_position, target)
-	var acceleration := 14.0 if target.length_squared() > walker.velocity.length_squared() else 28.0
-	var intended := walker.velocity.move_toward(target, acceleration * dt * (.14 if airborne else 1.0))
+	var horizontal := Vector3(walker.velocity.x,0.,walker.velocity.z)
+	var reversing := horizontal.dot(target)<0.
+	var acceleration := 46. if reversing else (14. if target.length_squared()>horizontal.length_squared() else 32.)
+	if airborne: acceleration = 14. if reversing else 9.
+	# A planted foot can redirect the next push-off, including the first tick after landing.
+	if jump_requested and not airborne and reversing: horizontal = Vector3.ZERO
+	var intended := horizontal.move_toward(target,acceleration*dt)
 	var remaining := intended * dt
 	var start := walker.position
 	# Floating move_and_slide restores full speed along the surface after contact.
@@ -410,15 +415,18 @@ func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 		if intended.dot(normal) < 0.0:
 			intended = intended.slide(normal)
 		remaining = hit.get_remainder().slide(normal)
-	walker.velocity = intended
+	walker.velocity = Vector3(intended.x,0.,intended.z)
 	var travelled := walker.position - start
 	var motion:=Vector2(travelled.x,travelled.z)
 	var ground: float = stride.winter.walking_height(walker.global_position) if stride.winter else $HeraldSquare.walking_height(walker.global_position,.15)
+	if walker.position.y < ground:
+		walker.position.y = ground
 	var raised := walker.position.y > ground + .23
 	var supported := raised and walker.test_move(walker.global_transform,Vector3.DOWN*.035)
 	if jump_requested and not airborne and (not raised or supported):
 		airborne = true
 		vertical_speed = JUMP_SPEED
+		stride.play_step(walker.global_position,.48,stride.WALK_SPEED)
 	jump_requested = false
 	if airborne or (raised and not supported):
 		airborne = true
@@ -466,7 +474,7 @@ func chase_view(dt: float, car_yaw_change: float = 0.0) -> void:
 	var horizontal := yaw_basis.z
 	var pitch_limit := orbit_pitch
 	if orbit_pitch < 0.0:
-		# The survey pavement is rendered geometry without a floor collider.
+		# Limit the orbit at the snow surface before sweeping the camera on solid geometry.
 		var sample_at := pivot + horizontal * cos(orbit_pitch) * reach
 		var floor_y: float = stride.winter.walking_height(sample_at) if stride.winter else GRADE.height(sample_at)
 		var lowest := asin(clampf((floor_y + CAMERA_CLEARANCE - pivot.y) / reach, -1., 1.))
@@ -476,7 +484,7 @@ func chase_view(dt: float, car_yaw_change: float = 0.0) -> void:
 	sweep.shape = camera_probe
 	sweep.transform.origin = pivot
 	sweep.motion = offset * reach
-	sweep.collision_mask = 3
+	sweep.collision_mask = 3 | 8
 	sweep.exclude = [car.get_rid()]
 	var fraction := get_world_3d().direct_space_state.cast_motion(sweep)[0]
 	camera.global_position = pivot + sweep.motion * fraction

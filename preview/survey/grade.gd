@@ -48,6 +48,15 @@ static func height(at: Vector3, legacy: float = 0.0) -> float:
 	var surface_cm := curb[floori(p.y*scale_px)*(size-1)*scale_px+floori(p.x*scale_px)]
 	return a + (b-a)*u + (d-b)*v + maxf(v-u,0.)*(c-a-d+b) + .01*surface_cm
 
+static func bind_surface(material: ShaderMaterial) -> void:
+	load_field()
+	var heights := Image.create_from_data(size,size,false,Image.FORMAT_RF,ground.to_byte_array())
+	var width := (size-1)*scale_px
+	var steps := Image.create_from_data(width,width,false,Image.FORMAT_R8,curb)
+	material.set_shader_parameter("grade_base",ImageTexture.create_from_image(heights))
+	material.set_shader_parameter("grade_curb",ImageTexture.create_from_image(steps))
+	material.set_shader_parameter("grade_origin",origin)
+
 static func physical_height(space: PhysicsDirectSpaceState3D, at: Vector3, legacy: float=0.) -> float:
 	if not contains(at): return legacy
 	var y := height(at)

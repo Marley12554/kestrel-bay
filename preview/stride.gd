@@ -42,7 +42,8 @@ func advance(at: Vector3, distance: float, dt: float, heading:=Vector2.ZERO) -> 
 		var previous := floori(phase)
 		phase = fmod(phase + distance / lerpf(0.98, 2.12, effort), 2.0)
 		if floori(phase) != previous:
-			play_step(at, effort, speed)
+			var side := Vector2(-heading.y,heading.x)*(-.103 if left_foot else .103)
+			play_step(at+Vector3(side.x,0.,side.y), effort, speed)
 			if winter and not heading.is_zero_approx():
 				winter.plant_foot(at,heading,left_foot,effort)
 			left_foot=not left_foot
@@ -81,6 +82,7 @@ func play_step(at: Vector3, effort: float, speed: float) -> void:
 
 func layer(player: AudioStreamPlayer, clip: AudioStream, weight: float, gain: float, pitch_scale: float) -> void:
 	if weight < 0.04:
+		player.stop()
 		return
 	player.stream = clip
 	player.volume_db = gain + linear_to_db(weight)

@@ -9,5 +9,7 @@ void vertex(){
 }
 void fragment(){
  if(in_store.x>0. && in_store.x<23.25 && in_store.z<.22 && in_store.z> -18. && in_store.y<4.99) discard;
+ float radius=length(UV*2.-1.);
+ ALPHA=(1.-smoothstep(.26,1.,radius))*.8*smoothstep(.25,1.3,-VERTEX.z);
  ALBEDO=vec3(.68,.73,.79);
 }

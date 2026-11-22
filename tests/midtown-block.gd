@@ -163,9 +163,18 @@ func winter_stride_checks() -> void:
 			movement_key(KEY_SPACE,false)
 	check(apex > .53 and apex < .60 and not scene.airborne and absf(scene.walker.position.y-takeoff)<.01,
 		"Space jumps about 22 inches, ignores an airborne second press and lands on snow")
+	# Redirect a running jump on the first supported frame.
+	var grounded_at: Vector3 = scene.walker.position
+	scene.walker.velocity = heading*scene.stride.SPRINT_SPEED
+	scene.jump_requested = true
+	scene.walk(-heading,false,1./60.)
+	check(scene.airborne and scene.walker.velocity.dot(heading)<0. and (scene.stride.pavement.playing or scene.stride.snow.playing),"opposite takeoff immediately pushes away and sounds the surface")
+	for tick in 65: scene.walk(-heading,false,1./60.)
+	scene.walker.position = grounded_at
+	scene.walker.velocity = Vector3.ZERO
 	var hood: MeshInstance3D = winter.chassis.find_child("Object_11", true, false)
 	var paint := hood.get_surface_override_material(0) as StandardMaterial3D
-	check(paint.albedo_color == Color("#f5f5f2"), "sedan body has white paint")
+	check(paint.albedo_color.r>.82 and paint.albedo_color.g>.82 and paint.albedo_color.b>.82 and paint.clearcoat_enabled, "sedan retains its white clearcoat finish")
 	check(not winter.headlight_beams.visible and not winter.headlight_lenses.get_shader_parameter("headlights_on"),
 		"headlights stay off while parked")
 	var frontage=scene.block.get_node("EmpireFrontage")
@@ -194,6 +203,17 @@ func winter_stride_checks() -> void:
 	scene.stride.play_step(bank,0,2)
 	check(scene.stride.snow.stream in scene.stride.snow_steps,"snow footfall uses snow audio")
 	scene.stride.play_step(road,1,7)
+	var clear_walk := false
+	for i in 70:
+		var foot := Vector2(94.2,2.+i*.15)
+		var sample: Vector2 = winter.pack.surface_at(foot)
+		if sample.x<1. or sample.y>.001: continue
+		var at: Vector3 = winter.to_global(Vector3(foot.x,.24,foot.y))
+		scene.stride.play_step(bank,0.,2.)
+		scene.stride.play_step(at,0.,2.)
+		clear_walk = scene.stride.pavement.playing and not scene.stride.snow.playing
+		break
+	check(clear_walk,"a boot leaving a bank for visibly bare sidewalk plays concrete alone")
 	check(scene.stride.pavement.stream in scene.stride.hard_steps,"road footfall uses pavement audio")
 	for i in 60:
 		scene.walk(heading, true, 1.0/60)
@@ -790,6 +810,33 @@ func curb_suspension_checks(scene, winter) -> void:
 		winter.update_sedan_suspension(1.0 / 60.0)
 	check(winter.wheel_lift[0] > .08 and winter.wheel_lift[1] < .01 and winter.body_roll < -.045,
 		"wheels on one side lift independently and the body leans across the curb")
+
+	# Run over the top of a short convex ramp at 82 mph. Ground rises at
+	# 2.8 m/s before the crest and then drops away beneath all four tires.
+	car.position = Vector3(86, road_y, 16)
+	car.rotation.y = 0.
+	winter.body_pitch = 0.
+	winter.body_roll = 0.
+	winter.body_heave = 0.
+	winter.heave_velocity = 0.
+	winter.update_sedan_suspension(1./60.)
+	block.driver_speed = 82.*.44704
+	var clearance := 0.
+	var max_travel := 0.
+	var ballistic := false
+	for tick in 100:
+		var support_y := minf(tick*2.8/60.,1.4) if tick<=30 else maxf(0.,1.4-(tick-30)*4./60.)
+		for i in 4: winter.wheel_lift[i] = support_y
+		winter.update_sedan_suspension(1./60.)
+		var gap := car.position.y-road_y-support_y
+		clearance = maxf(clearance,gap)
+		ballistic = ballistic or (block.tires_airborne and winter.heave_velocity>0.)
+		for i in 4:
+			var hub := car.to_local(winter.wheel_pivots[i].global_position)
+			max_travel = maxf(max_travel,absf(hub.y-winter.wheel_mounts[i].y))
+	check(ballistic and clearance>.30 and max_travel<=winter.DROOP+.002,"crest unloads all wheels while retaining takeoff velocity and bounded wheel travel")
+	check(not block.tires_airborne and absf(car.position.y-road_y)<.03,"sedan regains tire contact and settles after crest")
+	block.driver_speed = 0.
 
 func snow_contact_checks(scene, winter) -> void:
 	var pack= winter.pack

@@ -25,13 +25,16 @@ func _ready() -> void:
 	detailed.subdivide_width=239
 	detailed.subdivide_depth=239
 	var pack_texture:=ImageTexture.create_from_image(FIELD)
+	var template := ShaderMaterial.new()
+	template.shader = preload("res://winter/snowpack.gdshader")
+	preload("res://survey/grade.gd").bind_surface(template)
 	for level in SUPPORT_Y.size():
-		var m:=ShaderMaterial.new()
-		m.shader=preload("res://winter/snowpack.gdshader")
+		var m := template.duplicate() as ShaderMaterial
 		m.set_shader_parameter("pack_depth",pack_texture)
 		m.set_shader_parameter("grain_map",preload("res://winter/assets/snow_02_nor_gl.jpg"))
 		m.set_shader_parameter("powder_map",preload("res://winter/assets/snow_02_Diffuse.jpg"))
 		m.set_shader_parameter("support",level)
+		m.set_shader_parameter("support_plane",SUPPORT_Y[level])
 		materials.append(m)
 	var sectors:={}
 	for v in FIELD.get_meta("tiles"):
@@ -51,7 +54,7 @@ func _ready() -> void:
 		var view:=MultiMeshInstance3D.new()
 		view.multimesh=batch
 		view.material_override=materials[keys[0].y]
-		view.extra_cull_margin=.4
+		view.extra_cull_margin=8.0 # Includes the surveyed elevation of snow at the edge of the old block.
 		add_child(view)
 
 func tile_transform(key: Vector3i) -> Transform3D:
@@ -164,7 +167,7 @@ func show_track(key: Vector3i) -> void:
 	var view:=MeshInstance3D.new()
 	view.mesh=detailed
 	view.transform=tile_transform(key)
-	view.extra_cull_margin=.4
+	view.extra_cull_margin=8.0 # Includes the surveyed elevation of snow at the edge of the old block.
 	var m:=materials[key.y].duplicate() as ShaderMaterial
 	m.set_shader_parameter("pressure",ImageTexture.create_from_image(tracks[key]))
 	view.material_override=m

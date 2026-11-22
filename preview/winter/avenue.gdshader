@@ -7,8 +7,12 @@ uniform sampler2D asphalt_normal : hint_normal, filter_linear_mipmap_anisotropic
 uniform sampler2D asphalt_rough : filter_linear_mipmap, repeat_enable;
 uniform sampler2D snow : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D snow_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D wall_stone : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D wall_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float night_windows = 1.0;
 uniform float sprint_softness = 0.0;
+uniform vec4 backing_extent;
+varying vec2 world_xz;
 varying vec3 street;
 varying vec3 direction;
 float hash(vec2 p) { return fract(sin(mod(dot(p,vec2(57.13,97.37)),6.28318))*4375.13); }
@@ -18,10 +22,12 @@ float noise(vec2 p) {
 }
 void vertex() {
 	vec3 p=(MODEL_MATRIX*vec4(VERTEX,1)).xyz-vec3(-208.099,0,573.891);
+	world_xz=p.xz+vec2(-208.099,573.891);
 	street=vec3(dot(p.xz,vec2(.873,.488)),p.y,dot(p.xz,vec2(-.488,.873)));
 	direction=normalize(MODEL_NORMAL_MATRIX*NORMAL);
 }
 void fragment() {
+	if(all(greaterThanEqual(world_xz,backing_extent.xy)) && all(lessThan(world_xz,backing_extent.zw))) discard;
 	// The city mesh carries a surface class on surveyed, draped pavement.
 	bool graded_road=COLOR.a<.45, graded_walk=COLOR.a>.58 && COLOR.a<.73;
 	bool graded_curb=COLOR.a>.74 && COLOR.a<.84;
@@ -75,8 +81,27 @@ void fragment() {
 		float blinds=step(.73,hash(cell+1.71))*step(.57,q.y);
 		vec3 room=mix(vec3(.62,.36,.16),vec3(.45,.53,.57),hash(cell+.8));
 		float joints=smoothstep(.014,.045,abs(fract(p.y/.83)-.5));
-		ALBEDO=mix(base*(.63+.13*noise(vec2(along,p.y)*1.65))*(.74+.26*joints),vec3(.055,.081,.092),pane);
+		vec3 horizontal=normalize(vec3(direction.z,0.,-direction.x));
+		vec2 surface_uv=vec2(dot(world_xz,horizontal.xz),p.y)*.49;
+		vec3 stone=texture(wall_stone,surface_uv).rgb;
+		vec2 grit=texture(wall_normal,surface_uv).rg*2.-1.;
+		float reveal=max(abs(q.x-.5)/.315,abs(q.y-.5)/.313);
+		float lip=(1.-smoothstep(.99,1.13,reveal))*smoothstep(.90,.99,reveal)*fade;
+		vec3 wall=base*(.56+.48*dot(stone,vec3(.30,.52,.18)))*(.79+.21*joints);
+		vec3 eye=mat3(INV_VIEW_MATRIX)*VIEW;
+		vec2 inside=q-vec2(dot(eye,horizontal),eye.y)*(.09/max(.22,abs(dot(eye,direction))));
+		float back=smoothstep(.17,.26,inside.x)*(1.-smoothstep(.74,.83,inside.x));
+		float floor_glow=smoothstep(.25,.65,inside.y)*back;
+		float shade_height=hash(vec2(cell.x*.27,floor(cell.y)+.7))*.79;
+		float shade=smoothstep(shade_height,shade_height+.045,q.y)*step(.42,hash(vec2(floor(cell.x/3.),cell.y)));
+		vec3 glass=mix(vec3(.026,.045,.059),vec3(.075,.10,.11),floor_glow);
+		glass=mix(glass,vec3(.16,.155,.139),shade*.79);
+		ALBEDO=mix(wall,glass*mix(.37,1.,rail),pane)*(1.-.30*lip);
+		NORMAL=normalize(NORMAL+mat3(VIEW_MATRIX)*(horizontal*grit.x+vec3(0.,grit.y,0.))*.21*(1.-pane));
+		AO=1.-lip*.50;
+		METALLIC=.38*pane*rail;
+		SPECULAR=mix(.35,.77,pane);
 		EMISSION=night_windows*room*pane*rail*lit*(.29+.55*q.y)*(1.-.75*blinds);
-		ROUGHNESS=mix(.8,.23,pane);
+		ROUGHNESS=mix(.79+.11*grit.x,mix(.14,.26,shade),pane);
 	} else { ALBEDO=mix(base,vec3(.64,.71,.81),.7); ROUGHNESS=.83; }
 }

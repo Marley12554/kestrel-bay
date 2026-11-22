@@ -41,6 +41,18 @@ func run() -> void:
 		check(absf(y+10.-point[2]) < .08,"game grade agrees with the source DEM at "+str(point))
 		check(not hit.is_empty() and absf(hit.position.y+10.-point[2]) < .10,"physical pavement agrees with source at "+str(point))
 	var original: Vector3 = city.walker.global_position
+	# The old snow field used to pull the player several metres below these streets.
+	var aligned := true
+	for overlap in [Vector3(-300.61,0.,367.31),Vector3(-306.,0.,370.),Vector3(-315.,0.,380.)]:
+		var pick := space.intersect_ray(PhysicsRayQueryParameters3D.create(overlap+Vector3.UP*12.,overlap-Vector3.UP*2.,8))
+		if pick.is_empty():
+			aligned = false
+			continue
+		city.walker.global_position = overlap
+		city.walk(Vector3.ZERO,false,1./60.)
+		aligned = aligned and city.walker.position.y>=pick.position.y-.01 and city.walker.position.y<=pick.position.y+.36
+	check(aligned,"live walking controller stands on the visible graded surface throughout the snow overlap")
+	city.walker.global_position = original
 	var original_view: Transform3D = city.camera.global_transform
 	var evening_env: Environment = city.get_node("Environment").environment
 	var key := InputEventKey.new()

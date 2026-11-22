@@ -23,12 +23,21 @@ func _initialize() -> void:
 		var indices: PackedInt32Array=arrays[Mesh.ARRAY_INDEX]
 		for i in range(0,indices.size(),3):
 			var a:=local*vertices[indices[i]]
-			if a.y<-.005 or a.y>.23: continue
 			var b:=local*vertices[indices[i+1]]
 			var c:=local*vertices[indices[i+2]]
-			if absf(b.y-a.y)>.002 or absf(c.y-a.y)>.002: continue
-			var channel:=0 if colors[indices[i]].r<.26 and a.y<.09 else (1 if absf(a.y-.1524)<.004 else 2)
-			if channel==2 and absf(a.y-.2124)>.005: continue
+			var color := colors[indices[i]]
+			var channel := 0
+			if color.a < .9:
+				if color.a > .73: continue # Vertical curb face.
+				var at := block*((a+b+c)/3.)
+				var grade_y := preload("res://survey/grade.gd").height(at)
+				if at.y < grade_y-.32: continue # Buried foundation.
+				channel = 0 if color.a < .45 else 1
+			else:
+				if a.y<-.015 or a.y>.23 or absf(b.y-a.y)>.002 or absf(c.y-a.y)>.002: continue
+				# Packed tile vertices are quantized across the full tower height.
+				channel = 0 if color.r<.26 and a.y<.09 else (1 if absf(a.y-.1524)<.015 else 2)
+				if channel==2 and absf(a.y-.2124)>.015: continue
 			fill_triangle(Vector2(a.x,a.z),Vector2(b.x,b.z),Vector2(c.x,c.z),channel)
 	survey.free()
 	var snow:=Sidewalk.new()

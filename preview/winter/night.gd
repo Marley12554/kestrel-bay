@@ -18,7 +18,10 @@ var last_suspension_steer := INF
 var last_pressure_revision := -1
 var previous_contacts := PackedVector2Array()
 var road_ride_height := 0.0
-var on_survey_grade := false
+const DROOP := .12
+const BUMP := .105
+var last_support_height := INF
+var wheel_grounded := [true,true,true,true]
 var body_heave := 0.0
 var heave_velocity := 0.0
 var tire_spray: Array[GPUParticles3D] = []
@@ -43,6 +46,7 @@ var daylight := false
 var night_environment: Environment
 var day_environment: Environment
 var night_shadow_range: float
+var street_probe: ReflectionProbe
 var outdoor_lights: Array[Light3D] = []
 const SNOW_DEPTH := preload("res://winter/snow_depth.png")
 var depth_samples: Image
@@ -70,10 +74,13 @@ func dress_street() -> void:
 	day_environment.sky = Sky.new()
 	var clear_sky := ProceduralSkyMaterial.new()
 	clear_sky.sky_top_color = Color("#507db3")
-	clear_sky.sky_horizon_color = Color("#c2d5e3")
+	clear_sky.sky_horizon_color = Color("#aec6df")
+	clear_sky.sun_angle_max = 3.5
+	clear_sky.ground_horizon_color = Color("#999ba2")
+	clear_sky.ground_bottom_color = Color("#525052")
 	day_environment.sky.sky_material = clear_sky
 	day_environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	day_environment.ambient_light_energy = .65
+	day_environment.ambient_light_energy = .48
 	day_environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	var env: Environment = day_environment.duplicate()
 	var sky := Sky.new()
@@ -116,11 +123,21 @@ func dress_street() -> void:
 		moon.directional_shadow_max_distance = 48
 	night_shadow_range = moon.directional_shadow_max_distance
 	day_environment.ssao_enabled = high_quality
+	day_environment.ssao_radius = 1.05
+	day_environment.ssao_intensity = 1.7
+	day_environment.ssr_enabled = high_quality
+	day_environment.ssr_max_steps = 40
+	day_environment.tonemap_mode = Environment.TONE_MAPPER_ACES
+	day_environment.tonemap_white = 4.5
+	day_environment.fog_light_color = Color("#b1becb")
+	day_environment.fog_density = .00032
 	street_material = ShaderMaterial.new()
 	var survey := street_material
 	survey.shader = preload("res://winter/avenue.gdshader")
 	depth_samples = SNOW_DEPTH.get_image()
 	survey.set_shader_parameter("snow_depth", SNOW_DEPTH)
+	survey.set_shader_parameter("wall_stone",preload("res://winter/frontage/white_sandstone_blocks_02_diffuse.jpg"))
+	survey.set_shader_parameter("wall_normal",preload("res://winter/frontage/white_sandstone_blocks_02_nor_gl.jpg"))
 	survey.set_shader_parameter("asphalt", preload("res://winter/assets/asphalt_snow_Diffuse.jpg"))
 	survey.set_shader_parameter("asphalt_normal", preload("res://winter/assets/asphalt_snow_nor_gl.jpg"))
 	survey.set_shader_parameter("asphalt_rough", preload("res://winter/assets/asphalt_snow_Rough.jpg"))
@@ -142,7 +159,9 @@ func dress_street() -> void:
 	# Capture the actual lit shopfronts and skyline in the parked car's paint.
 	if not OS.has_feature("web"):
 		var probe := ReflectionProbe.new()
-		probe.size = Vector3(48,18,62)
+		street_probe = probe
+		probe.size = Vector3(60,32,68)
+		probe.cull_mask = 1
 		probe.origin_offset = Vector3(0,-3,0)
 		probe.max_distance = 95
 		probe.intensity = .88
@@ -215,6 +234,7 @@ func dress_sedan() -> void:
 		headlight_beams.add_child(beam)
 
 	for panel: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		panel.layers = 2 # Omit the car from its own reflection capture.
 		for surface in panel.mesh.get_surface_count():
 			var source := panel.mesh.surface_get_material(surface) as StandardMaterial3D
 			if not source: continue
@@ -222,11 +242,12 @@ func dress_sedan() -> void:
 				"geohoodsub00021mtl", "geodoorl2sub11mtl":
 					var coat := source.duplicate() as StandardMaterial3D
 					coat.albedo_texture = null
-					coat.albedo_color = Color("#f5f5f2")
+					coat.albedo_color = Color("#e1e3e1")
 					coat.metallic = .20
 					coat.roughness = .28
 					coat.clearcoat_enabled = true
 					coat.clearcoat = .84
+					coat.clearcoat_roughness = .18
 					panel.set_surface_override_material(surface, coat)
 				"ln12mtl":
 					brake_lenses = source.duplicate() as StandardMaterial3D
@@ -309,8 +330,9 @@ func add_tire_spray(car: CharacterBody3D, contact: Vector3, mesh: QuadMesh) -> v
 func update_tire_spray() -> void:
 	var speed: float = block.driver_speed
 	var movement := smoothstep(.65, 7.0, absf(speed)) if block.driven else 0.0
-	for spray in tire_spray:
-		if movement <= 0.0:
+	for i in tire_spray.size():
+		var spray := tire_spray[i]
+		if movement <= 0.0 or not wheel_grounded[i]:
 			spray.emitting = false
 			continue
 		var contact := spray.global_position
@@ -462,7 +484,10 @@ func furnish() -> void:
 	sidewalks.build(street_material)
 	add_child(pack)
 	# Unsurveyed strips at property boundaries use the same winter pavement.
-	city.get_node("Terrain").material_override=street_material
+	var backing := street_material.duplicate() as ShaderMaterial
+	GRADE.load_field()
+	backing.set_shader_parameter("backing_extent",Vector4(GRADE.origin.x,GRADE.origin.y-GRADE.size+1,GRADE.origin.x+GRADE.size-1,GRADE.origin.y))
+	city.get_node("Terrain").material_override=backing
 
 func display_window(at: Vector3, angle: float, width: float, index: int) -> void:
 	var pane:=MeshInstance3D.new()
@@ -524,7 +549,8 @@ func toggle_daylight() -> void:
 	var sun: DirectionalLight3D = city.get_node("Afternoon")
 	sun.rotation_degrees = Vector3(-39,-33,0) if daylight else Vector3(-58,-68,0)
 	sun.light_color = Color("#fff2da") if daylight else Color("#a7bee4")
-	sun.light_energy = 1.16 if daylight else .17
+	sun.light_energy = 1.65 if daylight else .17
+	sun.light_angular_distance = .5 if daylight and day_environment.ssr_enabled else 0.
 	sun.directional_shadow_max_distance = 290. if daylight else night_shadow_range
 	for lamp in outdoor_lights:
 		lamp.visible = not daylight
@@ -615,7 +641,18 @@ func snow_underfoot(world: Vector3, road: bool) -> float:
 	var foot := Vector2(local.x, local.z)
 	var surface:=pack.surface_at(foot)
 	if physical_block(foot):
-		return smoothstep(.001,.033,pack.remaining(foot,surface))
+		var depth: float = pack.remaining(foot,surface)
+		if depth < .0018: return 0. # The snow mesh discards these fragments.
+		var floor_y := GRADE.height(world,pack.SUPPORT_Y[int(surface.x)])
+		if world.y > floor_y+depth+.24: return 0.
+		return smoothstep(.003,.033,depth)
+	if GRADE.contains(world):
+		var ground: float = city.get_node("HeraldSquare").walking_height(world,0.)
+		if world.y > ground+.24: return 0. # A raised prop or threshold.
+		for entry in city.get_node("HeraldSquare").vestibules:
+			var inside: Vector3 = entry.frame.to_local(world)
+			if absf(inside.x)<float(entry.width)*.5 and inside.z < float(entry.mouth) and inside.z > float(entry.mouth)-float(entry.depth):
+				return 0.
 	var delta := Vector2(world.x + 208.099, world.z - 573.891)
 	var p := Vector2(delta.dot(Vector2(.873,.488)), delta.dot(Vector2(-.488,.873)))
 	var size := depth_samples.get_width()
@@ -644,8 +681,9 @@ func walking_height(world: Vector3) -> float:
 	var local:=to_local(world)
 	var p:=Vector2(local.x,local.z)
 	var surface:=pack.surface_at(p)
-	if surface.x<0: return city.get_node("HeraldSquare").walking_height(world,.15)
-	return pack.SUPPORT_Y[int(surface.x)]+pack.remaining(p,surface)
+	var legacy: float = pack.SUPPORT_Y[int(surface.x)] if surface.x>=0 else (.0 if city.on_road(world) else .15)
+	var floor_y: float = city.get_node("HeraldSquare").walking_height(world,legacy)
+	return floor_y+pack.remaining(p,surface)
 
 func plant_foot(world: Vector3, heading: Vector2, left: bool, effort: float) -> void:
 	if block.reserve.inside(block.reserve.to_local(world)): return
@@ -664,6 +702,7 @@ func sample_wheel_support(car: CharacterBody3D) -> void:
 	var dirty := {}
 	var continuous := previous_contacts.size() == contacts.size() and contacts[0].distance_to(previous_contacts[0]) < 4.
 	for i in contacts.size():
+		if not wheel_grounded[i]: continue
 		var start := previous_contacts[i] if continuous else contacts[i]
 		var rolling := start.direction_to(contacts[i])
 		if rolling.is_zero_approx():
@@ -674,7 +713,7 @@ func sample_wheel_support(car: CharacterBody3D) -> void:
 	var axle := 2 if block.driver_speed < 0 else 0
 	var other_axle := 2-axle
 	var nose := (contacts[axle]-contacts[other_axle]).normalized()*.78
-	var underside_y := car.position.y + .135
+	var underside_y := car.position.y + .135 - GRADE.height(car.global_position)
 	for band in 9:
 		var t := .5 + (band-4.)*.13
 		var bumper := contacts[axle].lerp(contacts[axle+1],t) + nose
@@ -700,16 +739,17 @@ func sample_wheel_support(car: CharacterBody3D) -> void:
 		var packed_lift := -INF
 		if surface.x >= 0 and surface.y > .001:
 			var remaining := pack.remaining(contacts[i],surface)
-			packed_lift = pack.SUPPORT_Y[int(surface.x)] + remaining - road_ride_height
+			packed_lift = (terrain if GRADE.contains(start) else pack.SUPPORT_Y[int(surface.x)]) + remaining - road_ride_height
 			if i >= 2: block.rear_snow_cover += .5 * smoothstep(.002,.045,remaining)
 		wheel_lift[i] = maxf(hard_lift + terrain, packed_lift)
 
 func update_sedan_suspension(dt: float) -> void:
 	var car: CharacterBody3D = block.parked
-	on_survey_grade = GRADE.contains(car.global_position) or (on_survey_grade and absf(body_heave) > .08)
-	if not on_survey_grade and absf(car.position.y - road_ride_height) > .5:
-		return
 	var pose := Vector3(car.position.x, car.rotation.y, car.position.z)
+	if not last_suspension_pose.is_finite() or Vector2(pose.x-last_suspension_pose.x,pose.z-last_suspension_pose.z).length() > 4.:
+		last_support_height = INF
+		heave_velocity = 0.
+		body_heave = car.position.y-road_ride_height
 	if not pose.is_equal_approx(last_suspension_pose) or not is_equal_approx(block.steer, last_suspension_steer) or pack.pressure_revision != last_pressure_revision:
 		sample_wheel_support(car)
 		last_suspension_pose = pose
@@ -720,24 +760,35 @@ func update_sedan_suspension(dt: float) -> void:
 	var left := (wheel_lift[0] + wheel_lift[2]) * .5
 	var right := (wheel_lift[1] + wheel_lift[3]) * .5
 
-	# The hubs follow the surface immediately while the sprung mass moves and settles.
+	# Model support as a spring that can push upward. Once unloaded the mass
+	# retains its vertical launch speed and gravity takes over at the crest.
 	var target_heave := (front + rear) * .5
-	# Exact critically damped spring step, including on a long physics tick.
-	var offset := body_heave - target_heave
-	var spring := heave_velocity + 12.*offset
-	var decay := exp(-12.*dt)
-	body_heave = target_heave + (offset + spring*dt)*decay
-	heave_velocity = (heave_velocity - 12.*spring*dt)*decay
+	var support_speed := (target_heave-last_support_height)/dt if is_finite(last_support_height) else 0.
+	last_support_height = target_heave
+	var compression := target_heave-body_heave
+	var acceleration := -9.81
+	if compression >= -DROOP:
+		acceleration = clampf(155.*compression + 20.*(support_speed-heave_velocity),-9.81,32.)
+	var travel := heave_velocity*dt + .5*acceleration*dt*dt
+	heave_velocity += acceleration*dt
+	body_heave += travel
+	if body_heave < target_heave-BUMP:
+		body_heave = target_heave-BUMP
+		heave_velocity = maxf(0.,heave_velocity)
 	var lift := road_ride_height + body_heave - car.position.y
 	if absf(lift) > .0001:
-		car.move_and_collide(Vector3.UP * lift)
+		var hit := car.move_and_collide(Vector3.UP * lift)
+		if hit:
+			body_heave = car.position.y-road_ride_height
+			heave_velocity = 0.
 	var terrain_roll := atan2(right - left, wheel_mounts[1].x - wheel_mounts[0].x)
 	var terrain_pitch := atan2(front - rear, wheel_mounts[2].z - wheel_mounts[0].z)
 	var corner_roll := clampf(-block.side_accel * .006, -.05, .05) if block.driven else 0.0
 	var brake_pitch := clampf(-block.long_accel * .0035, -.038, .038) if block.driven else 0.0
 	var weight := 1.0 - exp(-10.0 * dt)
-	body_roll = lerpf(body_roll, terrain_roll + corner_roll, weight)
-	body_pitch = lerpf(body_pitch, terrain_pitch + brake_pitch, weight)
+	if not block.tires_airborne:
+		body_roll = lerpf(body_roll, terrain_roll + corner_roll, weight)
+		body_pitch = lerpf(body_pitch, terrain_pitch + brake_pitch, weight)
 	var tilt := Basis(Vector3.BACK, body_roll) * Basis(Vector3.RIGHT, body_pitch)
 	var body_center := Vector3.UP * .6
 	chassis.transform = Transform3D(tilt, body_center - tilt * body_center) * chassis_rest
@@ -748,10 +799,16 @@ func update_sedan_suspension(dt: float) -> void:
 		var pivot := wheel_pivots[i]
 		var angle: float = -block.steer if i < 2 else 0.0
 		pivot.basis = Basis(Vector3.BACK, angle) * Basis(Vector3.UP, wheel_roll)
-		pivot.global_position = car.to_global(wheel_mounts[i]) + Vector3.UP * (wheel_lift[i] + road_ride_height - car.position.y)
+		var mount := car.to_global(body_center + tilt*(wheel_mounts[i]-body_center))
+		var ground_offset := wheel_lift[i]+road_ride_height+wheel_mounts[i].y-mount.y
+		wheel_grounded[i] = ground_offset >= -DROOP
+		pivot.global_position = mount + Vector3.UP * clampf(ground_offset,-DROOP,BUMP)
+	block.tires_airborne = not wheel_grounded.has(true)
 
 func _physics_process(dt: float) -> void:
 	if not chassis: return
+	if street_probe and street_probe.global_position.distance_squared_to(block.parked.global_position)>24.*24.:
+		street_probe.global_position = block.parked.global_position+Vector3.UP*5.
 	update_sedan_lights(dt)
 	update_sedan_suspension(dt)
 	update_tire_spray()
