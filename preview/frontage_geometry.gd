@@ -88,7 +88,8 @@ func lettering(words: String,at: Vector3,height: float,color:=Color("#ebc58c")) 
 	text.transform=frame*Transform3D(Basis.IDENTITY,at)
 	add_child(text)
 
-func assemble() -> void:
+func assemble(parent: Node3D = null) -> void:
+	if parent == null: parent=self
 	for group: String in pieces:
 		var bits:=group.split("/")
 		var multi:=MultiMesh.new()
@@ -101,5 +102,5 @@ func assemble() -> void:
 		view.multimesh=multi
 		view.material_override=finishes[bits[0]]
 		if bits[0]=="glass": view.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(view)
+		parent.add_child(view)
 	pieces.clear()

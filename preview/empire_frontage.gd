@@ -170,18 +170,32 @@ func entry() -> void:
 		piece("brass",Vector3(0,.119,-2.41+i*.15),Vector3(7.8,.012,.023))
 	piece("limestone",Vector3(0,.045,-.09),Vector3(12.4,.09,3.0))
 	piece("granite",Vector3(0,3.62,.56),Vector3(8.2,.85,1.35))
-	piece("steel",Vector3(0,3.08,.61),Vector3(8.23,.27,1.50))
+	var satin:=material("door_trim","#929696",.38,.70)
+	var glazing_material:=ShaderMaterial.new()
+	glazing_material.shader=preload("res://winter/door_glass.gdshader")
+	piece("door_trim",Vector3(0,3.04,.41),Vector3(8.20,.56,.52))
+	for i in 5:
+		piece("door_trim",Vector3(0,2.84+i*.09,.688),Vector3(8.20,.022,.044))
+	for side in [-1,1]:
+		# The three openings share a continuous face. Cover the drum caps
+		# and close the old gaps between the circular and rectangular bays.
+		for jamb in [[1.31,.48],[3.76,.64]]:
+			piece("door_trim",Vector3(side*jamb[0],1.43,.40),Vector3(jamb[1],2.70,.51))
+		var door:=preload("res://revolving_door.gd").new()
+		door.finishes["door_glass"]=glazing_material
+		door.finishes["rail"]=satin
+		door.transform=frame*Transform3D(Basis.IDENTITY,Vector3(side*2.50,0,-.24))
+		add_child(door)
+		piece("door_trim",Vector3(side*2.50,2.76,-.22),Vector3(2.39,.14,2.44))
+		collider(Vector3(side*2.50,1.40,-.24),Vector3(2.26,2.62,.24))
 	for side in [-1,1]:
 		var x: float=side*5.12
 		piece("granite",Vector3(x,2.52,.43),Vector3(2.18,5.04,1.5))
 		collider(Vector3(x,2.52,.43),Vector3(2.18,5.04,1.50))
 		entrance_pier(x)
 		piece("brass",Vector3(x,1.62,1.21),Vector3(.34,.39,.055))
-	var w:=2.40
-	door_pair(0,w,.30)
-	for x in [-2.66,2.66]:
-		rotary(x)
-	lettering("350",Vector3(0,3.08,1.38),.235)
+	door_pair(0,2.16,.40)
+	lettering("350",Vector3(0,3.04,.724),.235)
 	# Glass and dark backing are separated by the screen depth.
 	for bay in [-1,0,1]:
 		var x: float=bay*2.64
@@ -271,26 +285,3 @@ func entrance_flag() -> void:
 	flag.extra_cull_margin=.55
 	add_child(flag)
 	bar(socket+Vector3(.15,.12,.08),upper+Vector3(.03,0,.03),.021,"steel")
-
-func rotary(x: float) -> void:
-	var axis:=Vector3(x,0,.14)
-	var radius:=1.08
-	piece("steel",axis+Vector3.UP*2.75,Vector3(2.27,.24,2.27),Vector3.ZERO,"round")
-	piece("granite",axis+Vector3.UP*.05,Vector3(2.24,.10,2.24),Vector3.ZERO,"round")
-	bar(axis,axis+Vector3.UP*2.66,.105,"steel")
-	for leaf in 4:
-		var a:=.54+leaf*PI*.5
-		var end:=axis+Vector3(sin(a),0,cos(a))*radius
-		bar(end+Vector3.UP*.12,end+Vector3.UP*2.62,.052,"steel")
-		for y in [.18,1.12,2.56]:
-			bar(axis+Vector3.UP*y,end+Vector3.UP*y,.053,"steel")
-		piece("glass",(axis+end)*.5+Vector3.UP*1.39,Vector3(radius,2.38,1),Vector3(0,a-PI/2,0),"pane")
-	for side in [-1,1]:
-		for i in 7:
-			var a: float=side*PI/2-.64+i*.183
-			var b: float=a+.183
-			var start:=axis+Vector3(sin(a),0,cos(a))*radius
-			var end:=axis+Vector3(sin(b),0,cos(b))*radius
-			bar(start+Vector3.UP*2.61,end+Vector3.UP*2.61,.074,"steel")
-			piece("glass",(start+end)*.5+Vector3.UP*1.39,Vector3(start.distance_to(end),2.47,1),Vector3(0,(a+b)*.5,0),"pane")
-	collider(axis+Vector3.UP*1.35,Vector3(2.15,2.70,1.16))
