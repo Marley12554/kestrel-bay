@@ -8,7 +8,12 @@ const SILL := .12
 const HEAD := 2.69
 var rotor := Node3D.new()
 var speed := 0.0
-var traversable:=false
+var wings: Array[StaticBody3D] = []
+const MAX_PUSH_SPEED := 3.2
+const COAST_DECELERATION := 23.0
+var last_pusher: CharacterBody3D
+var pushed_this_step := false
+var pushed_angle := 0.
 
 func _ready() -> void:
 	# Both doors reuse the entrance's metal and glazing resources.
@@ -62,19 +67,20 @@ func _ready() -> void:
 		piece("rail",Vector3(mid_x,1.13,.10),Vector3(width-.27,.045,.035))
 	# Only the hardware collected above belongs to the rotor.
 	assemble(rotor)
-	if traversable:
-		for side in [-1.,1.]:
-			for i in 8:
-				var a:float=side*PI*.5+lerpf(-HALF_ARC,HALF_ARC,(i+.5)/8.)
-				var radius:=RADIUS+.03
-				add_barrier(self,Vector3(sin(a)*radius,1.39,cos(a)*radius),Vector3(.24,2.50,.05),a)
-		for i in 4:
-			var a:=i*PI*.5
-			add_barrier(rotor,Vector3(cos(a)*outer*.5,1.39,-sin(a)*outer*.5),Vector3(outer,2.50,.036),a)
+	add_to_group("revolving_doors")
+	for side in [-1.,1.]:
+		for i in 8:
+			var a:float=side*PI*.5+lerpf(-HALF_ARC,HALF_ARC,(i+.5)/8.)
+			var radius:=RADIUS+.03
+			add_barrier(self,Vector3(sin(a)*radius,1.39,cos(a)*radius),Vector3(.24,2.50,.05),a)
+	for i in 4:
+		var a:=i*PI*.5
+		var wing := add_barrier(rotor,Vector3(cos(a)*outer*.5,1.39,-sin(a)*outer*.5),Vector3(outer,2.50,.036),a)
+		wing.set_meta("revolving_door", self)
+		wings.append(wing)
 
-func add_barrier(parent:Node3D,at:Vector3,size:Vector3,yaw:float) -> void:
-	var body:=AnimatableBody3D.new()
-	body.sync_to_physics=false
+func add_barrier(parent:Node3D,at:Vector3,size:Vector3,yaw:float) -> StaticBody3D:
+	var body:=StaticBody3D.new()
 	body.position=at
 	body.rotation.y=yaw
 	var shape:=CollisionShape3D.new()
@@ -83,6 +89,7 @@ func add_barrier(parent:Node3D,at:Vector3,size:Vector3,yaw:float) -> void:
 	shape.shape=box
 	body.add_child(shape)
 	parent.add_child(body)
+	return body
 
 
 func add_glass(parent: Node3D,mesh: Mesh,at: Vector3) -> void:
@@ -129,9 +136,62 @@ func fixed_screen(side: int) -> void:
 		jamb.position=Vector3(sin(a)*RADIUS,(HEAD+SILL)*.5,cos(a)*RADIUS)
 		add_child(jamb)
 
-func _physics_process(delta: float) -> void:
-	var camera:=get_viewport().get_camera_3d()
-	if not camera: return
-	var near_door:=global_position.distance_squared_to(camera.global_position)<16.
-	speed=move_toward(speed,.55 if near_door else 0.,delta*.7)
-	rotor.rotate_y(speed*delta)
+# A straight walking input follows the open side of the spindle. The
+# player can still sidestep or back out, and looking never moves the rotor.
+func walking_velocity(world_feet: Vector3, velocity: Vector3) -> Vector3:
+	var feet := to_local(world_feet)
+	if absf(feet.y) > .45 or absf(feet.x) > .86 or absf(feet.z) > 1.62:
+		return velocity
+	var local := global_basis.inverse() * velocity
+	if absf(feet.z) > RADIUS and feet.z * local.z > 0.: return velocity
+	if absf(local.z) < .001 or absf(local.x) > absf(local.z) * .75:
+		return velocity
+	var lane := signf(feet.x) if absf(feet.x) > .12 else -signf(local.z)
+	var offset := .31 + .40 * exp(-feet.z * feet.z / .35)
+	var correction := clampf((lane * offset - feet.x) * 4., -1., 1.)
+	local.x += correction * absf(local.z)
+	return global_basis * local.normalized() * velocity.length()
+
+func try_push(hit: KinematicCollision3D, walker: CharacterBody3D, motion: Vector3, dt: float) -> bool:
+	var wing := hit.get_collider() as StaticBody3D
+	var tangent := -wing.global_basis.z
+	var pressure := motion.dot(tangent)
+	if absf(pressure) < .0001 or motion.dot(hit.get_normal()) >= -.00001:
+		return false
+	var lever := maxf(.32, (hit.get_position() - global_position).dot(wing.global_basis.x))
+	var limit := maxf(0., MAX_PUSH_SPEED * dt - absf(pushed_angle))
+	var turn := clampf(pressure / lever, -limit, limit)
+	if is_zero_approx(turn): return false
+	rotate_wings(turn)
+	pushed_angle += turn
+	pushed_this_step = true
+	speed = pushed_angle / dt
+	last_pusher = walker
+	return true
+
+func rotate_wings(turn: float) -> void:
+	rotor.rotate_y(turn)
+	for wing in wings:
+		wing.force_update_transform()
+
+func _physics_process(dt: float) -> void:
+	if pushed_this_step:
+		pushed_this_step = false
+		pushed_angle = 0.
+		return
+	if is_zero_approx(speed): return
+	var slower := move_toward(speed, 0., COAST_DECELERATION * dt)
+	var turn := (speed + slower) * .5 * dt
+	# A free rotor runs out of momentum within a few inches. A following
+	# wing must stop short of a player who pauses inside the compartment.
+	if is_instance_valid(last_pusher):
+		var p := to_local(last_pusher.global_position)
+		var radius := Vector2(p.x,p.z).length()
+		if radius < RADIUS + .27 and absf(p.y) < .5:
+			var angle := atan2(-p.z,p.x) - rotor.rotation.y
+			var gap := fposmod(angle * signf(turn), PI * .5)
+			var clearance := asin(clampf(.295 / maxf(radius,.295), 0., 1.))
+			turn = signf(turn) * minf(absf(turn), maxf(0., gap - clearance))
+			if is_zero_approx(turn): slower = 0.
+	rotate_wings(turn)
+	speed = slower

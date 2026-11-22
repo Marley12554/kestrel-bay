@@ -147,7 +147,6 @@ func install_revolving_entrance() -> void:
 	finishes["entry_glass"] = glass
 	revolving.finishes["rail"] = finishes["bronze"]
 	revolving.finishes["door_glass"] = glass
-	revolving.traversable = true
 	# Place the entry mat just above the terrazzo so the threshold is visible.
 	revolving.position = Vector3(DRUM_X, FLOOR_Y + .004 - revolving.SILL, drum_z)
 	add_child(revolving)

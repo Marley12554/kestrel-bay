@@ -188,7 +188,8 @@ func entry() -> void:
 		door.transform=frame*Transform3D(Basis.IDENTITY,Vector3(side*2.50,0,-.24))
 		add_child(door)
 		piece("door_trim",Vector3(side*2.50,2.76,-.22),Vector3(2.39,.14,2.44))
-		collider(Vector3(side*2.50,1.40,-.24),Vector3(2.26,2.62,.24))
+		collider(Vector3(side*3.78,1.40,.40),Vector3(.64,2.62,.51))
+		collider(Vector3(side*1.31,1.40,.40),Vector3(.48,2.62,.51))
 	for side in [-1,1]:
 		var x: float=side*5.12
 		piece("granite",Vector3(x,2.52,.43),Vector3(2.18,5.04,1.5))
@@ -196,6 +197,9 @@ func entry() -> void:
 		entrance_pier(x)
 		piece("brass",Vector3(x,1.62,1.21),Vector3(.34,.39,.055))
 	door_pair(0,2.16,.40)
+	collider(Vector3(0,1.75,-2.73),Vector3(8.44,3.5,.20))
+	for side in [-1,1]:
+		collider(Vector3(side*4.15,1.77,-1.05),Vector3(.33,3.54,4.25))
 	lettering("350",Vector3(0,3.04,.724),.235)
 	# Glass and dark backing are separated by the screen depth.
 	for bay in [-1,0,1]:

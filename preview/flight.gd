@@ -40,6 +40,7 @@ var street_view: Transform3D
 var last_move_usec := 0
 const METRES_PER_SECOND_PER_MPH := 0.44704
 @onready var stride = $Stride
+@onready var revolving_doors := get_tree().get_nodes_in_group("revolving_doors")
 var motion_setting := 2
 const MIN_HEIGHT := 1.7
 const MAX_HEIGHT := 1800.0
@@ -352,6 +353,8 @@ func _physics_process(dt: float) -> void:
 
 func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 	var target: Vector3 = direction * (stride.SPRINT_SPEED if sprint else stride.WALK_SPEED)
+	for door in revolving_doors:
+		target = door.walking_velocity(walker.global_position, target)
 	var acceleration := 14.0 if target.length_squared() > walker.velocity.length_squared() else 28.0
 	var intended := walker.velocity.move_toward(target, acceleration * dt * (.14 if airborne else 1.0))
 	var remaining := intended * dt
@@ -364,6 +367,11 @@ func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 		var hit := walker.move_and_collide(remaining)
 		if not hit:
 			break
+		if direction.length_squared() > .0001 and hit.get_collider().has_meta("revolving_door"):
+			var door = hit.get_collider().get_meta("revolving_door")
+			if door.try_push(hit, walker, hit.get_remainder(), dt):
+				remaining = hit.get_remainder()
+				continue
 		var normal := hit.get_normal()
 		if intended.dot(normal) < 0.0:
 			intended = intended.slide(normal)
