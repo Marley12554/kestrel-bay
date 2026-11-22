@@ -104,6 +104,9 @@ func collider(at: Vector3, size: Vector3) -> void:
 	body.add_child(col)
 	add_child(body)
 
+func shop_sign(texture: Texture2D, at: Vector3, height: float, tint := Color.WHITE, region := Rect2()) -> void:
+	preload("res://signs/shop_sign.gd").mount(self, texture, frame.translated_local(at), height, tint, region)
+
 func lettering(words: String,at: Vector3,height: float,color:=Color("#ebc58c")) -> void:
 	var text:=Label3D.new()
 	text.text=words

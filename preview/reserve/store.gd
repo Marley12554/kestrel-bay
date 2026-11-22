@@ -11,6 +11,8 @@ const FLOOR_Y := .155
 const DOOR_X:=15.55
 const DOOR_WIDTH:=1.39
 const COUNTER:=Vector3(4.6,0,-9.)
+const WORDMARK := preload("res://signs/reserve-wordmark.svg")
+const RESERVE_STAR := preload("res://signs/reserve-star.svg")
 const CUP:=preload("res://reserve/coffee_cup.tscn")
 enum Order { AVAILABLE, BREWING, READY, CARRIED }
 var order:=Order.AVAILABLE
@@ -122,8 +124,9 @@ func shell() -> void:
 	piece("bronze",Vector3(DOOR_X,3.23,.26),Vector3(DOOR_WIDTH,.09,.19))
 	pane(DOOR_X,3.65,.25,DOOR_WIDTH,.76)
 	piece("black",Vector3(WIDTH*.5,4.44,.25),Vector3(WIDTH,.8,.55))
-	lettering("S T A R B U C K S   |   R E S E R V E",Vector3(15.1,4.42,.55),.29,Color("#ddd4bc"))
-	lettering("S T A R B U C K S\nR E S E R V E",Vector3(4.6,2.26,.33),.47,Color("#fff1d0"))
+	shop_sign(WORDMARK,Vector3(15.1,4.42,.55),.30,Color("#e8dfcc"))
+	shop_sign(WORDMARK,Vector3(4.6,2.46,.33),.31,Color("#fff1d0"),Rect2(12,0,568,55))
+	shop_sign(WORDMARK,Vector3(4.6,2.04,.33),.31,Color("#fff1d0"),Rect2(653,0,480,55))
 	frame=Transform3D(Basis(Vector3.UP,PI/2),Vector3(WIDTH,0,0))
 	window_span(0.,DEPTH)
 	piece("black",Vector3(DEPTH*.5,4.43,.24),Vector3(DEPTH,.85,.55))
@@ -227,7 +230,7 @@ func coffee_bar() -> void:
 	for x in [-4.,4.]:
 		piece("limestone",Vector3(x,2.56,-3.45),Vector3(.92,4.8,.62))
 	piece("cobalt",Vector3(0,2.72,-3.46),Vector3(6.8,.97,.11))
-	lettering("S T A R B U C K S    R E S E R V E",Vector3(0,2.84,-3.39),.26,Color.WHITE)
+	shop_sign(WORDMARK,Vector3(0,2.84,-3.39),.26)
 	lettering("E M P I R E   S T A T E   B U I L D I N G",Vector3(0,2.52,-3.39),.125,Color.WHITE)
 	# Glass pastry case, metal trays and individually split, browned rolls.
 	pane(2.95,1.50,.43,4.,.55)
@@ -289,7 +292,7 @@ func retail() -> void:
 		piece("brass",Vector3(x,2.88,-3.322),Vector3(.011,.22,.01))
 		lettering("E M P I R E",Vector3(x,1.80,-3.32),.070,Color("#f4cc83"))
 		lettering("STATE BUILDING",Vector3(x,1.69,-3.32),.045,Color.WHITE)
-		lettering("★\nR",Vector3(x,3.12,-3.32),.13,Color("#efcf95"))
+		shop_sign(RESERVE_STAR,Vector3(x,3.10,-3.32),.44,Color("#efcf95"))
 		piece("opal",Vector3(x,4.14,-3.37),Vector3(.94,.033,.04))
 	# Entry shop tables sit between the sidewalk and the two bronze columns.
 	for loc in [Vector3(8.,0,-1.65),Vector3(20.7,0,-2.2)]:

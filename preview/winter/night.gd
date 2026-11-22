@@ -39,6 +39,11 @@ var lamp_metal := StandardMaterial3D.new()
 var hot_glass := StandardMaterial3D.new()
 var street_material: ShaderMaterial
 var hint: Label
+var daylight := false
+var night_environment: Environment
+var day_environment: Environment
+var night_shadow_range: float
+var outdoor_lights: Array[Light3D] = []
 const SNOW_DEPTH := preload("res://winter/snow_depth.png")
 var depth_samples: Image
 var pack := preload("res://winter/snowpack.gd").new()
@@ -60,7 +65,17 @@ func dress_street() -> void:
 		if batch is MultiMeshInstance3D and not batch.is_in_group(&"street_fixtures"):
 			batch.material_override = carved
 	# Night sky supplies the cool fill; the warm key is a local lamp.
-	var env: Environment = city.get_node("Environment").environment.duplicate()
+	day_environment = city.get_node("Environment").environment.duplicate()
+	day_environment.background_mode = Environment.BG_SKY
+	day_environment.sky = Sky.new()
+	var clear_sky := ProceduralSkyMaterial.new()
+	clear_sky.sky_top_color = Color("#507db3")
+	clear_sky.sky_horizon_color = Color("#c2d5e3")
+	day_environment.sky.sky_material = clear_sky
+	day_environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	day_environment.ambient_light_energy = .65
+	day_environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	var env: Environment = day_environment.duplicate()
 	var sky := Sky.new()
 	var panorama := PanoramaSkyMaterial.new()
 	var lighting_dir := "res://winter/web_lighting/" if OS.has_feature("web") else ASSET
@@ -87,6 +102,7 @@ func dress_street() -> void:
 	env.fog_sky_affect = 0.0
 	env.fog_light_color = Color("#28364f")
 	env.fog_density = .004
+	night_environment = env
 	city.get_node("Environment").environment = env
 	var moon: DirectionalLight3D = city.get_node("Afternoon")
 	moon.light_color = Color("#a7bee4")
@@ -98,6 +114,8 @@ func dress_street() -> void:
 		# redrawing the entire street into four shadow maps as the camera moves.
 		moon.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 		moon.directional_shadow_max_distance = 48
+	night_shadow_range = moon.directional_shadow_max_distance
+	day_environment.ssao_enabled = high_quality
 	street_material = ShaderMaterial.new()
 	var survey := street_material
 	survey.shader = preload("res://winter/avenue.gdshader")
@@ -403,6 +421,7 @@ func lamp(site: Transform3D, hero: bool) -> void:
 	add_child(light)
 	light.position=tip-Vector3.UP*.24
 	light.rotation_degrees.x=-90
+	outdoor_lights.append(light)
 	light.spot_range=22
 	light.spot_angle=63
 	light.spot_angle_attenuation=.68
@@ -496,11 +515,29 @@ func add_controls() -> void:
 	hint.position=Vector2(18,get_viewport().get_visible_rect().size.y-39)
 	hint.add_theme_font_size_override("font_size",14)
 	hint.add_theme_constant_override("outline_size",4)
-	hint.text="WASD  Move / drive     ← / →  Signal     Space  Jump     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Interact / exit     F  Freecam     B  Camera motion     J  Herald Sq     H  Hide"
+	hint.text="T  Day / night     J  Herald Sq     WASD  Move / drive     ← / →  Signal     Space  Jump     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Interact / exit     F  Freecam     B  Camera motion     H  Hide"
 	get_viewport().size_changed.connect(func(): hint.position.y=get_viewport().get_visible_rect().size.y-39)
 
+func toggle_daylight() -> void:
+	daylight = not daylight
+	city.get_node("Environment").environment = day_environment if daylight else night_environment
+	var sun: DirectionalLight3D = city.get_node("Afternoon")
+	sun.rotation_degrees = Vector3(-39,-33,0) if daylight else Vector3(-58,-68,0)
+	sun.light_color = Color("#fff2da") if daylight else Color("#a7bee4")
+	sun.light_energy = 1.16 if daylight else .17
+	sun.directional_shadow_max_distance = 290. if daylight else night_shadow_range
+	for lamp in outdoor_lights:
+		lamp.visible = not daylight
+	hot_glass.emission_enabled = not daylight
+	street_material.set_shader_parameter("night_windows", 0.04 if daylight else 1.0)
+	for probe: ReflectionProbe in city.find_children("*","ReflectionProbe",true,false):
+		# Changing the capture origin invalidates a cached one-shot probe.
+		probe.origin_offset.y += .01 if daylight else -.01
+
 func _unhandled_key_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode==KEY_H and hint:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode==KEY_T:
+		toggle_daylight()
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode==KEY_H and hint:
 		hint.visible=not hint.visible
 		city.hud_visible=hint.visible
 
@@ -535,6 +572,7 @@ func curb_furniture() -> void:
 		lantern.light_color=Color("#ffcb8b")
 		lantern.omni_range=7.5
 		lantern.light_energy=2.35
+		outdoor_lights.append(lantern)
 	# Small evergreen boughs in the marquee, each tipped with warm bulbs.
 	var branch:=PrismMesh.new()
 	branch.size=Vector3(.34,.17,.31)

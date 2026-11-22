@@ -339,11 +339,13 @@ func shop_bay(start: float,w: float,sign_text: String,door: bool,metal: String) 
 		var dx:=x+(span-door_w)*.5
 		glass_doors(dx,door_w,.035)
 		pane(dx,3.34,.14,door_w,1.22)
-	if sign_text!="":
-		var color:=Color("#ee5349") if sign_text=="Wendy’s" else Color("#eee0c1")
-		lettering(sign_text,Vector3(x,4.53,.52),.69 if sign_text=="Wendy’s" else .34,color)
 	if sign_text=="Wendy’s":
+		var mark := preload("res://signs/wendys.svg")
+		shop_sign(mark,Vector3(x,4.51,.51),.91,Color("#402124"))
+		shop_sign(mark,Vector3(x,4.55,.57),.91,Color("#dc2939"))
 		practical(x,4.02,.84,Color("#ffd2a3"),1.0)
+	elif not sign_text.is_empty():
+		lettering(sign_text,Vector3(x,4.53,.52),.34,Color("#eee0c1"))
 
 func practical(x:float,y:float,z:float,color: Color,energy:float) -> void:
 	piece("opal",Vector3(x,y,z),Vector3(.42,.06,.18))

@@ -1,14 +1,23 @@
 shader_type spatial;
 render_mode cull_disabled;
 
-void vertex(){
-	float fly=UV.x;
-	float phase=fly*8.4-TIME*2.35;
-	float crosswave=fly*13.8+UV.y*1.6-TIME*3.6;
-	VERTEX.z+=fly*(.29*sin(phase)+.10*sin(crosswave));
-	VERTEX.y+=fly*(-.24+.075*sin(phase+UV.y));
-	float dzdx=(.29*sin(phase)+.10*sin(crosswave)+fly*(2.436*cos(phase)+1.38*cos(crosswave)))/3.42;
-	NORMAL=normalize(vec3(-dzdx,fly*.089*cos(crosswave),1.));
+// Hanging cloth in a light breeze. The hoist stays on the slanted staff;
+// most of the fly length is taken up by gravity and the gathered folds.
+vec3 cloth(vec2 uv, float t) {
+    float u = uv.x;
+    float v = uv.y;
+    float ripple = 9.5*u + 1.3*v - t*1.55;
+    float spread = 1.92*u - .54*u*u + .09*u*sin(ripple);
+    float sag = -1.35*u - 1.23*u*u;
+    float folds = sin(13.0*u + 1.15*v + .35*sin(t*1.25));
+    return vec3(-1.71 + spread, .90 - 1.80*v + sag + .07*u*cos(ripple),
+        -.082*v + .24*u + .27*sin(1.57*u)*folds + .09*u*sin(ripple));
+}
+void vertex() {
+    VERTEX = cloth(UV, TIME);
+    vec3 along = cloth(UV+vec2(.001,0.),TIME)-VERTEX;
+    vec3 down = cloth(UV+vec2(0.,.001),TIME)-VERTEX;
+    NORMAL = normalize(cross(down,along));
 }
 
 void fragment(){

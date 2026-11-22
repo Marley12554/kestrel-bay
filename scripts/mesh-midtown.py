@@ -55,16 +55,25 @@ class Tile:
                 for part in grade.drape(face):
                     self.write_face(self.graded_rings(part, z, grade), 0, color, street, tag)
                 # Ground has a tangible curb wherever the surveyed sidewalk ends.
-                if street == "Sidewalk":
+                if z > 0.01:
                     for boundary in rings:
                         for a, b in zip(boundary, np.roll(boundary,-1,axis=0)):
                             segment = shapely.LineString([a[:2],b[:2]]).intersection(grade.bounds)
                             if segment.length < .01: continue
                             ends = np.array(segment.coords)
-                            stops = np.linspace(0,1,int(np.ceil(segment.length))+1)
+                            # Split on the same horizontal, vertical and diagonal edges
+                            # as the draped top. A uniformly subdivided curb can bridge
+                            # a kink in the street and leave a visible slit at its lip.
+                            stops = [0., 1.]
+                            start, end = ends[0], ends[-1]
+                            for lo, hi in zip((*start, start[0]-start[1]), (*end, end[0]-end[1])):
+                                if abs(hi-lo) < 1e-8: continue
+                                cuts = np.arange(np.floor(min(lo,hi))+1, np.ceil(max(lo,hi)))
+                                stops.extend((cuts-lo)/(hi-lo))
+                            stops = np.unique(stops)
                             for t,u in zip(stops,stops[1:]):
                                 pts = ends[0] + (ends[-1]-ends[0])*np.array([t,u,u,t])[:,None]
-                                heights = grade.height(*pts.T) + np.array([0,0,z,z])
+                                heights = grade.height(*pts.T) + np.array([-.035,-.035,z,z])
                                 self.write_face([np.column_stack((pts,heights))], 0, color, None, 200)
                 return
         if anchored:
@@ -125,9 +134,11 @@ def build():
             if obj.tag not in ("Road","Square","Building"):
                 continue
             building = layer == "Buildings"
-            if building and obj.findtext(".//stringAttribute[@name='building_identification_number']/value") in BINS:
-                obj.clear()
-                continue
+            if building:
+                bin_id = obj.findtext(".//stringAttribute[@name='building_identification_number']/value")
+                if bin_id in BINS or bin_id == PILOT["plaza_kiosk"]["bin"]:
+                    obj.clear()
+                    continue
             coordinate = obj.find(".//lowerCorner") if building else obj.find(".//posList")
             x,y,z = map(float,coordinate.text.split()[:3])
             tile = tiles[(int((x-EAST)//350),int((y-NORTH)//350))]
@@ -140,6 +151,10 @@ def build():
             if building:
                 upper = np.fromstring(obj.findtext(".//upperCorner"), sep=" ")
                 if grade.bounds.intersects(shapely.box(x,y,upper[0],upper[1])):
+                    declared = float(obj.findtext("measuredHeight", "0"))
+                    envelope = upper[2] - z
+                    if 0 < declared < 1.5 and envelope > declared + 6:
+                        print(f"Review imported BIN {bin_id}: measured {declared:.2f} m, walls {envelope:.2f} m", flush=True)
                     anchored = (z, float(grade.height((x+upper[0])*.5,(y+upper[1])*.5)))
             for polygon in polys:
                 tile.polygon(polygon,z if building else (-.06 if layer=="Plaza" else 0),color,None if building else layer,grade,anchored)
@@ -152,6 +167,8 @@ def build():
     backing = tiles[(int((grade.x-EAST)//350), int((grade.n-NORTH)//350))]
     for part in grade.drape(gaps):
         backing.write_face(backing.graded_rings(part, 0., grade), 0, LAYERS["Sidewalk"], "Sidewalk", 170)
+    for part in grade.drape(grade.occupied):
+        backing.write_face(backing.graded_rings(part, -.60, grade), 0, LAYERS["Roadbed"], "Roadbed", 85)
     blob=bytearray()
     doc={"asset":{"version":"2.0","generator":"Kestrel Bay · TUM / NYC Open Data"},"buffers":[],
          "bufferViews":[],"accessors":[],"scenes":[{"nodes":[]}],"scene":0,"nodes":[],"meshes":[],

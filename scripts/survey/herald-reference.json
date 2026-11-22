@@ -15,6 +15,7 @@
     "access_plan_page_14": "https://www.esrtreit.com/wp-content/uploads/1350-RTO-Final-2.16.pdf",
     "holdout_south": "https://www.noahre.com/hubfs/Building%20Photos/1350%20Broadway.jpg"
   },
+  "plaza_kiosk": {"bin":"1089436","centre_en":[301047.73,64820.65],"photo":"https://34thstreet.org/shop-eat/wafels-dinges-herald-sq"},
   "survey_control": {"doitt_id": 354757, "ground_ft": 51, "roof_above_ground_ft": 328.21, "ring_epsg2263_us_ft": [[987743.6495, 212956.978], [987813.1352, 212918.09], [987816.7153, 212924.4866], [987836.5522, 212913.3846], [987778.3899, 212809.4599], [987770.7662, 212795.8376], [987740.2476, 212741.3069], [987688.1841, 212770.4446], [987700.2828, 212853.1731], [987715.2755, 212967.7765], [987726.91, 212973.2598], [987740.6656, 212965.5617], [987746.5957, 212962.2428], [987743.6495, 212956.978]]},
   "shell_anchor_en": [301000, 64800],
   "podium_top_navd88_m": 33.000762,

@@ -287,6 +287,6 @@ func entrance_flag() -> void:
 	flag.mesh=cloth
 	var upper:=top-Vector3.UP*.16
 	flag.transform=frame*Transform3D(Basis.IDENTITY,upper+Vector3(cloth.size.x*.5,-cloth.size.y*.5,.025))
-	flag.extra_cull_margin=.55
+	flag.extra_cull_margin=3.0
 	add_child(flag)
 	bar(socket+Vector3(.15,.12,.08),upper+Vector3(.03,0,.03),.021,"steel")

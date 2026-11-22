@@ -26,7 +26,7 @@ h1{font-size:clamp(18px,2.2vw,27px);margin:0;letter-spacing:-.04em;font-weight:6
 <button type="button" id="jump">Jump</button>
 <div id="turn-controls" aria-label="Turn signals"><button data-signal="-1" aria-label="Left turn signal">⇦</button><button data-signal="1" aria-label="Right turn signal">⇨</button></div>
 <div id="rise"><button data-axis="Y" data-dir="1" aria-label="Ascend">＋</button><button data-axis="Y" data-dir="-1" aria-label="Descend">−</button></div>
-<footer><a href="../">Kestrel Bay</a> · <button type="button" class="clean-hint" id="motion">Camera motion</button> · <button class="clean-hint" id="hide-ui">Hide HUD</button> · <a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
+<footer><a href="../">Kestrel Bay</a> · <button type="button" class="clean-hint" id="daylight">Day / night</button> · <button type="button" class="clean-hint" id="motion">Camera motion</button> · <button class="clean-hint" id="hide-ui">Hide HUD</button> · <a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
 <div id="loading" role="status"><span id="message">Loading Midtown Manhattan…</span><progress id="loadbar"></progress></div>
 <script src="$GODOT_URL"></script>
 <script>
@@ -34,7 +34,8 @@ const canvas=document.getElementById('canvas'), speed=document.getElementById('s
 window.midtownReady=false;window.midtownSpeed=95;window.midtownInControls=false;window.midtownLocked=false;
 window.midtownX=window.midtownY=window.midtownZ=0;
 window.midtownToggleBody=false;
-window.midtownInteract=false;window.midtownJump=false;
+window.midtownInteract=false;window.midtownJump=false;window.midtownToggleDaylight=false;
+document.getElementById("daylight").addEventListener("click",()=>{window.midtownToggleDaylight=true;canvas.focus()});
 document.getElementById("jump").addEventListener("click",()=>{window.midtownJump=true;canvas.focus()});
 window.midtownSignal=0;
 for(const button of document.querySelectorAll('[data-signal]')){

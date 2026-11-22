@@ -10,7 +10,7 @@ The committed compressed Godot scene builds without the source ZIPs. To regenera
 
 ## Herald Square survey pilot
 
-Press **J** on foot to visit 1350 Broadway. Press **J** again to return to the same spot on Fifth Avenue. The block fills the wedge between Broadway, Sixth Avenue, West 35th and West 36th. Walk up Broadway to the bronze 1350 entrance, then around to the freight entrance on West 36th. The street surfaces, pedestrian ground contact and four tire contacts follow the survey. [Pilot sources, controls and bake instructions](../scripts/survey/README.md)
+Press **T** to switch between evening and daylight in place, including while driving or using freecam. The web footer also has a Day / night button. Press **J** on foot to visit 1350 Broadway. Press **J** again to return to the same spot on Fifth Avenue. The block fills the wedge between Broadway, Sixth Avenue, West 35th and West 36th. Walk up Broadway to the bronze 1350 entrance, then around to the freight entrance on West 36th. The street surfaces, pedestrian ground contact and four tire contacts follow the survey. [Pilot sources, controls and bake instructions](../scripts/survey/README.md)
 
 ## Native winter block
 

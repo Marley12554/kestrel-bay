@@ -27,7 +27,13 @@ FINISH = {
     "WarmWindow": ("867b65", 0.31, 0.22),
     "CoolWindow": ("668086", 0.28, 0.3),
     "DarkSash": ("34413f", 0.38, 0.55),
-    "Spandrel": ("2c665b", 0.48, 0.42),
+    "Spandrel": ("408a78", 0.48, 0.42),
+    "OfficeBlind": ("c4bab0", 0.84, 0),
+    "OfficePanel": ("9c8c78", 0.78, 0),
+    "BrightGlass": ("91a4b0", 0.19, 0.4),
+    "KioskIron": ("254a43", 0.46, 0.35),
+    "KioskRoof": ("63857a", 0.52, 0.36),
+    "Canopy": ("e8ac2a", 0.80, 0),
     "ShopGlass": ("4d6465", 0.22, 0.45),
     "Bronze": ("8d7450", 0.36, 0.68),
     "BankRed": ("ba251f", 0.42, 0.13),
@@ -114,9 +120,11 @@ class Mesh:
             pos = add(positions, "VEC3", 5126, **bounds)
             norm = add(np.concatenate(normals).astype("<f4"), "VEC3", 5126)
             index = add(np.concatenate(indices).astype("<u4"), "SCALAR", 5125)
-            doc["meshes"][0]["primitives"].append(
-                dict(attributes={"POSITION": pos, "NORMAL": norm}, indices=index, material=mat)
-            )
+            attributes = {"POSITION": pos, "NORMAL": norm}
+            if name in ("Window", "WarmWindow", "CoolWindow", "BrightGlass"):
+                pane_uv = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype="<f4")
+                attributes["TEXCOORD_0"] = add(np.tile(pane_uv, (len(verts), 1)), "VEC2", 5126)
+            doc["meshes"][0]["primitives"].append(dict(attributes=attributes, indices=index, material=mat))
         doc["buffers"] = [{"byteLength": len(raw)}]
         meta = json.dumps(doc, separators=(",", ":")).encode()
         meta += b" " * (-len(meta) % 4)
@@ -204,6 +212,22 @@ def upper_wall(face, shell, rhythms, floor_count):
     offset = (face.a - ref.a) @ ref.along
     bounds = shell.bounds
     openings = []
+    # Both long elevations have relatively flat end bays and a recessed
+    # central run of windows separated by uninterrupted masonry piers.
+    shaft = street in ("Sixth", "Broadway") and face.out @ ref.out > 0.997
+    recessed_bands = []
+    if shaft:
+        for col in range(2, columns - 2):
+            centre = ((col + 0.5) * width - offset) / tangent
+            half_band = width * 0.365
+            for panel in polygons(
+                shell.intersection(box(centre - half_band, CAP + 0.36, centre + half_band, 130))
+            ):
+                recessed_bands.append(panel)
+                for a, b in zip(panel.exterior.coords, list(panel.exterior.coords)[1:]):
+                    face.mesh.face(
+                        "Reveal", [face.pt(*a), face.pt(*b), face.pt(*b, -0.43), face.pt(*a, -0.43)]
+                    )
     for col in range(
         math.floor((offset + bounds[0] * tangent) / width) - 1,
         math.ceil((offset + bounds[2] * tangent) / width) + 1,
@@ -217,16 +241,36 @@ def upper_wall(face, shell, rhythms, floor_count):
             if not shell.contains(box(left - 0.15, bottom - 0.12, right + 0.15, top + 0.18)):
                 continue
             openings.append(aperture)
-            face.reveal(left, right, bottom, top, 0.0, -0.19, "Reveal")
+            setback = -0.43 if shaft and 2 <= col < columns - 2 else 0.0
+            glass = setback - 0.22
+            face.reveal(left, right, bottom, top, setback, glass, "Reveal")
             finish = "Window"
             if (floor % 8 in [2, 3] and col % 7 < 4) or (floor % 9 == 5 and 1 <= col % 9 <= 3):
                 finish = "WarmWindow"
             elif floor % 6 == 1 and col % 6 < 4:
                 finish = "CoolWindow"
-            face.rect(left, right, bottom, top, -0.19, finish)
-            face.rect(left, right, bottom + 0.96, bottom + 1.04, -0.14, "DarkSash")
-            face.trim(left - 0.04, right + 0.04, bottom - 0.08, bottom, 0.065, "IndianaStone")
-    face.cut_stone(shell.difference(shapely.union_all(openings)), "BuffBrick")
+            group = (floor * 17 + (col // 3) * 11) % 13
+            if finish == "Window" and group in (2, 6, 8):
+                finish = "BrightGlass"
+            face.rect(left, right, bottom, top, glass, finish)
+            if group in (2, 4, 6, 9):
+                drop = 0.32 + 0.17 * ((floor + col // 2) % 5)
+                face.rect(
+                    left + 0.035, right - 0.035, top - drop, top - 0.035, glass + 0.012, "OfficeBlind"
+                )
+                face.rect(
+                    left + 0.035, right - 0.035, top - drop, top - drop + 0.034, glass + 0.02, "DarkSash"
+                )
+            face.rect(left, right, bottom + 0.96, bottom + 1.04, glass + 0.056, "DarkSash")
+            face.rect(left - 0.04, right + 0.04, bottom - 0.09, bottom, setback + 0.065, "IndianaStone")
+    wall = shell.difference(shapely.union_all(openings))
+    if recessed_bands:
+        slots = shapely.union_all(recessed_bands)
+        for panel in polygons(wall.intersection(slots)):
+            coords, idx = triangulate(panel)
+            face.mesh.face("OfficePanel", [face.pt(u, h, -0.43) for u, h in coords], idx)
+        wall = wall.difference(slots)
+    face.cut_stone(wall, "BuffBrick")
     # On the south elevation two uninterrupted limestone fins flank the
     # narrow centre stack and carry the eye into the stepped crown.
     if street == "south":
@@ -304,10 +348,11 @@ def studios(f, n):
             head = bottom + (top - bottom) * (floor + 1) / 3.0
             f.rect(a, b, sill, head, -0.21, "CoolWindow" if floor == 1 and j % 3 == 0 else "Window")
             if floor > 0:
-                f.rect(a, b, sill, sill + 0.70, -0.135, "Spandrel")
+                f.rect(a, b, sill, sill + 1.03, -0.135, "Spandrel")
             for q in [1 / 3, 2 / 3]:
                 x = a + (b - a) * q
                 f.rect(x - 0.038, x + 0.038, sill, head, -0.115, "DarkSash")
+            f.rect(a, b, head - 0.12, head, -0.11, "DarkSash")
             f.rect(a, b, head - 0.80, head - 0.73, -0.12, "DarkSash")
         f.trim(a - 0.08, b + 0.08, bottom - 0.13, bottom, 0.10, "Granite")
     f.trim(0, f.length, top, CAP, 0.12, "IndianaStone")
@@ -413,13 +458,34 @@ def shops(f, l, r, use, grade, labels, walls, doors, annotate):
         panels = max(1, round(span / 1.85))
         rail = h + 0.52
         f.rect(a, b, bottom, rail, -recess, "Granite")
-        depth = -1.75
+        depth = -3.25 if use == "bank" else -2.35
         f.reveal(a, b, rail, fascia, -recess, depth, "Soffit")
         f.rect(a, b, rail, fascia, depth, "Lining")
         f.rect(a, b, rail, fascia, -recess, "DisplayGlass")
         for k in range(panels):
             x = a + (b - a) * (k + 0.5) / panels
             f.rect(x - 0.24, x + 0.24, fascia - 0.18, fascia - 0.13, depth + 0.12, "Light")
+            if use == "bank":
+                panel_w = (b - a) / panels
+                f.rect(
+                    x - panel_w * 0.45,
+                    x + panel_w * 0.45,
+                    rail + 0.04,
+                    fascia - 0.55,
+                    depth + 0.03,
+                    "ShopGlass",
+                )
+                f.rect(
+                    x - panel_w * 0.39, x + panel_w * 0.39, rail + 0.24, rail + 0.68, depth + 0.64, "Lining"
+                )
+                f.rect(
+                    x - panel_w * 0.4,
+                    x + panel_w * 0.4,
+                    rail + 0.68,
+                    rail + 0.74,
+                    depth + 0.70,
+                    "IndianaStone",
+                )
             if (k % 3) == 1:
                 f.rect(x - 0.42, x + 0.42, rail + 0.62, rail + 1.52, depth + 0.14, "Granite")
                 f.rect(x - 0.34, x + 0.34, rail + 0.72, rail + 1.42, depth + 0.15, "CoolWindow")
@@ -431,7 +497,7 @@ def shops(f, l, r, use, grade, labels, walls, doors, annotate):
     path = [f.pt(l, h), f.pt(a, h), f.pt(a, h, -recess), f.pt(b, h, -recess), f.pt(b, h), f.pt(r, h)]
     if use != "lobby":
         walls.extend([u, v] for u, v in zip(path, path[1:]))
-    if annotate:
+    if annotate or (use == "bank" and span > 2.5):
         word = {
             "bank": "Santander",
             "lobby": "1350",
@@ -440,12 +506,102 @@ def shops(f, l, r, use, grade, labels, walls, doors, annotate):
             "Playa Bowls": "PLAYA BOWLS",
         }.get(use)
         if word:
+            copies = max(1, round(span / 7.5)) if use == "bank" else 1
+            for k in range(copies):
+                u = l + span * (k + 0.5) / copies
+                labels.append(
+                    dict(
+                        text=word,
+                        at=f.pt(u, (fascia + 20.33) * 0.5, 0.13),
+                        yaw=math.atan2(f.out[0], -f.out[1]),
+                        height=0.50 if use == "bank" else 0.26,
+                    )
+                )
+
+
+def plaza_kiosk(mesh, grade, walls, labels):
+    centre = np.array(REF["plaza_kiosk"]["centre_en"])
+    base = grade.surface(*centre) + DATUM
+    # Outline and orientation follow the park footprint. The photo faces the
+    # service counter from the park, with the office tower across 35th behind it.
+    axis = np.array([0.943, 0.333])
+    across = np.array([-axis[1], axis[0]])
+    outline = [
+        (-2.8, -1.15),
+        (-2.2, -1.72),
+        (2.2, -1.72),
+        (2.8, -1.15),
+        (2.8, 1.15),
+        (2.2, 1.72),
+        (-2.2, 1.72),
+        (-2.8, 1.15),
+    ]
+    ring = [centre - ANCHOR + x * axis + y * across for x, y in outline]
+    peak = [*(centre - ANCHOR), base]
+
+    def roof_point(p, scale, height):
+        v = centre - ANCHOR + (p - (centre - ANCHOR)) * scale
+        return [v[0], base - DATUM + height, -v[1]]
+
+    for i, a in enumerate(ring):
+        b = ring[(i + 1) % len(ring)]
+        side = Elevation(a, b, mesh)
+        w = side.length
+        side.trim(0, w, base - 0.45, base + 0.12, 0.06, "Granite")
+        side.rect(0, w, base + 0.12, base + 1.02, 0, "KioskIron")
+        side.trim(0, w, base + 0.99, base + 1.07, 0.19, "Granite")
+        side.reveal(0, w, base + 1.07, base + 2.12, 0, -0.48, "KioskIron")
+        side.rect(0, w, base + 1.07, base + 2.12, -0.48, "Bronze")
+        side.rect(0.06, w - 0.06, base + 1.23, base + 1.97, -0.46, "Granite")
+        side.rect(0, w, base + 1.61, base + 1.65, -0.32, "IndianaStone")
+        side.rect(0, w, base + 2.03, base + 2.09, -0.27, "Light")
+        for j in range(max(1, round(w / 0.78))):
+            u = (j + 0.5) * w / max(1, round(w / 0.78))
+            for level in (1.24, 1.65):
+                side.rect(u - 0.16, u + 0.13, base + level, base + level + 0.17, -0.30, "Canopy")
+                side.rect(u + 0.14, u + 0.21, base + level, base + level + 0.21, -0.29, "Lining")
+        if w > 2.5:
+            side.trim(w * 0.5 - 0.025, w * 0.5 + 0.025, base + 1.04, base + 2.44, 0.034, "KioskIron")
+        side.trim(0, 0.065, base + 0.1, base + 2.55, 0.026, "KioskIron")
+        for u in np.arange(0.18, w - 0.06, 0.19):
+            side.rect(u, u + 0.015, base + 0.2, base + 0.92, 0.012, "KioskRoof")
+        side.trim(0, w, base + 2.13, base + 2.43, 0.02, "Canopy")
+        side.trim(0, w, base + 2.43, base + 2.52, 0.38, "KioskIron")
+        side.rect(0, w, base + 2.52, base + 2.82, 0, "KioskIron")
+        mesh.face(
+            "KioskRoof",
+            [
+                roof_point(a, 1.11, 2.82),
+                roof_point(b, 1.11, 2.82),
+                roof_point(b, 0.64, 3.31),
+                roof_point(a, 0.64, 3.31),
+            ],
+        )
+        mesh.face(
+            "KioskRoof",
+            [
+                roof_point(a, 0.64, 3.31),
+                roof_point(b, 0.64, 3.31),
+                [peak[0], base - DATUM + 3.36, -peak[1]],
+            ],
+            [0, 1, 2],
+        )
+        walls.append([side.pt(0, base), side.pt(w, base)])
+        if i in (1, 5):
             labels.append(
                 dict(
-                    text=word,
-                    at=f.pt((l + r) * 0.5, (fascia + 20.33) * 0.5, 0.115),
-                    yaw=math.atan2(f.out[0], -f.out[1]),
-                    height=0.34 if use == "bank" else 0.26,
+                    text="wafels & dinges",
+                    at=side.pt(w * 0.5, base + 3.17, 0.25),
+                    yaw=math.atan2(side.out[0], -side.out[1]),
+                    height=0.35,
+                )
+            )
+            labels.append(
+                dict(
+                    text="kiosk crest",
+                    at=side.pt(w * 0.5, base + 0.58, 0.025),
+                    yaw=math.atan2(side.out[0], -side.out[1]),
+                    height=0.66,
                 )
             )
 
@@ -495,6 +651,7 @@ def build():
             midpoint = (left + right) * 0.5 * total - start
             shops(f, l, r, tenant, grade, labels, walls, doors, r - l > 2.4 and 0 <= midpoint < f.length)
         used[street] += f.length
+    plaza_kiosk(mesh, grade, walls, labels)
     mesh.save(OUTPUT / "1350-broadway.glb")
 
     def rounded(o):

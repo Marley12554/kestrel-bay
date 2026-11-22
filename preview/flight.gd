@@ -206,6 +206,9 @@ func _process(_dt: float) -> void:
 	var now := Time.get_ticks_usec()
 	var elapsed := (now - last_move_usec) / 1_000_000.0 if last_move_usec != 0 else 0.0
 	last_move_usec = now
+	if web and bool(web.midtownToggleDaylight):
+		web.midtownToggleDaylight = false
+		if has_node("Winter"): $Winter.toggle_daylight()
 	if web and bool(web.midtownJump):
 		web.midtownJump = false
 		if not driving and not body.visible: jump_requested = true

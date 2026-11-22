@@ -42,6 +42,15 @@ func run() -> void:
 		check(not hit.is_empty() and absf(hit.position.y+10.-point[2]) < .10,"physical pavement agrees with source at "+str(point))
 	var original: Vector3 = city.walker.global_position
 	var original_view: Transform3D = city.camera.global_transform
+	var evening_env: Environment = city.get_node("Environment").environment
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_T
+	key.pressed = true
+	root.push_input(key)
+	check(winter.daylight and city.get_node("Environment").environment != evening_env,"T selects the daylight sky")
+	check(city.walker.position == original and city.camera.global_transform == original_view,"lighting toggle preserves position and view")
+	root.push_input(key)
+	check(not winter.daylight and city.get_node("Environment").environment == evening_env,"T restores the same evening sky")
 	city.visit_pilot()
 	check(city.walker.global_position.distance_to(original)>100 and absf(city.walker.position.y-4.64)<.12,"J reaches the plaza at walking height")
 	city.visit_pilot()
@@ -66,6 +75,31 @@ func run() -> void:
 	var end: Vector3 = city.walker.global_position
 	check((end-start).dot(heading)>43. and end.y-start.y>.36,"walk uphill along the length of the block")
 	check(absf(end.y-GRADE.physical_height(space,end))<.06,"walker's feet remain on the rendered pavement")
+	# Cross the transition along West 35th, then probe across the curb face
+	# at the south plaza. These casts require the shipped collision itself.
+	var across := Vector3(.873,0.,.488)
+	var crossing := world(301044.5,64845.8)
+	for route in [[crossing-across*73.,across,115.], [world(301053.1,64822.4),Vector3(-.488,0.,-.873),23.]]:
+		var complete := true
+		var max_step := 0.
+		var last_height := INF
+		for i in range(ceili(float(route[2])/.19)):
+			var pt: Vector3 = route[0] + route[1]*(i*.19)
+			var ray := PhysicsRayQueryParameters3D.create(pt+Vector3.UP*12.,pt-Vector3.UP*3.,8)
+			var hit := space.intersect_ray(ray)
+			if hit.is_empty():
+				complete = false
+				break
+			var ground: float = hit.position.y
+			if is_finite(last_height): max_step = maxf(max_step,absf(ground-last_height))
+			last_height = ground
+		check(complete and max_step < .28,"continuous road and curb collision, maximum step "+str(max_step))
+	start = crossing-across*59.
+	start.y = GRADE.physical_height(space,start)
+	city.walker.global_position = start
+	city.walker.velocity = Vector3.ZERO
+	for tick in 900: city.walk(across,false,1./60.)
+	check((city.walker.position-start).dot(across)>29. and absf(city.walker.position.y-GRADE.physical_height(space,city.walker.position))<.075,"walk across the 35th Street terrain transition")
 	# Drive from 35th toward 36th with the live four-wheel suspension.
 	var car: CharacterBody3D = block.parked
 	start = world(301075.4,64846.2)
@@ -81,6 +115,16 @@ func run() -> void:
 	end = car.global_position
 	check((end-start).dot(heading)>28. and end.y-start.y>.22,"drive uphill with live wheel support")
 	check(absf(end.y-winter.road_ride_height-GRADE.physical_height(space,end))<.13,"suspension follows the road on grade")
+	start = crossing-across*59.
+	start.y = GRADE.physical_height(space,start)+winter.road_ride_height
+	car.global_position = start
+	car.global_rotation.y = atan2(-across.x,-across.z)
+	block.driver_speed = 7.
+	winter.body_heave = start.y-winter.road_ride_height
+	for tick in 360:
+		block.drive(1./60.,.27,0.)
+		winter.update_sedan_suspension(1./60.)
+	check((car.global_position-start).dot(across)>28. and absf(car.global_position.y-winter.road_ride_height-GRADE.physical_height(space,car.global_position))<.14,"drive across the 35th Street terrain transition")
 	check(is_zero_approx(GRADE.height(original)),"legacy terrain outside the collar retains its placement")
 	city.queue_free()
 	await process_frame

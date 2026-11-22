@@ -3,9 +3,7 @@ config_version=5
 [application]
 config/name="Midtown Freecam"
 config/max_fps.macos=60
-run/main_scene="res://map.tscn"
-run/main_scene.web="res://winter/night.tscn"
-run/main_scene.macos="res://winter/night.tscn"
+run/main_scene="res://winter/night.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 [display]
 window/size/viewport_width=1200

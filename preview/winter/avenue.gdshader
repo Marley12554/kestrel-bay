@@ -7,6 +7,7 @@ uniform sampler2D asphalt_normal : hint_normal, filter_linear_mipmap_anisotropic
 uniform sampler2D asphalt_rough : filter_linear_mipmap, repeat_enable;
 uniform sampler2D snow : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D snow_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float night_windows = 1.0;
 uniform float sprint_softness = 0.0;
 varying vec3 street;
 varying vec3 direction;
@@ -60,7 +61,7 @@ void fragment() {
 	} else if(empire_shaft(p,direction)) {
 		float glass,lit;
 		ALBEDO=shaft_surface(p,direction,glass,lit);
-		EMISSION=vec3(.37,.26,.16)*lit;
+		EMISSION=vec3(.37,.26,.16)*lit*night_windows;
 		ROUGHNESS=mix(.73,.21,glass);
 	} else if(abs(direction.y)<.70) {
 		float along=abs(dot(direction.xz,vec2(.873,.488)))>.7?p.z:p.x;
@@ -75,7 +76,7 @@ void fragment() {
 		vec3 room=mix(vec3(.62,.36,.16),vec3(.45,.53,.57),hash(cell+.8));
 		float joints=smoothstep(.014,.045,abs(fract(p.y/.83)-.5));
 		ALBEDO=mix(base*(.63+.13*noise(vec2(along,p.y)*1.65))*(.74+.26*joints),vec3(.055,.081,.092),pane);
-		EMISSION=room*pane*rail*lit*(.29+.55*q.y)*(1.-.75*blinds);
+		EMISSION=night_windows*room*pane*rail*lit*(.29+.55*q.y)*(1.-.75*blinds);
 		ROUGHNESS=mix(.8,.23,pane);
 	} else { ALBEDO=mix(base,vec3(.64,.71,.81),.7); ROUGHNESS=.83; }
 }

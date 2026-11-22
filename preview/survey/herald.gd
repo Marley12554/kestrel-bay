@@ -23,10 +23,17 @@ func _ready() -> void:
 			material.set_shader_parameter("grain",preload("res://winter/frontage/white_sandstone_blocks_02_diffuse.jpg"))
 			material.set_shader_parameter("relief",preload("res://winter/frontage/white_sandstone_blocks_02_nor_gl.jpg"))
 			mesh.set_surface_override_material(i,material)
+		if stock.resource_name in ["Window","BrightGlass","CoolWindow","WarmWindow"]:
+			var pane := ShaderMaterial.new()
+			pane.shader = preload("res://survey/office_glass.gdshader")
+			pane.set_shader_parameter("pane_tint",stock.albedo_color)
+			var glow: Color = stock.emission if stock.emission_enabled else Color.BLACK
+			pane.set_shader_parameter("room_light",Vector3(glow.r,glow.g,glow.b))
+			mesh.set_surface_override_material(i,pane)
 		if stock.resource_name=="DisplayGlass":
 			var window := StandardMaterial3D.new()
 			window.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			window.albedo_color = Color(.42,.59,.64,.39)
+			window.albedo_color = Color(.34,.47,.50,.27)
 			window.roughness = .16
 			window.metallic = .29
 			window.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -48,13 +55,22 @@ func _ready() -> void:
 	collision.shape = shape
 	$StreetWalls.add_child(collision)
 	for entry: Dictionary in data.labels:
+		if entry.text == "kiosk crest":
+			var pose := Transform3D(Basis(Vector3.UP,entry.yaw),point(entry.at))
+			preload("res://signs/shop_sign.gd").mount(self,preload("res://signs/kiosk-crest.png"),pose,entry.height)
+			continue
+		if entry.text == "Santander":
+			var pose := Transform3D(Basis(Vector3.UP,entry.yaw),point(entry.at))
+			preload("res://signs/shop_sign.gd").mount(self,preload("res://signs/santander.svg"),pose,entry.height)
+			continue
 		var sign := Label3D.new()
 		sign.text = entry.text
 		sign.font_size = 96
 		sign.pixel_size = float(entry.height)/96.
 		sign.outline_size = 0
 		sign.double_sided = false
-		sign.modulate = Color("#fff2d7") if entry.text in ["1350","Santander"] else Color("#343330")
+		sign.modulate = Color("#fff2d7") if entry.text=="1350" else Color("#343330")
+		if entry.text == "wafels & dinges": sign.modulate = Color("#bf4834")
 		sign.position = point(entry.at)
 		sign.rotation.y = entry.yaw
 		add_child(sign)
