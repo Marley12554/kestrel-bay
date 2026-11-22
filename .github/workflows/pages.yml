@@ -48,7 +48,7 @@ jobs:
       - name: Check out the tested Fifth Avenue preview
         uses: actions/checkout@v6
         with:
-          ref: 3d15d7df306392953f05d872b3d3f31f48337818
+          ref: 40adf70409ba305062d42948c71e25019f5cfe41
           path: fifth-source
           sparse-checkout: |
             preview
