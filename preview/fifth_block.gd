@@ -25,7 +25,7 @@ const CAR_STEERING_FALLOFF_SPEED := 20.0
 const CAR_BRAKE_DECELERATION := 10.5
 const CAR_HIGH_SPEED_BRAKE_DECELERATION := 17.0
 const CAR_HANDBRAKE_DECELERATION := 5.5
-const CAR_MAX_DRIFT_ANGLE := 0.74
+const CAR_SLIDE_YAW_ACCEL := 5.8 # radians per second squared
 const CAR_LATERAL_GRIP := 10.5
 var reserve: Node3D
 var shapes: Dictionary = {}
@@ -61,6 +61,8 @@ var driver_speed := 0.0
 var steer := 0.0
 var steering_velocity := 0.0
 var drift_angle := 0.0
+var yaw_velocity := 0.0
+var sliding := false
 var long_accel := 0.0
 var side_accel := 0.0
 var shift_wait := 0.0
@@ -681,6 +683,8 @@ func _physics_process(dt: float) -> void:
 	update_cross_taxi(dt)
 
 func reset_steering() -> void:
+	sliding = false
+	yaw_velocity = 0.0
 	steer = 0.0
 	steering_velocity = 0.0
 
@@ -729,22 +733,41 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 	if steer != next_steer:
 		steering_velocity = 0.0
 	var drift_amount := smoothstep(3.5, 8.0, driver_speed) * absf(steering_input) if handbrake else 0.0
-	var previous_yaw:=parked.rotation.y
-	var yaw_rate := -driver_speed * tan(steer) / CAR_WHEELBASE * (1.0 + .64 * drift_amount)
-	parked.rotation.y+=yaw_rate*dt
-	if parked.test_move(parked.global_transform,Vector3.UP*.002):
-		parked.rotation.y=previous_yaw
-		yaw_rate=0.0
-	# Keep the direction of travel behind the chassis rotation while grip is reduced.
-	if drift_amount > 0.0:
-		var slip_limit := CAR_MAX_DRIFT_ANGLE * drift_amount * lerpf(1.0, .55, smoothstep(16.0, 40.0, steering_speed))
-		drift_angle = clampf(drift_angle - yaw_rate * dt, -slip_limit, slip_limit)
+	var previous_yaw := parked.rotation.y
+	var travel_yaw := previous_yaw + drift_angle
+	var target_yaw_rate := -driver_speed * tan(steer) / CAR_WHEELBASE * (1.0 + .64 * drift_amount)
+	sliding = sliding or drift_amount > 0.0 or not is_zero_approx(drift_angle)
+	var grip := CAR_LATERAL_GRIP * lerpf(1., .57, rear_snow_cover)
+	if sliding:
+		var path_turn_limit := grip * (.4 if handbrake else 1.) / maxf(3.,steering_speed)
+		if drift_amount > 0. and target_yaw_rate * drift_angle < 0.:
+			# At large slip the nose can keep turning, but front tire force
+			# saturates. Countersteer still has to arrest existing rotation.
+			var saturation := smoothstep(.48, .93, absf(drift_angle))
+			target_yaw_rate = lerpf(target_yaw_rate, signf(target_yaw_rate)*path_turn_limit, saturation)
+		elif not handbrake:
+			target_yaw_rate += clampf(drift_angle*2., -1., 1.)
+		yaw_velocity = move_toward(yaw_velocity, target_yaw_rate, CAR_SLIDE_YAW_ACCEL*lerpf(1.,.7,rear_snow_cover)*dt)
 	else:
-		# Returning grip removes lateral velocity over time. Countersteering
-		# brings the body back into line with the direction of travel sooner.
-		var recovery := CAR_LATERAL_GRIP * lerpf(1., .57, rear_snow_cover) / maxf(3.0, steering_speed)
-		var correction := maxf(0., yaw_rate * signf(drift_angle))
-		drift_angle = move_toward(drift_angle, 0.0, (recovery + correction) * dt)
+		yaw_velocity = target_yaw_rate
+	parked.rotation.y += yaw_velocity*dt
+	if parked.test_move(parked.global_transform,Vector3.UP*.002):
+		parked.rotation.y = previous_yaw
+		yaw_velocity = 0.
+	var body_turn := angle_difference(previous_yaw, parked.rotation.y)
+	if sliding:
+		# Preserve the previous world travel direction. A bounded lateral
+		# tire force can bend that path, even when the wheel changes sides.
+		var slip_before_grip := angle_difference(parked.rotation.y, travel_yaw)
+		var path_turn := grip * (.4 if handbrake else 1.) * dt / maxf(3.,steering_speed)
+		drift_angle = move_toward(slip_before_grip, 0., path_turn)
+		if drift_amount == 0. and is_zero_approx(drift_angle) and is_equal_approx(target_yaw_rate,yaw_velocity):
+			sliding = false
+		if steering_speed < .1:
+			sliding = false
+			drift_angle = 0.
+			yaw_velocity = 0.
+	side_accel = driver_speed * angle_difference(travel_yaw,previous_yaw+body_turn+drift_angle)/dt
 	var heading := (-parked.global_basis.z).rotated(Vector3.UP, drift_angle)
 	var travel := heading*driver_speed*dt
 	var hit:=parked.move_and_collide(travel)
@@ -754,6 +777,6 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 		var impact := clampf(absf(heading.dot(hit.get_normal())), 0.0, 1.0)
 		driver_speed *= 1.0 - impact
 		drift_angle *= 1.0 - impact
+		yaw_velocity *= 1.0 - impact
 	long_accel=clampf((driver_speed-previous)/dt,-15,8)
-	side_accel=driver_speed*yaw_rate
 	parked.velocity=heading*driver_speed

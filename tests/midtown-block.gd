@@ -264,6 +264,11 @@ func winter_stride_checks() -> void:
 		block.drive(1./60,-1,0)
 	check(block.backing and block.driver_speed<-1,"hold brake at rest to reverse")
 	var drive_sound = scene.drive_audio
+	for source in [drive_sound.motor, drive_sound.tires, drive_sound.skid, drive_sound.turn_signal]:
+		check(source is AudioStreamPlayer3D and source.is_inside_tree() and source.max_distance > 0.,
+			"each driving sound has a world position and distance attenuation")
+	check(drive_sound.skid.position.z > 1. and drive_sound.tires.position.z < -1.,
+		"rolling and rear slip originate at distinct axle positions")
 	for tick in 120:
 		drive_sound.update(-4.0, -1.0, 0.0, 1.0 / 60.0)
 	check(drive_sound.motor.playing and drive_sound.tires.playing, "driving activates rolling and motor audio")
@@ -278,13 +283,13 @@ func winter_stride_checks() -> void:
 		drive_sound.update(13.4, 1.0, 0.0, 1.0 / 60.0)
 	var city_motor_pitch: float = drive_sound.motor.pitch_scale
 	check(drive_sound.forward_warning.volume_db < -60.0, "the pedestrian alert fades above city speeds")
-	check(drive_sound.motor.volume_db > drive_sound.tires.volume_db + 10.0,
-		"sedan motor thrum leads the tire noise under acceleration")
+	var loaded_motor_db: float = drive_sound.motor.volume_db
+	check(loaded_motor_db > -25. and drive_sound.tires.volume_db > -35., "motor and rolling tires are audible under load")
 	for tick in 60:
 		drive_sound.update(50.0, 0.0, 30.0, 1.0 / 60.0)
 	check(drive_sound.motor.pitch_scale > city_motor_pitch + .4
-		and drive_sound.motor.volume_db > drive_sound.tires.volume_db + 2.0,
-		"motor pitch rises at speed and the thrum stays audible during tire scrub")
+		and drive_sound.motor.volume_db < drive_sound.tires.volume_db - 8. and drive_sound.motor.volume_db < loaded_motor_db - 5.,
+		"speed raises motor pitch while road noise leads during highway coasting")
 	movement_key(KEY_LEFT, true)
 	movement_key(KEY_LEFT, false)
 	winter.update_sedan_lights(0.0)
@@ -333,7 +338,7 @@ func winter_stride_checks() -> void:
 	winter.update_sedan_lights(1.0 / 60.0)
 	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 1 and is_zero_approx(block.steer),
 		"Right arrow flashes the right indicators without steering")
-	var signal_sound: AudioStreamPlayer = drive_sound.turn_signal
+	var signal_sound: AudioStreamPlayer3D = drive_sound.turn_signal
 	check(signal_sound.playing and signal_sound.stream == preload("res://audio/turn_signal.wav"),
 		"the signal clicks when the indicator turns on")
 	movement_key(KEY_RIGHT, true, true)
@@ -612,13 +617,39 @@ func winter_stride_checks() -> void:
 	# Isolate grip recovery at the same speed and starting slide angle.
 	var residual := []
 	for cover in [0.,1.]:
+		block.reset_steering()
 		sedan.position = Vector3(81,1000,-31)
 		block.driver_speed = 15.
 		block.drift_angle = .4
 		block.rear_snow_cover = cover
 		for tick in 12: block.drive(1./60,0.,0.)
 		residual.append(block.drift_angle)
-	check(residual[1] > residual[0]+.04, "rear tires regain sideways grip more slowly on packed snow")
+	check(residual[1] > residual[0]+.04, "rear tires regain sideways grip more slowly on packed snow (dry %.3f, packed %.3f)" % residual)
+	# Reverse the demanded steer while sliding. Both the body rotation and
+	# the world velocity must survive input frames, including a neutral frame.
+	for direction in [-1., 1.]:
+		for hz: int in [30,60,120]:
+			var dt := 1./hz
+			sedan.position = Vector3(81,1000,-31)
+			sedan.rotation.y = 0.
+			block.reset_steering()
+			block.drift_angle = 0.
+			block.driver_speed = 40.*scene.METRES_PER_SECOND_PER_MPH
+			block.rear_snow_cover = 0.
+			for tick in roundi(.6*hz): block.drive(dt,0.,direction,true,true)
+			var reverse_time := 0.
+			var max_lateral_accel := 0.
+			for tick in hz:
+				var before := sedan.velocity
+				block.drive(dt,0.,0. if tick==0 else -direction,true,true)
+				var bend := absf(before.signed_angle_to(sedan.velocity,Vector3.UP))
+				max_lateral_accel = maxf(max_lateral_accel, bend*absf(block.driver_speed)/dt)
+				if reverse_time == 0. and block.yaw_velocity*direction > 0.:
+					reverse_time = (tick+1)*dt
+			check(reverse_time > .20 and reverse_time < .8 and max_lateral_accel <= block.CAR_LATERAL_GRIP*.41,
+				"%d Hz countersteer takes %.2f s and respects tire grip" % [hz,reverse_time])
+	block.reset_steering()
+	block.drift_angle = 0.
 	curb_suspension_checks(scene, winter)
 	await bumper_contact_checks(scene)
 	scene.queue_free()
