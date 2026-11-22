@@ -56,7 +56,7 @@ func setup_loop(player: AudioStreamPlayer3D, clip: AudioStreamWAV) -> void:
 	player.volume_db = MUTED_DB
 	add_child(player)
 
-func update(speed: float, cornering: float, dt: float, slip_angle: float = 0.0, snow_cover: float = 0.0) -> void:
+func update(speed: float, cornering: float, dt: float, reversing: bool, slip_angle: float = 0.0, snow_cover: float = 0.0) -> void:
 	if not tires.playing:
 		tires.play()
 		forward_warning.play()
@@ -73,11 +73,13 @@ func update(speed: float, cornering: float, dt: float, slip_angle: float = 0.0, 
 
 	update_scuff(road_speed * absf(sin(slip_angle)), cornering, snow_cover, dt)
 
-	# Model 3 exterior speaker spectrum, fading out at about 25 mph.
-	var forward_gain := .045 * smoothstep(.02, .8, speed) * (1.0 - smoothstep(4.0, 11.18, speed))
-	var reverse_gain := .32 * smoothstep(.02, .8, -speed)
-	forward_warning.volume_db = lerpf(forward_warning.volume_db, linear_to_db(maxf(.00025, forward_gain)), blend)
-	reverse_warning.volume_db = lerpf(reverse_warning.volume_db, linear_to_db(maxf(.00025, reverse_gain)), blend)
+	# The exterior speaker stays active even when the brake holds the car at rest.
+	var forward_gain := lerpf(.027, .085, smoothstep(0., 9., road_speed)) * (1. - smoothstep(9., 11.18, road_speed))
+	var reverse_gain := lerpf(.085, .36, smoothstep(0., 5., road_speed))
+	var front_db := linear_to_db(maxf(.00025, forward_gain)) if not reversing else MUTED_DB
+	var rear_db := linear_to_db(reverse_gain) if reversing else MUTED_DB
+	forward_warning.volume_db = lerpf(forward_warning.volume_db, front_db, blend)
+	reverse_warning.volume_db = lerpf(reverse_warning.volume_db, rear_db, blend)
 
 func update_scuff(slip_speed: float, cornering: float, snow: float, dt: float) -> void:
 	var intensity := slip_speed / (4. + slip_speed)

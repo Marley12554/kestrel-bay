@@ -35,7 +35,8 @@ https://freesound.org/people/bmacphail/sounds/795866/
 The short breakaway chirp is edited from RutgerMuller's "Tires Squeaking.aif" (CC0).
 https://freesound.org/people/RutgerMuller/sounds/104026/
 
-The drivetrain and pedestrian-warning loops are original
-synthesized audio. The Model 3 forward and reverse warning tones were
-matched by frequency analysis of Tesla's Normal Operating Sounds examples.
+The Model 3 pedestrian warnings are trimmed and crossfaded excerpts from
+Tesla's official Drive and Reverse examples. Source recordings by Tesla.
 https://service.tesla.com/docs/Public/diy/model3/en_us/GUID-AA58ED67-9C93-4EE6-8B19-9FDABE018787.html
+Drive: https://service.tesla.com/docs/Public/om_media/pws_drive_forward.mp3
+Reverse: https://service.tesla.com/docs/Public/om_media/pedestrian_speaker.mp3

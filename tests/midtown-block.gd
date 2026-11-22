@@ -269,26 +269,41 @@ func winter_stride_checks() -> void:
 			"each driving sound has a world position and distance attenuation")
 	check(drive_sound.scuff_voices[0].position.z > 1. and drive_sound.tires.position.z < -1.,
 		"rolling and rear slip originate at distinct axle positions")
+	# Stop in gear through the normal controller, including its zero-speed gear hold.
+	block.driver_speed = 0.
+	block.backing = true
+	for tick in 120: scene.drive_from_input(1./60.)
+	var stopped_reverse_db: float = drive_sound.reverse_warning.volume_db
+	check(stopped_reverse_db > -32. and drive_sound.forward_warning.volume_db < -60.,
+		"stopped in Reverse keeps the rear warning audible")
+	for tick in 120: drive_sound.update(-2., 0., 1./60., true)
+	var creeping_reverse_db: float = drive_sound.reverse_warning.volume_db
 	for tick in 120:
-		drive_sound.update(-4.0, 0.0, 1.0 / 60.0)
+		drive_sound.update(-4.0, 0.0, 1.0 / 60.0, true)
 	check(drive_sound.tires.playing, "driving activates rolling audio")
+	check(creeping_reverse_db > stopped_reverse_db + 3. and drive_sound.reverse_warning.volume_db > creeping_reverse_db + 3.,
+		"reverse warning grows through creeping and faster backing")
 	check(drive_sound.reverse_warning.playing and drive_sound.reverse_warning.volume_db > -10.0
 		and drive_sound.forward_warning.volume_db < -60.0, "reverse plays the Model 3 warning from the rear speaker")
+	block.backing = false
+	for tick in 120: scene.drive_from_input(1./60.)
+	check(drive_sound.forward_warning.volume_db > -35. and drive_sound.reverse_warning.volume_db < -60.,
+		"stopped in Drive keeps only the forward warning audible")
 	for tick in 120:
-		drive_sound.update(4.0, 0.0, 1.0 / 60.0)
+		drive_sound.update(4.0, 0.0, 1.0 / 60.0, false)
 	check(drive_sound.forward_warning.playing and drive_sound.forward_warning is AudioStreamPlayer3D and drive_sound.get_parent() == block.parked
 		and drive_sound.forward_warning.volume_db > -30. and drive_sound.forward_warning.volume_db < drive_sound.tires.volume_db - 8.
 		and drive_sound.reverse_warning.volume_db < -60.0, "low-speed forward driving plays the Model 3 forward warning")
 	for tick in 60:
-		drive_sound.update(13.4, 0., 1./60.)
+		drive_sound.update(13.4, 0., 1./60., false)
 	check(drive_sound.forward_warning.volume_db < -60. and drive_sound.tires.volume_db > -18.,
 		"rolling sound carries through the low-speed warning fade")
-	for tick in 60: drive_sound.update(14., 3., 1./60., .09)
+	for tick in 60: drive_sound.update(14., 3., 1./60., false, .09)
 	var mild_gain: float = drive_sound.scuff_gain
 	var mild_pitch: float = drive_sound.scuff_voices[0].pitch_scale
-	for tick in 60: drive_sound.update(14., 3., 1./60., .35)
+	for tick in 60: drive_sound.update(14., 3., 1./60., false, .35)
 	var medium_gain: float = drive_sound.scuff_gain
-	for tick in 60: drive_sound.update(14., 3., 1./60., .8)
+	for tick in 60: drive_sound.update(14., 3., 1./60., false, .8)
 	var hard_gain: float = drive_sound.scuff_gain
 	check(mild_gain > 0. and medium_gain > mild_gain * 1.5 and hard_gain > medium_gain * 1.2
 		and drive_sound.scuff_voices[0].pitch_scale > mild_pitch + .15, "increasing slip continuously raises scuff level and pitch")
@@ -296,16 +311,16 @@ func winter_stride_checks() -> void:
 	var continuous := true
 	for tick in 900:
 		var previous_voice: int = drive_sound.active_voice
-		drive_sound.update(14., 3., 1./60., .8)
+		drive_sound.update(14., 3., 1./60., false, .8)
 		if previous_voice != drive_sound.active_voice: switches += 1
 		var power := 0.
 		for voice in drive_sound.scuff_voices:
 			if voice.playing: power += pow(db_to_linear(voice.volume_db), 2.)
 		continuous = continuous and absf(sqrt(power) - hard_gain) < .002
 	check(switches >= 4 and continuous, "sustained slip crosses recording segments without a gain dip or restart")
-	for tick in 120: drive_sound.update(14., 3., 1./60., .8, 1.)
+	for tick in 120: drive_sound.update(14., 3., 1./60., false, .8, 1.)
 	check(drive_sound.scuff_gain < hard_gain * .6, "the same slide on snow has softer tire contact")
-	for tick in 120: drive_sound.update(14., 0., 1./60.)
+	for tick in 120: drive_sound.update(14., 0., 1./60., false)
 	check(not drive_sound.scuff_voices[0].playing and not drive_sound.scuff_voices[1].playing,
 		"both scuff voices fade out after traction returns")
 	movement_key(KEY_LEFT, true)

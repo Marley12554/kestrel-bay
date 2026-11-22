@@ -274,7 +274,7 @@ func drive_from_input(dt: float) -> void:
 		signal_turned = signal_turned or (turn_angle > deg_to_rad(28.) and not block.backing)
 		if signal_turned and absf(turn) < .1 and absf(block.steer) < .035:
 			turn_signal_direction = 0
-	drive_audio.update(block.driver_speed, block.side_accel, dt, block.drift_angle, block.rear_snow_cover)
+	drive_audio.update(block.driver_speed, block.side_accel, dt, block.backing, block.drift_angle, block.rear_snow_cover)
 
 func fly(dir: Vector3, elapsed: float) -> void:
 	var motion := camera.global_basis.x * dir.x + camera.global_basis.z * dir.z + Vector3.UP * dir.y
