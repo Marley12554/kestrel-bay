@@ -25,15 +25,17 @@ const CAR_STEERING_FALLOFF_SPEED := 20.0
 const CAR_BRAKE_DECELERATION := 10.5
 const CAR_HIGH_SPEED_BRAKE_DECELERATION := 17.0
 const CAR_HANDBRAKE_DECELERATION := 5.5
-const CAR_MAX_DRIFT_ANGLE := 0.49
-const CAR_DRIFT_RECOVERY_RATE := 2.2
+const CAR_MAX_DRIFT_ANGLE := 0.74
+const CAR_LATERAL_GRIP := 10.5
 var reserve: Node3D
 var shapes: Dictionary = {}
 var batches: Dictionary = {}
 var context := FRONT
 var signal_materials := {}
 var pedestrian_materials := {}
+var rear_snow_cover := 0.0
 var night_lamps: Array[Transform3D] = []
+var lit_lamp_sites := {}
 const SIDEWALK_Y := .1524
 const HERO_LAMP := Vector2(91.05,6.35)
 const WALK_ICON := preload("res://signals/walk.svg")
@@ -319,8 +321,9 @@ func add_lamp_site(site: Vector2, yaw: float, illuminate: bool=false) -> void:
 	var foot := Vector3(site.x,SIDEWALK_Y,site.y)
 	var frame := Transform3D(Basis(Vector3.UP,yaw),foot)
 	solid(foot+Vector3.UP*3.1,Vector3(.29,6.2,.29)).add_to_group(&"streetlight_posts")
-	if illuminate and get_parent().has_node("Winter"):
+	if get_parent().has_node("Winter"):
 		night_lamps.append(frame)
+		if illuminate: lit_lamp_sites[site] = true
 		return
 	context=frame
 	part(Vector3.UP*3.1,Vector3(.13,6.2,.13),BASE)
@@ -700,7 +703,7 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 			smoothstep(12.0, 38.0, speed))
 		driver_speed = move_toward(previous, 0.0, brake_strength * absf(throttle) * dt)
 	elif handbrake:
-		driver_speed = move_toward(previous, 0.0, CAR_HANDBRAKE_DECELERATION * dt)
+		driver_speed = move_toward(previous, 0.0, (CAR_HANDBRAKE_DECELERATION + 2.7 * absf(sin(drift_angle))) * dt)
 	elif absf(throttle)>.001:
 		var limit := CAR_MAX_FORWARD_SPEED if throttle>0 else CAR_MAX_REVERSE_SPEED
 		var force := (5.1 if throttle>0 else 2.7)*absf(throttle)
@@ -727,7 +730,7 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 		steering_velocity = 0.0
 	var drift_amount := smoothstep(3.5, 8.0, driver_speed) * absf(steering_input) if handbrake else 0.0
 	var previous_yaw:=parked.rotation.y
-	var yaw_rate := -driver_speed * tan(steer) / CAR_WHEELBASE * (1.0 + .20 * drift_amount)
+	var yaw_rate := -driver_speed * tan(steer) / CAR_WHEELBASE * (1.0 + .64 * drift_amount)
 	parked.rotation.y+=yaw_rate*dt
 	if parked.test_move(parked.global_transform,Vector3.UP*.002):
 		parked.rotation.y=previous_yaw
@@ -735,9 +738,13 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 	# Keep the direction of travel behind the chassis rotation while grip is reduced.
 	if drift_amount > 0.0:
 		var slip_limit := CAR_MAX_DRIFT_ANGLE * drift_amount * lerpf(1.0, .55, smoothstep(16.0, 40.0, steering_speed))
-		drift_angle = clampf(drift_angle - yaw_rate * dt * .85, -slip_limit, slip_limit)
+		drift_angle = clampf(drift_angle - yaw_rate * dt, -slip_limit, slip_limit)
 	else:
-		drift_angle = move_toward(drift_angle, 0.0, CAR_DRIFT_RECOVERY_RATE * dt)
+		# Returning grip removes lateral velocity over time. Countersteering
+		# brings the body back into line with the direction of travel sooner.
+		var recovery := CAR_LATERAL_GRIP * lerpf(1., .57, rear_snow_cover) / maxf(3.0, steering_speed)
+		var correction := maxf(0., yaw_rate * signf(drift_angle))
+		drift_angle = move_toward(drift_angle, 0.0, (recovery + correction) * dt)
 	var heading := (-parked.global_basis.z).rotated(Vector3.UP, drift_angle)
 	var travel := heading*driver_speed*dt
 	var hit:=parked.move_and_collide(travel)

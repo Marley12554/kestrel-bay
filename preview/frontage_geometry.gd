@@ -141,6 +141,6 @@ func assemble(parent: Node3D = null) -> void:
 				if bits[1]=="box":
 					if not edge_mesh: edge_mesh=bevel_block(.014,.014)
 					multi.mesh=edge_mesh
-		if bits[0]=="glass": view.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if bits[0] in ["glass","entry_glass"]: view.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(view)
 	pieces.clear()

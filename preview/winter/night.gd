@@ -128,6 +128,14 @@ func dress_street() -> void:
 		probe.box_projection = true
 		add_child(probe)
 		probe.position = Vector3(85,5,7)
+		# Capture the opposite curb from the Reserve entrance. The sedan's probe
+		# is centered half a block away and has a different reflection origin.
+		var entry_probe := ReflectionProbe.new()
+		block.reserve.add_child(entry_probe)
+		entry_probe.position = Vector3(block.reserve.DRUM_X,2.2,.8)
+		entry_probe.size = Vector3(9.,6.,9.)
+		entry_probe.max_distance = 75.
+		entry_probe.box_projection = false
 	city.walker.position = to_global(Vector3(94.0,.15,23.5))
 	city.walker.position.y = walking_height(city.walker.global_position)
 	city.camera.position = city.walker.position + Vector3.UP * 1.68
@@ -386,6 +394,8 @@ func lamp(site: Transform3D, hero: bool) -> void:
 	shade.add_child(lens)
 	lens.scale=Vector3(.83,.35,.78)
 	lens.position.y=-.105
+	shade.add_to_group(&"streetlight_heads")
+	if not block.lit_lamp_sites.has(Vector2(foot.x,foot.z)): return
 	var light := SpotLight3D.new()
 	add_child(light)
 	light.position=tip-Vector3.UP*.24
@@ -483,7 +493,7 @@ func add_controls() -> void:
 	hint.position=Vector2(18,get_viewport().get_visible_rect().size.y-39)
 	hint.add_theme_font_size_override("font_size",14)
 	hint.add_theme_constant_override("outline_size",4)
-	hint.text="WASD  Move / drive     Q / E or ← / →  Signal     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Enter · Hold E  Exit     F  Freecam     B  Camera motion     H  Hide"
+	hint.text="WASD  Move / drive     ← / →  Signal     Space  Jump     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Interact / exit     F  Freecam     B  Camera motion     H  Hide"
 	get_viewport().size_changed.connect(func(): hint.position.y=get_viewport().get_visible_rect().size.y-39)
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -634,6 +644,7 @@ func sample_wheel_support(car: CharacterBody3D) -> void:
 		pack.press_strip(start,bumper,.119,underside_y,dirty)
 	pack.flush_pressure(dirty)
 	previous_contacts = contacts
+	block.rear_snow_cover = 0.0
 	for i in wheel_mounts.size():
 		var mount := wheel_mounts[i]
 		var start := car.to_global(mount)
@@ -646,7 +657,9 @@ func sample_wheel_support(car: CharacterBody3D) -> void:
 		var surface := pack.surface_at(contacts[i])
 		var packed_lift := 0.
 		if surface.x >= 0 and surface.y > .001:
-			packed_lift = pack.SUPPORT_Y[int(surface.x)] + pack.remaining(contacts[i],surface) - road_ride_height
+			var remaining := pack.remaining(contacts[i],surface)
+			packed_lift = pack.SUPPORT_Y[int(surface.x)] + remaining - road_ride_height
+			if i >= 2: block.rear_snow_cover += .5 * smoothstep(.002,.045,remaining)
 		wheel_lift[i] = maxf(hard_lift, packed_lift)
 
 func update_sedan_suspension(dt: float) -> void:

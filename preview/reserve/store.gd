@@ -143,7 +143,8 @@ func install_revolving_entrance() -> void:
 	window_span(DRUM_X + opening_half, DOOR_X - DOOR_WIDTH * .5)
 	revolving.name = "ReserveRevolvingDoor"
 	var glass := ShaderMaterial.new()
-	glass.shader = preload("res://winter/door_glass.gdshader")
+	glass.shader = preload("res://reserve/entrance_glass.gdshader")
+	finishes["entry_glass"] = glass
 	revolving.finishes["rail"] = finishes["bronze"]
 	revolving.finishes["door_glass"] = glass
 	revolving.traversable = true
@@ -183,7 +184,7 @@ func entrance_leaf() -> void:
 	door.name="FifthAvenueDoor"
 	door.position=Vector3(DOOR_X-DOOR_WIDTH*.5,0,.22)
 	var w:=DOOR_WIDTH-.06
-	pane(w*.5,1.69,0,w-.095,2.87)
+	piece("entry_glass", Vector3(w*.5,1.69,0), Vector3(w-.095,2.87,1), Vector3.ZERO, "pane")
 	for x in [.025,w-.025]:
 		piece("bronze",Vector3(x,1.67,0),Vector3(.055,3.01,.08))
 	for y in [.24,3.11]:
@@ -193,6 +194,16 @@ func entrance_leaf() -> void:
 			bar(Vector3(w-.14,y,0),Vector3(w-.14,y,.135*sign_z),.029,"brass")
 		bar(Vector3(w-.14,1.,.135*sign_z),Vector3(w-.14,1.48,.135*sign_z),.035,"brass")
 	assemble(door)
+	# The ceramic lettering is printed onto the moving leaf at the handle.
+	var mark := Label3D.new()
+	mark.text = "PUSH"
+	mark.double_sided = false
+	mark.font_size = 64
+	mark.pixel_size = .00068
+	mark.outline_size = 0
+	mark.modulate = Color(.83,.87,.85,.85)
+	mark.position = Vector3(w-.22,1.56,.008)
+	door.add_child(mark)
 	var box:=BoxShape3D.new()
 	box.size=Vector3(w,3.,.08)
 	var shape:=CollisionShape3D.new()

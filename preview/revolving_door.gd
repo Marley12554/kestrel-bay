@@ -103,6 +103,7 @@ func fixed_screen(side: int) -> void:
 			var a:=side*PI/2-HALF_ARC+2.*HALF_ARC*step/24.
 			var outward:=Vector3(sin(a),0,cos(a))
 			for y: float in [band[0],band[1]]:
+				surface.set_uv(Vector2(step/24., (y-band[0])/(band[1]-band[0])))
 				surface.set_normal(outward)
 				surface.add_vertex(outward*RADIUS+Vector3.UP*y)
 			if step<24:

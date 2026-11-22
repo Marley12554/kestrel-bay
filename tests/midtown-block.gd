@@ -150,6 +150,19 @@ func winter_stride_checks() -> void:
 	var displacement: Vector3 = scene.walker.position - start
 	check(displacement.dot(heading)>12.5 and displacement.cross(heading).length()<.02, "first six seconds of walking clear the parked car")
 	var winter = scene.get_node("Winter")
+	for tick in 24: scene.walk(Vector3.ZERO,false,1./60)
+	var takeoff: float = scene.walker.position.y
+	movement_key(KEY_SPACE,true)
+	movement_key(KEY_SPACE,false)
+	var apex := 0.
+	for tick in 60:
+		scene.walk(Vector3.ZERO,false,1./60)
+		apex = maxf(apex, scene.walker.position.y - takeoff)
+		if tick == 15:
+			movement_key(KEY_SPACE,true)
+			movement_key(KEY_SPACE,false)
+	check(apex > .53 and apex < .60 and not scene.airborne and absf(scene.walker.position.y-takeoff)<.01,
+		"Space jumps about 22 inches, ignores an airborne second press and lands on snow")
 	var hood: MeshInstance3D = winter.chassis.find_child("Object_11", true, false)
 	var paint := hood.get_surface_override_material(0) as StandardMaterial3D
 	check(paint.albedo_color == Color("#f5f5f2"), "sedan body has white paint")
@@ -255,12 +268,12 @@ func winter_stride_checks() -> void:
 		drive_sound.update(-4.0, -1.0, 0.0, 1.0 / 60.0)
 	check(drive_sound.motor.playing and drive_sound.tires.playing, "driving activates rolling and motor audio")
 	check(drive_sound.reverse_warning.playing and drive_sound.reverse_warning.volume_db > -10.0
-		and drive_sound.forward_warning.volume_db < -60.0, "reverse plays the recorded Tesla backing whine")
+		and drive_sound.forward_warning.volume_db < -60.0, "reverse plays the Model 3 warning from the rear speaker")
 	for tick in 120:
 		drive_sound.update(4.0, 1.0, 0.0, 1.0 / 60.0)
 	check(drive_sound.forward_warning.playing and drive_sound.forward_warning is AudioStreamPlayer3D and drive_sound.get_parent() == block.parked
 		and drive_sound.forward_warning.volume_db > -16.0 and drive_sound.forward_warning.volume_db < -12.0
-		and drive_sound.reverse_warning.volume_db < -60.0, "low-speed forward driving plays its own Tesla recording")
+		and drive_sound.reverse_warning.volume_db < -60.0, "low-speed forward driving plays the Model 3 forward warning")
 	for tick in 60:
 		drive_sound.update(13.4, 1.0, 0.0, 1.0 / 60.0)
 	var city_motor_pitch: float = drive_sound.motor.pitch_scale
@@ -332,7 +345,7 @@ func winter_stride_checks() -> void:
 	winter.update_sedan_lights(0.4)
 	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 0, "the indicator blinks off after releasing Right arrow")
 	check(signal_sound.playing and signal_sound.stream == preload("res://audio/turn_signal_off.wav"),
-		"the signal makes a lower click when the indicator turns off")
+		"the indicator uses the recorded relay release on its off stroke")
 	signal_sound.stop()
 	winter.update_sedan_lights(0.4)
 	check(winter.signal_lenses.get_shader_parameter("flashing_side") == 1, "the indicator keeps blinking after releasing Right arrow")
@@ -360,14 +373,10 @@ func winter_stride_checks() -> void:
 	check(not signal_sound.playing, "cancelling stops new signal clicks")
 	movement_key(KEY_Q,true)
 	movement_key(KEY_Q,false)
-	check(scene.turn_signal_direction == -1, "Q selects the left signal")
+	check(scene.turn_signal_direction == 0, "Q leaves the indicators alone")
 	movement_key(KEY_E,true)
 	movement_key(KEY_E,false)
-	check(scene.driving and scene.turn_signal_direction == 1, "a short E press signals right and keeps driving")
-	movement_key(KEY_E,true)
-	for tick in 32: scene._physics_process(1./60)
-	movement_key(KEY_E,false)
-	check(not scene.driving and scene.turn_signal_direction == 0, "holding E at rest parks the car")
+	check(not scene.driving and scene.turn_signal_direction == 0, "E at rest parks without flashing a signal")
 	movement_key(KEY_E,true)
 	movement_key(KEY_E,false)
 	for turn_key: Key in [KEY_D, KEY_A]:
@@ -446,7 +455,7 @@ func winter_stride_checks() -> void:
 		var heading_change := absf(angle_difference(start_yaw, sedan.global_rotation.y))
 		var camera_change := absf(angle_difference(start_yaw, scene.orbit_yaw))
 		var lateral_distance := (sedan.position - start_position).dot(right) * turn_direction
-		check(lateral_distance > 2.0 and lateral_distance < 5.0, "%d mph keyboard turn shifts %.2f m in half a second" % [mph, lateral_distance])
+		check(lateral_distance > 1.1 and lateral_distance < 1.85, "%d mph keyboard turn shifts %.2f m in half a second" % [mph, lateral_distance])
 		check(camera_change > heading_change * .17 and camera_change < heading_change * .70, "%d mph camera follows a sustained turn while showing chassis rotation" % mph)
 
 	# A digital tap should provide a lane trim, including the residual wheel
@@ -467,8 +476,8 @@ func winter_stride_checks() -> void:
 			for tick in 60: scene._physics_process(1./60.)
 			var degrees := absf(rad_to_deg(angle_difference(trim_heading, sedan.global_rotation.y)))
 			var feet := absf((sedan.global_position-release_position).dot(lateral)) * 3.28084
-			var expected_degrees := .30 if ticks==3 else .81
-			check(absf(degrees-expected_degrees)<.15 and feet<3.2, "130 mph %d-tick trim: %.2f degrees, %.2f ft" % [ticks,degrees,feet])
+			var expected_degrees := .14 if ticks==3 else .29
+			check(absf(degrees-expected_degrees)<.15 and feet<1.8, "130 mph %d-tick trim: %.2f degrees, %.2f ft" % [ticks,degrees,feet])
 
 	# Switch directions at speed and let the wheels return to center.
 	sedan.position = Vector3(81, 1000, -31)
@@ -532,7 +541,8 @@ func winter_stride_checks() -> void:
 		scene._physics_process(1.0 / 60.0)
 	movement_key(KEY_D, false)
 	check(absf(block.driver_speed / scene.METRES_PER_SECOND_PER_MPH - 92.0) < .2, "S slows from 130 to 92 mph in one second with W held")
-	check(angle_difference(brake_start_yaw, sedan.rotation.y) < deg_to_rad(-40.0), "holding D still steers decisively while braking from 130 mph")
+	var braking_turn := -rad_to_deg(angle_difference(brake_start_yaw, sedan.rotation.y))
+	check(braking_turn > 20. and braking_turn < 43., "a held turn under braking at 130 mph changes heading %.1f degrees" % braking_turn)
 	check(absf(angle_difference(manual_heading, scene.orbit_yaw)) < .002, "after mouse look the view holds its world heading while the car turns")
 	for tick in 360:
 		scene._physics_process(1.0 / 60.0)
@@ -576,16 +586,18 @@ func winter_stride_checks() -> void:
 		scene._physics_process(1.0 / 60.0)
 		var motion := (sedan.global_position - previous_position).normalized()
 		var slip := (-sedan.global_basis.z).signed_angle_to(motion, Vector3.UP) * direction
-		check(rad_to_deg(slip) > 12.0 and rad_to_deg(slip) < 30.0,
+		check(rad_to_deg(slip) > 19.0 and rad_to_deg(slip) < 45.0,
 			"Shift+%s produces a %.1f-degree slide at %d mph" % [OS.get_keycode_string(turn_key), rad_to_deg(slip), mph])
-		check(absf(block.driver_speed - (start_speed - 2.2)) < .05 and scene.brake_pressed,
+		check(block.driver_speed < start_speed - 2.2 and block.driver_speed > start_speed - 3.4 and scene.brake_pressed,
 			"the handbrake slows the sedan and lights the brake lamps while W is held")
 		movement_key(KEY_SHIFT, false)
 		movement_key(turn_key, false)
-		for tick in 18:
+		scene._physics_process(1.0 / 60.0)
+		check(absf(block.drift_angle) > .1 and drive_sound.skid.playing, "slip and tire scrub persist into grip recovery")
+		for tick in 180:
 			scene._physics_process(1.0 / 60.0)
 		check(is_zero_approx(block.drift_angle) and sedan.velocity.normalized().dot(-sedan.global_basis.z) > .999
-			and not scene.brake_pressed, "releasing Shift restores grip within 0.3 seconds")
+			and not scene.brake_pressed, "releasing Shift progressively restores grip")
 		movement_key(KEY_W, false)
 
 	sedan.position = Vector3(81, 1000, -31)
@@ -597,6 +609,16 @@ func winter_stride_checks() -> void:
 	check(absf(block.driver_speed - 5.8) < .05 and is_zero_approx(block.drift_angle)
 		and is_equal_approx(sedan.rotation.y, straight_yaw), "Shift alone brakes in a straight line")
 	movement_key(KEY_SHIFT, false)
+	# Isolate grip recovery at the same speed and starting slide angle.
+	var residual := []
+	for cover in [0.,1.]:
+		sedan.position = Vector3(81,1000,-31)
+		block.driver_speed = 15.
+		block.drift_angle = .4
+		block.rear_snow_cover = cover
+		for tick in 12: block.drive(1./60,0.,0.)
+		residual.append(block.drift_angle)
+	check(residual[1] > residual[0]+.04, "rear tires regain sideways grip more slowly on packed snow")
 	curb_suspension_checks(scene, winter)
 	await bumper_contact_checks(scene)
 	scene.queue_free()
@@ -731,7 +753,7 @@ func snow_contact_checks(scene, winter) -> void:
 func street_fixture_checks(block, pack) -> void:
 	var lamps:=get_nodes_in_group(&"streetlight_posts")
 	var posts:=get_nodes_in_group(&"traffic_posts")
-	check(lamps.size()==22 and posts.size()==8,"winter renders one set of streetlights and four traffic posts per junction")
+	check(lamps.size()==22 and get_nodes_in_group(&"streetlight_heads").size()==lamps.size() and posts.size()==8,"winter renders one set of streetlights and four traffic posts per junction")
 	var supported:=true
 	for post: Node3D in lamps+posts:
 		var base:=Vector2(post.position.x,post.position.z)

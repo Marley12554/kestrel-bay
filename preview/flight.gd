@@ -8,7 +8,11 @@ var brake_pressed := false
 var turn_signal_direction := 0
 var signal_start_yaw := 0.0
 var signal_turned := false
-var exit_hold := -1.0
+var airborne := false
+var jump_requested := false
+var vertical_speed := 0.0
+const JUMP_SPEED := 3.35
+const GRAVITY := 9.81
 var previous_steer_key := 0
 var steer_key_seconds := 0.0
 var can_enter_car := false
@@ -83,7 +87,7 @@ func _resize() -> void:
 func _release() -> void:
 	_reset_clock()
 	look_finger = -1
-	exit_hold = -1.0
+	jump_requested = false
 	if not web:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -105,17 +109,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		set_motion_level((motion_setting + 2) % 3)
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F:
 		toggle_body()
-	elif event is InputEventKey and not event.echo and event.physical_keycode == KEY_E:
-		if driving:
-			if event.pressed:
-				exit_hold = 0.0
-			elif exit_hold >= 0.0:
-				select_signal(1)
-				exit_hold = -1.0
-		elif event.pressed and not body.visible:
-			interact()
-	elif driving and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_Q, KEY_LEFT, KEY_RIGHT]:
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E:
+		if not body.visible: interact()
+	elif driving and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_LEFT, KEY_RIGHT]:
 		select_signal(1 if event.physical_keycode == KEY_RIGHT else -1)
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_SPACE:
+		if not driving and not body.visible: jump_requested = true
 	elif event is InputEventScreenTouch:
 		if event.pressed and look_finger == -1:
 			look_finger = event.index
@@ -177,6 +176,9 @@ func _process(_dt: float) -> void:
 	var now := Time.get_ticks_usec()
 	var elapsed := (now - last_move_usec) / 1_000_000.0 if last_move_usec != 0 else 0.0
 	last_move_usec = now
+	if web and bool(web.midtownJump):
+		web.midtownJump = false
+		if not driving and not body.visible: jump_requested = true
 	if web and int(web.midtownSignal) != 0:
 		if driving: select_signal(signi(int(web.midtownSignal)))
 		web.midtownSignal = 0
@@ -255,9 +257,9 @@ func drive_from_input(dt: float) -> void:
 		steer_key_seconds += dt
 		# A digital tap trims the line at highway speed. Holding the same
 		# direction builds to full lock. Handbraking keeps its immediate response.
-		var highway := smoothstep(40., 85., absf(block.driver_speed) / METRES_PER_SECOND_PER_MPH)
-		var held := smoothstep(0., .38, steer_key_seconds)
-		var strength := 1.0 if handbrake else lerpf(1.0, lerpf(.10, 1., held), highway)
+		var highway := smoothstep(32., 72., absf(block.driver_speed) / METRES_PER_SECOND_PER_MPH)
+		var held := smoothstep(.045, .51, steer_key_seconds)
+		var strength := 1.0 if handbrake else lerpf(1.0, lerpf(.055, 1., held), highway)
 		turn = float(steer_key) * strength
 	if web:
 		var pedals := clampf(float(web.midtownZ), -1.0, 1.0)
@@ -272,7 +274,7 @@ func drive_from_input(dt: float) -> void:
 		signal_turned = signal_turned or (turn_angle > deg_to_rad(28.) and not block.backing)
 		if signal_turned and absf(turn) < .1 and absf(block.steer) < .035:
 			turn_signal_direction = 0
-	drive_audio.update(block.driver_speed, minf(throttle, 0.0) if handbrake else throttle, block.side_accel, dt)
+	drive_audio.update(block.driver_speed, minf(throttle, 0.0) if handbrake else throttle, block.side_accel, dt, block.drift_angle, block.rear_snow_cover)
 
 func fly(dir: Vector3, elapsed: float) -> void:
 	var motion := camera.global_basis.x * dir.x + camera.global_basis.z * dir.z + Vector3.UP * dir.y
@@ -289,7 +291,7 @@ func interact() -> void:
 	if body.visible: return
 	if not driving and block.reserve.interact(): return
 	if driving:
-		if absf(block.driver_speed)>1.1: return
+		if absf(block.driver_speed)>.15: return
 		var side: Vector3 = block.parked.global_basis.x
 		var exit_at: Vector3 = block.parked.global_position + side*1.65
 		var params := PhysicsShapeQueryParameters3D.new()
@@ -325,7 +327,9 @@ func interact() -> void:
 		orbit_yaw=block.parked.global_rotation.y
 		orbit_pitch=CHASE_PITCH
 		manual_look=0
-		exit_hold=-1.0
+		airborne = false
+		jump_requested = false
+		vertical_speed = 0.
 		walker.velocity = Vector3.ZERO
 		stride.reset()
 	block.driven=driving
@@ -334,12 +338,6 @@ func interact() -> void:
 func _physics_process(dt: float) -> void:
 	if warmup_frame >= 0: return
 	if driving:
-		if exit_hold >= 0.0 and absf(block.driver_speed) < .15:
-			exit_hold += dt
-			if exit_hold >= .5:
-				exit_hold = -1.0
-				interact()
-				if not driving: return
 		var previous_yaw: float = block.parked.global_rotation.y
 		drive_from_input(dt)
 		chase_view(dt, angle_difference(previous_yaw, block.parked.global_rotation.y))
@@ -355,7 +353,7 @@ func _physics_process(dt: float) -> void:
 func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 	var target: Vector3 = direction * (stride.SPRINT_SPEED if sprint else stride.WALK_SPEED)
 	var acceleration := 14.0 if target.length_squared() > walker.velocity.length_squared() else 28.0
-	var intended := walker.velocity.move_toward(target, acceleration * dt)
+	var intended := walker.velocity.move_toward(target, acceleration * dt * (.14 if airborne else 1.0))
 	var remaining := intended * dt
 	var start := walker.position
 	# Floating move_and_slide restores full speed along the surface after contact.
@@ -373,9 +371,29 @@ func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 	walker.velocity = intended
 	var travelled := walker.position - start
 	var motion:=Vector2(travelled.x,travelled.z)
-	if stride.winter:
-		walker.position.y=move_toward(walker.position.y,stride.winter.walking_height(walker.global_position),1.8*dt)
-	stride.advance(walker.global_position,motion.length(),dt,motion.normalized())
+	var ground: float = stride.winter.walking_height(walker.global_position) if stride.winter else .15
+	var raised := walker.position.y > ground + .23
+	var supported := raised and walker.test_move(walker.global_transform,Vector3.DOWN*.035)
+	if jump_requested and not airborne and (not raised or supported):
+		airborne = true
+		vertical_speed = JUMP_SPEED
+	jump_requested = false
+	if airborne or (raised and not supported):
+		airborne = true
+		var rise := vertical_speed*dt - .5*GRAVITY*dt*dt
+		vertical_speed -= GRAVITY*dt
+		var contact := walker.move_and_collide(Vector3.UP*rise)
+		if contact and rise > 0.:
+			vertical_speed = minf(vertical_speed,0.)
+		if rise <= 0. and (walker.position.y <= ground or (contact and contact.get_normal().y > .55)):
+			walker.position.y = maxf(ground, walker.position.y)
+			airborne = false
+			if vertical_speed < -1.:
+				stride.play_step(walker.global_position,clampf(-vertical_speed/5.,0.,1.),stride.WALK_SPEED)
+			vertical_speed = 0.
+	elif not supported:
+		walker.position.y = move_toward(walker.position.y,ground,1.8*dt)
+	stride.advance(walker.global_position,0. if airborne else motion.length(),dt,motion.normalized())
 
 func on_road(world: Vector3) -> bool:
 	var pixel:=Vector2i(floori(world.x)+1350,floori(world.z)+1500)

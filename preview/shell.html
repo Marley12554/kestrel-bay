@@ -12,16 +12,18 @@ h1{font-size:clamp(18px,2.2vw,27px);margin:0;letter-spacing:-.04em;font-weight:6
 @media(pointer:coarse){#body-control{min-height:44px}kbd{display:none}.help{display:none}.place,.speed{padding:8px 12px}.speed label{font-size:14px}#pad,#rise{display:grid;position:fixed;bottom:max(29px,env(safe-area-inset-bottom));gap:3px}#pad{left:max(12px,env(safe-area-inset-left));grid-template-columns:repeat(3,44px)}#rise{right:max(12px,env(safe-area-inset-right))}#pad button:first-child{grid-column:2}#pad button:nth-child(2){grid-column:1}.touch{display:inline}footer{bottom:1px}}
 [hidden]{display:none!important}.controls-row{display:flex;gap:5px}.controls-row button{flex:1;white-space:nowrap;font-size:14px;min-height:32px}#body-control{margin:0;width:auto}.controls-row button{flex:1 0 auto;padding:3px 9px}body:not([data-mode="fly"]) #flight-speed,body:not([data-mode="fly"]) #rise,body[data-mode="drive"] #body-control{display:none}#flight-speed{margin-bottom:6px}.speed{width:auto;min-width:142px}body[data-mode="fly"] .speed{width:min(235px,44vw)}body.clean .panel,body.clean footer,body.clean #pad,body.clean #rise{display:none}.clean-hint{background:none;border:0;font-size:13px;color:#d5dad6;min-height:0;min-width:0;padding:0 3px;text-decoration:underline}.speed .controls-row button{color:#f5eee3}.place small{line-height:1.6}
 @media(pointer:coarse){.controls-row button{min-height:44px}.speed{min-width:0;max-width:46vw}.controls-row{flex-wrap:wrap}.clean-hint{min-height:24px}}
-#sprint,#turn-controls{display:none}
+#sprint,#jump,#turn-controls{display:none}
 @media(pointer:coarse){body[data-mode="drive"]:not(.clean) #turn-controls{display:flex;gap:4px;position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(29px,env(safe-area-inset-bottom))}}
 @media(pointer:coarse){body[data-mode="walk"]:not(.clean) #sprint{display:block;position:fixed;left:max(12px,env(safe-area-inset-left));bottom:calc(max(29px,env(safe-area-inset-bottom)) + 96px);font-size:15px;padding:0 12px}#sprint[aria-pressed="true"]{background:#31685c;border-color:#a7e4cd}}
+@media(pointer:coarse){body[data-mode="walk"]:not(.clean) #jump{display:block;position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(29px,env(safe-area-inset-bottom));padding:0 12px}}
 </style></head><body data-mode="walk">
 <canvas id="canvas" tabindex="0" aria-label="Midtown Manhattan street preview"></canvas>
 <header class="panel place"><h1>Fifth Avenue</h1><small>West 33rd–34th Streets</small></header>
 <div class="panel speed"><div id="flight-speed"><label for="speed">Flight speed <output for="speed" id="readout">95 mph</output></label><input id="speed" type="range" min="2" max="272" aria-valuetext="95 mph" value="95" step="1" aria-label="Flight speed in miles per hour"></div><div class="controls-row"><button type="button" id="body-control"><span id="body-action">Freecam</span> <kbd>· F</kbd></button><button id="car-control" hidden><span>Drive</span> <kbd>· E</kbd></button></div></div>
-<div class="panel help" id="help">WASD walk · Shift sprint · Click to look · H hide HUD</div>
+<div class="panel help" id="help">WASD walk · Shift sprint · Space jump · Click to look · H hide HUD</div>
 <button type="button" id="sprint" aria-pressed="false">Sprint</button>
 <div id="pad" aria-label="Flight movement"><button data-axis="Z" data-dir="-1" aria-label="Forward">↑</button><button data-axis="X" data-dir="-1" aria-label="Left">←</button><button data-axis="Z" data-dir="1" aria-label="Backward">↓</button><button data-axis="X" data-dir="1" aria-label="Right">→</button></div>
+<button type="button" id="jump">Jump</button>
 <div id="turn-controls" aria-label="Turn signals"><button data-signal="-1" aria-label="Left turn signal">⇦</button><button data-signal="1" aria-label="Right turn signal">⇨</button></div>
 <div id="rise"><button data-axis="Y" data-dir="1" aria-label="Ascend">＋</button><button data-axis="Y" data-dir="-1" aria-label="Descend">−</button></div>
 <footer><a href="../">Kestrel Bay</a> · <button type="button" class="clean-hint" id="motion">Camera motion</button> · <button class="clean-hint" id="hide-ui">Hide HUD</button> · <a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
@@ -32,7 +34,8 @@ const canvas=document.getElementById('canvas'), speed=document.getElementById('s
 window.midtownReady=false;window.midtownSpeed=95;window.midtownInControls=false;window.midtownLocked=false;
 window.midtownX=window.midtownY=window.midtownZ=0;
 window.midtownToggleBody=false;
-window.midtownInteract=false;
+window.midtownInteract=false;window.midtownJump=false;
+document.getElementById("jump").addEventListener("click",()=>{window.midtownJump=true;canvas.focus()});
 window.midtownSignal=0;
 for(const button of document.querySelectorAll('[data-signal]')){
   button.addEventListener('click',()=>{window.midtownSignal=Number(button.dataset.signal);canvas.focus()});
@@ -58,12 +61,12 @@ window.midtownStreetMode=(mode,nearCar)=>{
   document.getElementById('body-action').textContent=flying?'Return to body':'Freecam';
   carButton.hidden=!driving && (!nearCar || flying);
   carButton.querySelector('span').textContent=driving?'Park & exit':'Drive';
-  carButton.querySelector('kbd').textContent=driving?'· Hold E':'· E';
+  carButton.querySelector('kbd').textContent='· E';
 };
 function updateHelp(){
   const mode=document.body.dataset.mode;
-  const movement=mode==='drive'?'W accelerate · S brake / reverse · A / D steer · Q / E or ← / → signal · Look to orbit · Hold E at rest to exit':
-    mode==='fly'?'WASD fly · Q / E down / up':'WASD walk · Shift sprint';
+  const movement=mode==='drive'?'W accelerate · S brake / reverse · A / D steer · ← / → signal · Look to orbit · E at rest to exit':
+    mode==='fly'?'WASD fly · Q / E down / up':'WASD walk · Shift sprint · Space jump';
   const mouse=window.midtownLocked?'V unlock mouse':'Click street to capture mouse';
   document.getElementById('help').textContent=movement+' · '+mouse+' · H hide HUD';
 }
