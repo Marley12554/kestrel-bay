@@ -61,7 +61,7 @@ var steering_velocity := 0.0
 var drift_angle := 0.0
 var long_accel := 0.0
 var side_accel := 0.0
-var reverse_wait := 0.0
+var shift_wait := 0.0
 var backing := false
 var street_user := Vector3.INF
 const BODY := preload("res://body.tscn")
@@ -681,25 +681,26 @@ func reset_steering() -> void:
 	steer = 0.0
 	steering_velocity = 0.0
 
-func drive(dt: float, throttle: float, turn: float, allow_reverse: bool = true, handbrake: bool = false) -> void:
+func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, handbrake: bool = false) -> void:
 	var previous := driver_speed
 	var speed := absf(previous)
-	# S applies the service brake first. Hold it briefly at rest to select R.
-	if throttle>=0 or not allow_reverse or handbrake:
-		reverse_wait=0
-		backing=false
-	elif speed<.025:
-		reverse_wait+=dt
-		backing=reverse_wait>=.30
-	if throttle<0 and not backing:
+	var opposite := (throttle > 0 and backing) or (throttle < 0 and not backing)
+	var service_braking := opposite or (throttle < 0 and not allow_shift)
+	if opposite and allow_shift and not handbrake and speed < .001:
+		shift_wait += dt
+		if shift_wait >= .30:
+			backing = throttle < 0
+			shift_wait = 0.
+			service_braking = false
+	else:
+		shift_wait = 0.
+	if service_braking:
 		# Fade out the high-speed braking assist as the sedan approaches city speeds.
 		var brake_strength := lerpf(CAR_BRAKE_DECELERATION, CAR_HIGH_SPEED_BRAKE_DECELERATION,
 			smoothstep(12.0, 38.0, speed))
 		driver_speed = move_toward(previous, 0.0, brake_strength * absf(throttle) * dt)
 	elif handbrake:
 		driver_speed = move_toward(previous, 0.0, CAR_HANDBRAKE_DECELERATION * dt)
-	elif throttle>0 and previous<-.02:
-		driver_speed = move_toward(previous, 0.0, CAR_BRAKE_DECELERATION * throttle * dt)
 	elif absf(throttle)>.001:
 		var limit := CAR_MAX_FORWARD_SPEED if throttle>0 else CAR_MAX_REVERSE_SPEED
 		var force := (5.1 if throttle>0 else 2.7)*absf(throttle)

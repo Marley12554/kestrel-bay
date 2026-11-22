@@ -33,6 +33,8 @@ Adapted from vehicleA_avas_forward_measured.wav (tesla_forward.wav),
 vehicleA_avas_backward_measured.wav (tesla_reverse.wav), and
 vehicleA_passBy_forwards_measured.wav (sedan_road.wav). Excerpts were filtered,
 folded to mono where applicable, resampled, leveled, and crossfaded for looping.
+The in-game forward and reverse loops are EQ-adjusted for exterior playback.
+The two cabin indicator pulses are original synthesized sounds.
 
 MIT License
 

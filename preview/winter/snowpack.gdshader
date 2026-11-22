@@ -14,7 +14,7 @@ float fresh_depth(vec2 p) {
 }
 float depth_at(vec2 p,vec2 uv){
 	float fresh=fresh_depth(p);
-	return fresh-min(fresh*.94,textureLod(pressure,uv,0.).r*.10);
+	return fresh-min(fresh*.94,textureLod(pressure,uv,0.).r*.36);
 }
 void vertex(){
 	vec3 world=(MODEL_MATRIX*vec4(VERTEX,1.)).xyz;
@@ -26,7 +26,7 @@ void vertex(){
 void fragment(){
 	float depth=depth_at(ground,UV);
 	if(depth<.0018) discard;
-	float packed=min(texture(pressure,UV).r*.10,fresh_depth(ground)*.94);
+	float packed=min(texture(pressure,UV).r*.36,fresh_depth(ground)*.94);
 	float firmness=smoothstep(.002,.048,packed);
 	// The undisturbed field is sampled every ten inches. Filter its slope
 	// over a cell, but keep the higher-frequency edge of the boot imprint.
@@ -35,8 +35,8 @@ void fragment(){
 		fresh_depth(ground+vec2(0.,.16))-fresh_depth(ground-vec2(0.,.16)))/.32;
 	float fresh=fresh_depth(ground);
 	vec2 du=vec2(e/8.,0.);
-	slope-=vec2(min(fresh*.94,texture(pressure,UV+du).r*.10)-min(fresh*.94,texture(pressure,UV-du).r*.10),
-		min(fresh*.94,texture(pressure,UV+du.yx).r*.10)-min(fresh*.94,texture(pressure,UV-du.yx).r*.10))/(2.*e);
+	slope-=vec2(min(fresh*.94,texture(pressure,UV+du).r*.36)-min(fresh*.94,texture(pressure,UV-du).r*.36),
+		min(fresh*.94,texture(pressure,UV+du.yx).r*.36)-min(fresh*.94,texture(pressure,UV-du.yx).r*.36))/(2.*e);
 	vec2 grain=texture(grain_map,ground*.73).rg*2.-1.;
 	vec3 n=normalize(vec3(-slope.x+grain.x*.24,1.,-slope.y+grain.y*.24));
 	NORMAL=normalize(mat3(VIEW_MATRIX)*mat3(MODEL_MATRIX)*n);

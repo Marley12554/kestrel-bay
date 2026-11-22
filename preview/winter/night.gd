@@ -13,6 +13,8 @@ var wheel_lift := PackedFloat32Array()
 var tire_probe := PhysicsShapeQueryParameters3D.new()
 var last_suspension_pose := Vector3.INF
 var last_suspension_steer := INF
+var last_pressure_revision := -1
+var previous_contacts := PackedVector2Array()
 var road_ride_height := 0.0
 var body_heave := 0.0
 var heave_velocity := 0.0
@@ -150,6 +152,9 @@ func dress_sedan() -> void:
 	chassis_rest = model.transform
 	var car: CharacterBody3D = block.parked
 	road_ride_height = car.position.y
+	var shell := car.get_child(0) as CollisionShape3D
+	shell.position = Vector3.ZERO
+	shell.shape = preload("res://winter/sedan_hull.tres")
 	var tire := CylinderShape3D.new()
 	tire.radius = TIRE_RADIUS
 	tire.height = .23
@@ -478,7 +483,7 @@ func add_controls() -> void:
 	hint.position=Vector2(18,get_viewport().get_visible_rect().size.y-39)
 	hint.add_theme_font_size_override("font_size",14)
 	hint.add_theme_constant_override("outline_size",4)
-	hint.text="WASD  Move / drive     ← / →  Turn signals     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Enter / exit     F  Freecam     B  Camera motion     H  Hide"
+	hint.text="WASD  Move / drive     Q / E or ← / →  Signal     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Enter · Hold E  Exit     F  Freecam     B  Camera motion     H  Hide"
 	get_viewport().size_changed.connect(func(): hint.position.y=get_viewport().get_visible_rect().size.y-39)
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -601,6 +606,34 @@ func sample_wheel_support(car: CharacterBody3D) -> void:
 	var space := get_world_3d().direct_space_state
 	var upright_tire := Basis(Vector3.FORWARD, PI / 2.0)
 	var base_y: float = block.global_position.y + road_ride_height
+	var contacts := PackedVector2Array()
+	for mount in wheel_mounts:
+		var local := to_local(car.to_global(mount))
+		contacts.append(Vector2(local.x,local.z))
+	var dirty := {}
+	var continuous := previous_contacts.size() == contacts.size() and contacts[0].distance_to(previous_contacts[0]) < 4.
+	for i in contacts.size():
+		var start := previous_contacts[i] if continuous else contacts[i]
+		var rolling := start.direction_to(contacts[i])
+		if rolling.is_zero_approx():
+			rolling = contacts[2].direction_to(contacts[0])
+		pack.press_strip(start-rolling*.085,contacts[i]+rolling*.085,.119,0.,dirty)
+	# A swept bumper clears deep snow between the tracks. On spawn or teleport
+	# sweep the full footprint once, so existing banks cannot fill the cabin.
+	var axle := 2 if block.driver_speed < 0 else 0
+	var other_axle := 2-axle
+	var nose := (contacts[axle]-contacts[other_axle]).normalized()*.78
+	var underside_y := car.position.y + .135
+	for band in 9:
+		var t := .5 + (band-4.)*.13
+		var bumper := contacts[axle].lerp(contacts[axle+1],t) + nose
+		var start := contacts[other_axle].lerp(contacts[other_axle+1],t) - nose
+		if continuous:
+			var previous_nose := (previous_contacts[axle]-previous_contacts[other_axle]).normalized()*.78
+			start = previous_contacts[axle].lerp(previous_contacts[axle+1],t) + previous_nose
+		pack.press_strip(start,bumper,.119,underside_y,dirty)
+	pack.flush_pressure(dirty)
+	previous_contacts = contacts
 	for i in wheel_mounts.size():
 		var mount := wheel_mounts[i]
 		var start := car.to_global(mount)
@@ -609,17 +642,23 @@ func sample_wheel_support(car: CharacterBody3D) -> void:
 		tire_probe.transform = Transform3D(car.global_basis * Basis(Vector3.UP, steering) * upright_tire, start)
 		# Sweep the tire profile so a curb corner can support it before the hub crosses.
 		var contact := space.cast_motion(tire_probe)
-		wheel_lift[i] = maxf(0.0, TIRE_PROBE_HEIGHT - TIRE_PROBE_TRAVEL * contact[0])
+		var hard_lift := maxf(0.0, TIRE_PROBE_HEIGHT - TIRE_PROBE_TRAVEL * contact[0])
+		var surface := pack.surface_at(contacts[i])
+		var packed_lift := 0.
+		if surface.x >= 0 and surface.y > .001:
+			packed_lift = pack.SUPPORT_Y[int(surface.x)] + pack.remaining(contacts[i],surface) - road_ride_height
+		wheel_lift[i] = maxf(hard_lift, packed_lift)
 
 func update_sedan_suspension(dt: float) -> void:
 	var car: CharacterBody3D = block.parked
 	if absf(car.position.y - road_ride_height) > .5:
 		return
 	var pose := Vector3(car.position.x, car.rotation.y, car.position.z)
-	if not pose.is_equal_approx(last_suspension_pose) or not is_equal_approx(block.steer, last_suspension_steer):
+	if not pose.is_equal_approx(last_suspension_pose) or not is_equal_approx(block.steer, last_suspension_steer) or pack.pressure_revision != last_pressure_revision:
 		sample_wheel_support(car)
 		last_suspension_pose = pose
 		last_suspension_steer = block.steer
+		last_pressure_revision = pack.pressure_revision
 	var front := (wheel_lift[0] + wheel_lift[1]) * .5
 	var rear := (wheel_lift[2] + wheel_lift[3]) * .5
 	var left := (wheel_lift[0] + wheel_lift[2]) * .5
@@ -627,8 +666,12 @@ func update_sedan_suspension(dt: float) -> void:
 
 	# The hubs follow the surface immediately while the sprung mass moves and settles.
 	var target_heave := (front + rear) * .5
-	heave_velocity += ((target_heave - body_heave) * 170.0 - heave_velocity * 15.0) * dt
-	body_heave += heave_velocity * dt
+	# Exact critically damped spring step, including on a long physics tick.
+	var offset := body_heave - target_heave
+	var spring := heave_velocity + 12.*offset
+	var decay := exp(-12.*dt)
+	body_heave = target_heave + (offset + spring*dt)*decay
+	heave_velocity = (heave_velocity - 12.*spring*dt)*decay
 	var lift := road_ride_height + body_heave - car.position.y
 	if absf(lift) > .0001:
 		car.move_and_collide(Vector3.UP * lift)

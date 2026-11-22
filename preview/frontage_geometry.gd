@@ -8,6 +8,8 @@ var pipe := CylinderMesh.new()
 var glazing := QuadMesh.new()
 
 var meshes := {}
+var brushed := {}
+var edge_mesh: ArrayMesh
 
 func prepare_geometry() -> void:
 	pipe.top_radius=.5
@@ -25,6 +27,32 @@ func material(key: String, color: String, roughness: float, metal:=0.0) -> Stand
 	m.metallic=metal
 	finishes[key]=m
 	return m
+
+# A unit block with a recessed perimeter behind its front face. All instances
+# share this mesh, including short cut bricks and metal window sections.
+func bevel_block(inset_x: float, inset_y: float) -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var loop := [Vector2(-.5,-.5),Vector2(-.5,.5),Vector2(.5,.5),Vector2(.5,-.5)]
+	var rings: Array[PackedVector3Array] = []
+	for z in [-.5,.32,.5]:
+		var ring := PackedVector3Array()
+		for corner: Vector2 in loop:
+			var v := corner
+			if z == .5: v -= corner.sign()*Vector2(inset_x,inset_y)
+			ring.append(Vector3(v.x,v.y,z))
+		rings.append(ring)
+	var faces := [[rings[0][3],rings[0][2],rings[0][1],rings[0][0]], Array(rings[2])]
+	for j in 2:
+		for i in 4:
+			var k := (i+1)%4
+			faces.append([rings[j][i],rings[j][k],rings[j+1][k],rings[j+1][i]])
+	for face: Array in faces:
+		var normal: Vector3 = (face[2]-face[0]).cross(face[1]-face[0]).normalized()
+		for i in [0,1,2,0,2,3]:
+			surface.set_normal(normal)
+			surface.add_vertex(face[i])
+	return surface.commit()
 
 func define_materials() -> void:
 	for key in ["limestone","granite"]:
@@ -45,10 +73,9 @@ func define_materials() -> void:
 	material("stone_inlay","#928778",.40,.1)
 	material("slate","#253138",.72)
 	material("shade","#9b977f",.91)
-	var glass:=material("glass","#88a7a9",.12,.31)
-	glass.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
-	glass.albedo_color.a=.23
-	glass.cull_mode=BaseMaterial3D.CULL_DISABLED
+	var glass := ShaderMaterial.new()
+	glass.shader = preload("res://winter/frontage_glazing.gdshader")
+	finishes["glass"] = glass
 	var opal:=material("opal","#d5c5a6",.36)
 	opal.emission_enabled=true
 	opal.emission=Color("#ffe1a9")
@@ -101,6 +128,19 @@ func assemble(parent: Node3D = null) -> void:
 		var view:=MultiMeshInstance3D.new()
 		view.multimesh=multi
 		view.material_override=finishes[bits[0]]
+		if bits[0] in ["brass","steel","iron","copper","shopmetal","bronze"]:
+			var stock := finishes[bits[0]] as StandardMaterial3D
+			if stock:
+				if not brushed.has(bits[0]):
+					var finish := ShaderMaterial.new()
+					finish.shader = preload("res://winter/frontage_metal.gdshader")
+					finish.set_shader_parameter("tint",stock.albedo_color)
+					finish.set_shader_parameter("rough",stock.roughness)
+					brushed[bits[0]]=finish
+				view.material_override=brushed[bits[0]]
+				if bits[1]=="box":
+					if not edge_mesh: edge_mesh=bevel_block(.014,.014)
+					multi.mesh=edge_mesh
 		if bits[0]=="glass": view.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(view)
 	pieces.clear()

@@ -8,12 +8,21 @@ const STORE_TOP := 5.35
 const SPRING := 15.75
 const ATTIC := 19.60
 const COPING := 22.57
+const COURSE := .064
+const BOND := .21
+const JOINT := .008
+var brick_unit: ArrayMesh
+var face_clay: ShaderMaterial
 
 func _ready() -> void:
 	prepare_geometry()
 	var brick := ShaderMaterial.new()
 	brick.shader=preload("res://winter/demarest_brick.gdshader")
+	brick.set_shader_parameter("grain", preload("res://winter/frontage/white_sandstone_blocks_02_diffuse.jpg"))
 	finishes["brick"]=brick
+	face_clay = brick.duplicate()
+	face_clay.set_shader_parameter("raised_face", true)
+	brick_unit = bevel_block(.009, .035)
 	material("clay","#b58e70",.81)
 	material("keystone","#c4a389",.75)
 	material("copper","#365752",.55,.47)
@@ -63,7 +72,6 @@ func arch_section(inner: float, outer: float, square_top: bool) -> ArrayMesh:
 		for j in [0,2]:
 			var next: int=(j+1)%4
 			quad(surface,front[next],front[j],front[j]-Vector3.BACK,front[next]-Vector3.BACK)
-	surface.generate_normals()
 	return surface.commit()
 
 func quad(s: SurfaceTool,a: Vector3,b: Vector3,c: Vector3,d: Vector3) -> void:
@@ -71,12 +79,18 @@ func quad(s: SurfaceTool,a: Vector3,b: Vector3,c: Vector3,d: Vector3) -> void:
 	for triangle in [[a,b,c],[a,c,d]]:
 		var normal: Vector3=(triangle[1]-triangle[0]).cross(triangle[2]-triangle[0])
 		if normal.length_squared()<.00000001: continue
-		for point: Vector3 in triangle: s.add_vertex(point)
+		for point: Vector3 in triangle:
+			s.set_normal(-normal.normalized())
+			s.add_vertex(point)
 
 func upper_elevation(width: float, count: int, end_strip: float) -> void:
 	var pitch:=width/count
 	var radius:=pitch*.415
 	var full:=width+end_strip
+	for bay in count:
+		add_brick_courses(bay*pitch, (bay+1)*pitch, (bay+.5)*pitch, pitch*.415)
+	if end_strip>0.:
+		add_brick_courses(width, full, 0., 0.)
 	for i in count:
 		var x:=pitch*(i+.5)
 		var pier:=pitch*.5-radius
@@ -107,6 +121,45 @@ func upper_elevation(width: float, count: int, end_strip: float) -> void:
 	for i in roundi(full/1.36):
 		for j in 3:
 			piece("copper",Vector3((i+.5)*1.36,22.02+j*.075,.43+j*.07),Vector3(.25+j*.027,.09,.28+j*.10))
+
+# One instanced skin per bay. All rows use the same bond across the piers,
+# arch spandrels and attic. The masonry behind it is the recessed joint bed.
+func add_brick_courses(left: float, right: float, center: float, radius: float) -> void:
+	var units: Array[Transform3D] = []
+	for row in range(floori(STORE_TOP/COURSE), ceili(COPING/COURSE)):
+		var low := maxf(STORE_TOP, row*COURSE + JOINT*.5)
+		var high := minf(COPING, (row+1)*COURSE - JOINT*.5)
+		if high <= low: continue
+		# Ends tuck behind the projecting arch trim. Above the crown the
+		# same horizontal course continues through the entire bay.
+		var rise := maxf(0.,high-SPRING)
+		var cut := sqrt(maxf(0., radius*radius-rise*rise))
+		if cut > 0.:
+			add_brick_run(units,left,center-cut,low,high,row)
+			add_brick_run(units,center+cut,right,low,high,row)
+		else:
+			add_brick_run(units,left,right,low,high,row)
+	var batch := MultiMesh.new()
+	batch.transform_format = MultiMesh.TRANSFORM_3D
+	batch.mesh = brick_unit
+	batch.instance_count = units.size()
+	for i in units.size(): batch.set_instance_transform(i,units[i])
+	var view := MultiMeshInstance3D.new()
+	view.name = "BondedBrickBay"
+	view.multimesh = batch
+	view.material_override = face_clay
+	view.transform = frame
+	view.visibility_range_end = 38.
+	add_child(view,true)
+
+func add_brick_run(units: Array[Transform3D], left: float, right: float, low: float, high: float, row: int) -> void:
+	var shift := (row%2)*BOND*.5
+	for col in range(floori((left+shift)/BOND),ceili((right+shift)/BOND)):
+		var x0 := maxf(left,col*BOND-shift+JOINT*.5)
+		var x1 := minf(right,(col+1)*BOND-shift-JOINT*.5)
+		if x1-x0 < .001: continue
+		var size := Vector3(x1-x0,high-low,.009)
+		units.append(Transform3D(Basis.from_scale(size), Vector3((x1+x0)*.5,(low+high)*.5,.449)))
 
 func arch_windows(x: float,r: float,index: int) -> void:
 	var bottom:=STORE_TOP+.25

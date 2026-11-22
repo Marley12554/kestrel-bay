@@ -6,7 +6,7 @@ const SUPPORT_Y := [0.,.1524,.2124,preload("res://winter/sidewalk_snow.gd").CURB
 const TILE := 8
 const PIXELS_PER_METRE := 40
 const MASK_SIZE := TILE*PIXELS_PER_METRE
-const MAX_COMPRESSION := .10
+const MAX_COMPRESSION := .36
 
 var coarse := PlaneMesh.new()
 var detailed := PlaneMesh.new()
@@ -15,6 +15,7 @@ var batches := {} # Tile key -> original MultiMesh and instance index.
 var tracks := {} # Retained CPU pressure masks, including after leaving the street.
 var visible_tracks := {}
 var refresh_in := 0.
+var pressure_revision := 0
 
 func _ready() -> void:
 	coarse.size=Vector2(TILE,TILE)
@@ -109,9 +110,50 @@ func stamp(p:Vector2,forward:Vector2,left:bool,effort:float) -> void:
 			var mask: Image=tracks[key]
 			var pixel:=Vector2i(posmod(x,MASK_SIZE),posmod(y,MASK_SIZE))
 			var tread:=.82+.18*cos((along+.35*absf(across))*145.)
-			var pressure:=sole*tread*lerpf(.73,.97,effort)
+			var pressure:=sole*tread*lerpf(.73,.97,effort)*(.10/MAX_COMPRESSION)
 			mask.set_pixelv(pixel,Color.WHITE*maxf(pressure,mask.get_pixelv(pixel).r))
 			dirty[key]=true
+	flush_pressure(dirty)
+
+# Paint the swept rectangle in world units. Read the actual snow support for
+# each cross-section so a track follows its wheel across the curb and tile seams.
+func press_strip(from: Vector2, to: Vector2, half_width: float, underside_y: float, dirty: Dictionary) -> void:
+	var travel := to - from
+	var forward := travel.normalized()
+	if forward == Vector2.ZERO: return
+	var across := forward.orthogonal()
+	var steps := maxi(1, ceili(travel.length()/.12))
+	var step_length := travel.length()/steps
+	var extent := across.abs()*half_width + forward.abs()*(step_length*.5)
+	for i in steps:
+		var at := from + travel*((i+.5)/steps)
+		var surface := surface_at(at)
+		if surface.y < .003: continue
+		var amount := surface.y*.78
+		if underside_y > 0.:
+			amount = clampf(SUPPORT_Y[int(surface.x)] + surface.y - underside_y, 0., surface.y)
+		if amount < .003: continue
+		var lo := Vector2i(((at-extent)*PIXELS_PER_METRE).floor())
+		var hi := Vector2i(((at+extent)*PIXELS_PER_METRE).ceil())
+		for y in range(lo.y,hi.y):
+			for x in range(lo.x,hi.x):
+				var delta := (Vector2(x,y)+Vector2(.5,.5))/PIXELS_PER_METRE-at
+				var lateral := absf(delta.dot(across))
+				if lateral>=half_width or absf(delta.dot(forward))>step_length*.5: continue
+				var key := Vector3i(floori(float(x)/MASK_SIZE),int(surface.x),floori(float(y)/MASK_SIZE))
+				if not batches.has(key): continue
+				if not tracks.has(key):
+					tracks[key]=Image.create_empty(MASK_SIZE,MASK_SIZE,false,Image.FORMAT_L8)
+				var mask: Image=tracks[key]
+				var pixel := Vector2i(posmod(x,MASK_SIZE),posmod(y,MASK_SIZE))
+				var pressure := amount/MAX_COMPRESSION*(1.-smoothstep(half_width*.80,half_width,lateral))
+				if pressure <= mask.get_pixelv(pixel).r+.002: continue
+				mask.set_pixelv(pixel,Color.WHITE*pressure)
+				dirty[key]=true
+
+func flush_pressure(dirty: Dictionary) -> void:
+	if dirty.is_empty(): return
+	pressure_revision += 1
 	for key: Vector3i in dirty:
 		if visible_tracks.has(key):
 			var texture: ImageTexture=visible_tracks[key].material_override.get_shader_parameter("pressure")

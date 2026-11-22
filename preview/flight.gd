@@ -6,6 +6,9 @@ extends Node3D
 var driving := false
 var brake_pressed := false
 var turn_signal_direction := 0
+var signal_start_yaw := 0.0
+var signal_turned := false
+var exit_hold := -1.0
 var previous_steer_key := 0
 var steer_key_seconds := 0.0
 var can_enter_car := false
@@ -15,9 +18,6 @@ const CAMERA_CLEARANCE := .25
 var orbit_pitch := CHASE_PITCH
 var camera_probe := SphereShape3D.new()
 var manual_look := 0.0
-var road_bump := 0.0
-var last_road := true
-var camera_road_phase := 0.0
 var drive_audio := preload("res://drive_audio.gd").new()
 var gear_readout := Label.new()
 @onready var camera: Camera3D = $Camera
@@ -42,7 +42,7 @@ const MAX_HEIGHT := 1800.0
 
 func _ready() -> void:
 	camera_probe.radius = CAMERA_CLEARANCE
-	add_child(drive_audio)
+	block.parked.add_child(drive_audio)
 	$Overlay.add_child(gear_readout)
 	gear_readout.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	gear_readout.offset_left=-165
@@ -83,6 +83,7 @@ func _resize() -> void:
 func _release() -> void:
 	_reset_clock()
 	look_finger = -1
+	exit_hold = -1.0
 	if not web:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -104,11 +105,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		set_motion_level((motion_setting + 2) % 3)
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F:
 		toggle_body()
-	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E:
-		if not body.visible: interact()
-	elif driving and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_LEFT, KEY_RIGHT]:
-		var direction := -1 if event.physical_keycode == KEY_LEFT else 1
-		turn_signal_direction = 0 if turn_signal_direction == direction else direction
+	elif event is InputEventKey and not event.echo and event.physical_keycode == KEY_E:
+		if driving:
+			if event.pressed:
+				exit_hold = 0.0
+			elif exit_hold >= 0.0:
+				select_signal(1)
+				exit_hold = -1.0
+		elif event.pressed and not body.visible:
+			interact()
+	elif driving and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_Q, KEY_LEFT, KEY_RIGHT]:
+		select_signal(1 if event.physical_keycode == KEY_RIGHT else -1)
 	elif event is InputEventScreenTouch:
 		if event.pressed and look_finger == -1:
 			look_finger = event.index
@@ -170,6 +177,9 @@ func _process(_dt: float) -> void:
 	var now := Time.get_ticks_usec()
 	var elapsed := (now - last_move_usec) / 1_000_000.0 if last_move_usec != 0 else 0.0
 	last_move_usec = now
+	if web and int(web.midtownSignal) != 0:
+		if driving: select_signal(signi(int(web.midtownSignal)))
+		web.midtownSignal = 0
 	if web and bool(web.midtownInteract):
 		web.midtownInteract = false
 		interact()
@@ -220,6 +230,11 @@ func input_direction() -> Vector3:
 		dir += Vector3(float(web.midtownX), float(web.midtownY), float(web.midtownZ))
 	return dir
 
+func select_signal(direction: int) -> void:
+	turn_signal_direction = 0 if turn_signal_direction == direction else direction
+	signal_start_yaw = block.parked.global_rotation.y
+	signal_turned = false
+
 func drive_from_input(dt: float) -> void:
 	var accelerator := 0.0
 	var brake := 0.0
@@ -249,9 +264,14 @@ func drive_from_input(dt: float) -> void:
 		accelerator = maxf(accelerator, -pedals)
 		brake = maxf(brake, pedals)
 		turn += float(web.midtownX)
-	brake_pressed = brake > 0.0 or handbrake
+	brake_pressed = handbrake or (brake > 0 and (not block.backing or accelerator > 0)) or (block.backing and accelerator > 0)
 	var throttle := -brake if brake > 0.0 else accelerator
-	block.drive(dt, throttle, turn, accelerator == 0.0, handbrake)
+	block.drive(dt, throttle, turn, not (accelerator > 0.0 and brake > 0.0), handbrake)
+	if turn_signal_direction != 0:
+		var turn_angle := -turn_signal_direction * angle_difference(signal_start_yaw, block.parked.global_rotation.y)
+		signal_turned = signal_turned or (turn_angle > deg_to_rad(28.) and not block.backing)
+		if signal_turned and absf(turn) < .1 and absf(block.steer) < .035:
+			turn_signal_direction = 0
 	drive_audio.update(block.driver_speed, minf(throttle, 0.0) if handbrake else throttle, block.side_accel, dt)
 
 func fly(dir: Vector3, elapsed: float) -> void:
@@ -290,7 +310,7 @@ func interact() -> void:
 		turn_signal_direction = 0
 		drive_audio.park()
 		gear_readout.hide()
-		block.reverse_wait=0
+		block.shift_wait=0
 		block.backing=false
 		block.reset_steering()
 		block.drift_angle=0.0
@@ -305,8 +325,7 @@ func interact() -> void:
 		orbit_yaw=block.parked.global_rotation.y
 		orbit_pitch=CHASE_PITCH
 		manual_look=0
-		road_bump=0
-		last_road=on_road(block.parked.global_position)
+		exit_hold=-1.0
 		walker.velocity = Vector3.ZERO
 		stride.reset()
 	block.driven=driving
@@ -315,6 +334,12 @@ func interact() -> void:
 func _physics_process(dt: float) -> void:
 	if warmup_frame >= 0: return
 	if driving:
+		if exit_hold >= 0.0 and absf(block.driver_speed) < .15:
+			exit_hold += dt
+			if exit_hold >= .5:
+				exit_hold = -1.0
+				interact()
+				if not driving: return
 		var previous_yaw: float = block.parked.global_rotation.y
 		drive_from_input(dt)
 		chase_view(dt, angle_difference(previous_yaw, block.parked.global_rotation.y))
@@ -374,14 +399,8 @@ func chase_view(dt: float, car_yaw_change: float = 0.0) -> void:
 			var step := gap * (1.0 - exp(-rate * dt))
 			orbit_yaw = wrapf(orbit_yaw + clampf(step, -2.4*dt, 2.4*dt), -PI, PI)
 			orbit_pitch = lerpf(orbit_pitch, CHASE_PITCH, 1.0-exp(-1.8*dt))
-	var paved:=on_road(car.global_position)
-	if paved!=last_road:
-		road_bump=minf(speed*.008,.07)
-		last_road=paved
-	camera_road_phase=fmod(camera_road_phase+speed*dt*2.7,TAU)
-	var heave: float=(road_bump+sin(camera_road_phase)*minf(speed*.0005,.009))*stride.strength
-	road_bump*=exp(-10.*dt)
-	var pivot:=car.global_position+Vector3.UP*(1.15+heave)
+	# The sprung body already follows the four tire contacts.
+	var pivot := car.global_position + Vector3.UP * 1.15
 	var reach := 5.8 + minf(speed*.045, .95)
 	var yaw_basis := Basis(Vector3.UP, orbit_yaw)
 	var horizontal := yaw_basis.z
