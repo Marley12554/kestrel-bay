@@ -95,6 +95,14 @@ func run() -> void:
 	var turned := false
 	var crossed := false
 	var first_walker: Vector3 = block.walkers[0].node.position
+	block.batch_walkers()
+	var expected_parts := 0
+	var drawn_parts := 0
+	for person in block.walkers:
+		expected_parts += person.node.get_child_count()
+	for batch in block.get_node("Crowd").get_children():
+		drawn_parts += batch.multimesh.instance_count
+	check(drawn_parts == expected_parts and block.get_node("Crowd").get_child_count() < block.walkers.size(), "every pedestrian part is included in the shared draws")
 	for frame in 3600:
 		block._physics_process(1.0/60)
 		waited = waited or (absf(block.distance-block.cross_stop)<.15 and block.vehicle_signal(true)==0)
@@ -105,6 +113,13 @@ func run() -> void:
 	check(yielded,"taxi yields to pedestrians")
 	check(turned,"taxi exits turn in the westbound lane")
 	check(crossed,"pedestrian completes crossing")
+	if DisplayServer.get_name() != "headless":
+		var person: Dictionary = block.walkers[0]
+		var posed := true
+		for draw in person.draw_parts:
+			var transform: Transform3D = draw[0].get_instance_transform(draw[1])
+			posed = posed and transform.is_equal_approx(person.node.transform * draw[2].transform)
+		check(posed, "shared draws follow the moving pedestrian and its limbs")
 	scene.queue_free()
 	await process_frame
 	await winter_stride_checks()

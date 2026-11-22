@@ -54,9 +54,15 @@ func advance(at: Vector3, distance: float, dt: float) -> void:
 	fov_mix = maxf(run_mix, lerpf(fov_mix, fov_target, release))
 	camera.fov = base_fov + 4.0 * fov_mix * strength
 	var smear := run_mix * strength
-	blur.visible = smear > 0.02
-	if blur.visible:
-		blur.material.set_shader_parameter("amount", smear)
+	if OS.has_feature("web"):
+		# Soften peripheral ground detail in its existing pass; avoid copying
+		# the Retina-sized framebuffer to a texture whenever a sprint starts.
+		if winter and winter.street_material:
+			winter.street_material.set_shader_parameter("sprint_softness", smear * 0.55)
+	else:
+		blur.visible = smear > 0.02
+		if blur.visible:
+			blur.material.set_shader_parameter("amount", smear)
 
 func play_step(at: Vector3, effort: float, speed: float) -> void:
 	var take := randi_range(0, TAKES - 1) if last_take < 0 else (last_take + randi_range(1, TAKES - 1)) % TAKES
@@ -88,5 +94,7 @@ func reset() -> void:
 	if base_fov > 0.0:
 		camera.fov = base_fov
 	blur.hide()
+	if OS.has_feature("web") and winter and winter.street_material:
+		winter.street_material.set_shader_parameter("sprint_softness", 0.0)
 	pavement.stop()
 	snow.stop()

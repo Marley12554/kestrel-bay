@@ -2,12 +2,12 @@ extends Node3D
 
 const ASSET := "res://winter/assets/"
 const CAR := preload("res://winter/assets/sedan.glb")
-const EXTERIOR := preload("res://winter/assets/urban_street_04_hdri.exr")
-const DISPLAY := preload("res://winter/assets/christmas_photo_studio_01_hdri.exr")
+var display_panorama: Texture2D
 @onready var city = get_parent()
 @onready var block = get_node("../Block")
 var lamp_metal := StandardMaterial3D.new()
 var hot_glass := StandardMaterial3D.new()
+var street_material: ShaderMaterial
 var hint: Label
 const SNOW_DEPTH := preload("res://winter/snow_depth.png")
 var depth_samples: Image
@@ -31,7 +31,9 @@ func dress_street() -> void:
 	var env: Environment = city.get_node("Environment").environment.duplicate()
 	var sky := Sky.new()
 	var panorama := PanoramaSkyMaterial.new()
-	panorama.panorama = EXTERIOR
+	var lighting_dir := "res://winter/web_lighting/" if OS.has_feature("web") else ASSET
+	panorama.panorama = load(lighting_dir + "urban_street_04_hdri.exr")
+	display_panorama = load(lighting_dir + "christmas_photo_studio_01_hdri.exr")
 	sky.sky_material = panorama
 	env.sky = sky
 	env.background_mode = Environment.BG_COLOR
@@ -60,7 +62,13 @@ func dress_street() -> void:
 	moon.light_energy = .17
 	moon.rotation_degrees = Vector3(-58,-68,0)
 	moon.directional_shadow_max_distance = 85
-	var survey := ShaderMaterial.new()
+	if OS.has_feature("web"):
+		# Streetlamps still cast local shadows. One nearby moon cascade avoids
+		# redrawing the entire street into four shadow maps as the camera moves.
+		moon.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+		moon.directional_shadow_max_distance = 48
+	street_material = ShaderMaterial.new()
+	var survey := street_material
 	survey.shader = preload("res://winter/avenue.gdshader")
 	depth_samples = SNOW_DEPTH.get_image()
 	survey.set_shader_parameter("snow_depth", SNOW_DEPTH)
@@ -208,7 +216,7 @@ func display_window(at: Vector3, angle: float, width: float, index: int) -> void
 	pane.mesh=mesh
 	var material:=ShaderMaterial.new()
 	material.shader=preload("res://winter/shop_glass.gdshader")
-	material.set_shader_parameter("interior",DISPLAY)
+	material.set_shader_parameter("interior",display_panorama)
 	material.set_shader_parameter("variation",floorf(index/3.0))
 	pane.material_override=material
 	add_child(pane)

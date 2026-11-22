@@ -16,6 +16,8 @@ var look_finger := -1
 @onready var crosshair: Label = $Overlay/Crosshair
 var hud_visible := true
 var frames := 0
+var warmup_frame := -1
+var street_view: Transform3D
 var last_move_usec := 0
 const METRES_PER_SECOND_PER_MPH := 0.44704
 @onready var stride = $Stride
@@ -35,6 +37,7 @@ func _ready() -> void:
 	pitch = camera.rotation.x
 	if OS.has_feature("web"):
 		web = JavaScriptBridge.get_interface("window")
+		warmup_frame = 0
 		set_motion_level(int(web.midtownMotionLevel))
 		_resize()
 		get_window().size_changed.connect(_resize)
@@ -64,6 +67,7 @@ func look(delta: Vector2) -> void:
 	camera.rotation = Vector3(pitch, yaw, 0)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if warmup_frame >= 0: return
 	if not web and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_V, KEY_ESCAPE]:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif not web and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_B:
@@ -120,6 +124,9 @@ func toggle_body() -> void:
 	update_hud()
 
 func _process(_dt: float) -> void:
+	if warmup_frame >= 0:
+		warm_street_views()
+		return
 	crosshair.visible = mouse_captured() and not driving and (not bool(web.midtownHudHidden) if web else hud_visible)
 	if web and int(web.midtownMotionLevel) != motion_setting:
 		set_motion_level(int(web.midtownMotionLevel))
@@ -144,8 +151,31 @@ func _process(_dt: float) -> void:
 		update_hud()
 	frames += 1
 	if web and (frames == 2 or frames % 15 == 0):
-		web.midtownReady = true
 		web.midtownCamera = "%.2f,%.2f,%.2f,%.3f,%.3f" % [camera.position.x, camera.position.y, camera.position.z, yaw, pitch]
+		if frames == 2:
+			web.midtownReady = true
+
+# WebGL compiles material and light combinations on first draw. Show the block
+# and its first crossing from each side while the opaque loader is still up.
+func warm_street_views() -> void:
+	if warmup_frame == 0:
+		street_view = camera.transform
+	if warmup_frame == 16:
+		camera.transform = street_view
+		warmup_frame = -1
+		return
+	camera.transform = street_view
+	var along_sidewalk := -street_view.basis.z.slide(Vector3.UP).normalized()
+	if warmup_frame < 4:
+		camera.rotate_y(warmup_frame * PI / 2.0)
+	elif warmup_frame < 12:
+		# On the approach, the sedan, shop windows and streetlights overlap.
+		camera.position += along_sidewalk * 8.0
+		camera.rotate_y((warmup_frame - 4) * PI / 4.0)
+	else:
+		camera.position += along_sidewalk * 35.0
+		camera.rotate_y((warmup_frame - 12) * PI / 2.0)
+	warmup_frame += 1
 
 func input_direction() -> Vector3:
 	var dir := Vector3.ZERO
@@ -200,6 +230,7 @@ func interact() -> void:
 	update_hud()
 
 func _physics_process(dt: float) -> void:
+	if warmup_frame >= 0: return
 	if driving:
 		var dir:=input_direction()
 		block.drive(dt,-dir.z,dir.x)

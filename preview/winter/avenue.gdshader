@@ -6,6 +6,7 @@ uniform sampler2D asphalt_normal : hint_normal, filter_linear_mipmap_anisotropic
 uniform sampler2D asphalt_rough : filter_linear_mipmap, repeat_enable;
 uniform sampler2D snow : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D snow_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float sprint_softness = 0.0;
 varying vec3 street;
 varying vec3 direction;
 float hash(vec2 p) { return fract(sin(mod(dot(p,vec2(57.13,97.37)),6.28318))*4375.13); }
@@ -22,21 +23,22 @@ void fragment() {
 	vec3 p=street; vec3 base=COLOR.rgb;
 	if(abs(direction.y)>.68 && p.y<1.0){
 		vec2 uv=p.xz*.54;
+		float bias=sprint_softness*smoothstep(.38,1.,length(SCREEN_UV*2.-1.));
 		float drift=texture(snow_depth,p.xz/64.0).r;
 		bool road=p.y<.09 && base.r<.3;
 		float lateral=abs(p.x-81.)<9.0?p.x:p.z+45.8;
 		float wheel=abs(mod(lateral+.12*sin(p.z*.07+p.x*.09),3.85)-1.925);
 		float tracks=1.-smoothstep(.14,.53,abs(wheel-.78));
 		float cover=road?smoothstep(.57,.83,drift-tracks*.27):smoothstep(.17,.47,drift);
-		vec3 grit=texture(asphalt,uv).rgb;
-		vec3 powder=texture(snow,uv*.65).rgb;
+		vec3 grit=texture(asphalt,uv,bias).rgb;
+		vec3 powder=texture(snow,uv*.65,bias).rgb;
 		float water=(1.-smoothstep(.21,.65,drift))*.74+tracks*.23;
 		vec3 substrate=road?grit*.26:mix(grit*.67,vec3(.21,.20,.19),.44);
 		vec2 seam=abs(fract(p.xz/1.63)-.5);
 		if(!road) substrate*=1.-.6*smoothstep(.486,.5,max(seam.x,seam.y));
 		ALBEDO=mix(substrate*(1.-.40*water),powder*vec3(.91,.94,.99),cover);
-		ROUGHNESS=mix(mix(texture(asphalt_rough,uv).r*.67+.10,.13,water),.84,cover);
-		vec3 bump=mix(texture(asphalt_normal,uv).rgb,texture(snow_normal,uv*.65).rgb,cover)*2.-1.;
+		ROUGHNESS=mix(mix(texture(asphalt_rough,uv,bias).r*.67+.10,.13,water),.84,cover);
+		vec3 bump=mix(texture(asphalt_normal,uv,bias).rgb,texture(snow_normal,uv*.65,bias).rgb,cover)*2.-1.;
 		vec3 wx=vec3(.873,0,.488),wz=vec3(-.488,0,.873);
 		NORMAL=normalize((VIEW_MATRIX*vec4(normalize(vec3(0,1,0)+(wx*bump.x+wz*bump.y)*.45),0)).xyz);
 	} else if(abs(direction.y)<.70) {

@@ -53,6 +53,8 @@ func _ready() -> void:
 	make_streets()
 	flush_static()
 	make_traffic()
+	if OS.has_feature("web"):
+		batch_walkers()
 
 func part(at: Vector3, size: Vector3, color: Color, kind: String="box", rot: Vector3=Vector3.ZERO) -> void:
 	if not batches.has(kind):
@@ -321,6 +323,42 @@ func add_walker(a: Vector3,b: Vector3,i: int,group: int) -> void:
 	n.rotation.y=atan2(a.x-b.x,a.z-b.z)
 	walkers.append({"node":n,"start":a,"end":b,"group":group,"moving":group==2,"pace":1.39+(i%3)*.13,"phase":float(i),"delay":fmod(i*.62,2.0),"limbs":[n.get_node("LeftLeg"),n.get_node("RightLeg"),n.get_node("LeftSleeve"),n.get_node("RightSleeve")]})
 
+# Draw matching body parts together. The existing limbs still supply animation poses.
+func batch_walkers() -> void:
+	var crowd := Node3D.new()
+	crowd.name = "Crowd"
+	add_child(crowd)
+	var groups := {}
+	for walker in walkers:
+		walker.node.hide()
+		walker.draw_parts = []
+		for part_node: MeshInstance3D in walker.node.get_children():
+			var mesh := part_node.mesh
+			if not groups.has(mesh):
+				groups[mesh] = []
+			groups[mesh].append([walker, part_node])
+	var clothes := StandardMaterial3D.new()
+	clothes.vertex_color_use_as_albedo = true
+	clothes.roughness = 0.91
+	for mesh: Mesh in groups:
+		var parts: Array = groups[mesh]
+		var instances := MultiMesh.new()
+		instances.transform_format = MultiMesh.TRANSFORM_3D
+		instances.use_colors = true
+		instances.mesh = mesh
+		instances.instance_count = parts.size()
+		var view := MultiMeshInstance3D.new()
+		view.multimesh = instances
+		view.material_override = clothes
+		crowd.add_child(view)
+		for i in parts.size():
+			var walker: Dictionary = parts[i][0]
+			var limb: MeshInstance3D = parts[i][1]
+			var material := limb.get_active_material(0) as StandardMaterial3D
+			instances.set_instance_color(i, material.albedo_color)
+			instances.set_instance_transform(i, walker.node.transform * limb.transform)
+			walker.draw_parts.append([instances, i, limb])
+
 func vehicle_signal(avenue: bool) -> int:
 	if avenue:
 		return 2 if cycle<17 else (1 if cycle<20 else 0)
@@ -362,6 +400,9 @@ func update_walkers(dt: float) -> void:
 				w.start=goal
 				w.moving=w.group==2
 				for limb in w.limbs: limb.rotation.x=0
+			if w.has("draw_parts"):
+				for draw in w.draw_parts:
+					draw[0].set_instance_transform(draw[1], n.transform * draw[2].transform)
 
 func crossing_busy() -> bool:
 	for w in walkers:
