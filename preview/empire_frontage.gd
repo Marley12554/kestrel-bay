@@ -9,6 +9,11 @@ const STORES_TOP := 5.0
 const FLOORS := [5.0,10.8,15.35,19.9,25.21]
 func _ready() -> void:
 	prepare_geometry()
+	# The portal is dressed in broad, smooth limestone ashlar. The eagle's
+	# vertex tones retain the cut recesses in the diffuse nighttime light.
+	material("portal_stone","#c3bbaa",.82)
+	var carving:=material("carved_stone","#c3bbaa",.82)
+	carving.vertex_color_use_as_albedo=true
 	frame=Transform3D(Basis(Vector3.UP,PI/2),Vector3(65.04,0,-.72))
 	for sign_side in [-1,1]:
 		var width: float=(HALF_FRONT-PORTAL)/8.0
@@ -170,9 +175,7 @@ func entry() -> void:
 		var x: float=side*5.12
 		piece("granite",Vector3(x,2.52,.43),Vector3(2.18,5.04,1.5))
 		collider(Vector3(x,2.52,.43),Vector3(2.18,5.04,1.50))
-		piece("limestone",Vector3(x,15.10,.32),Vector3(2.18,20.20,1.38))
-		for rib in 6:
-			piece("limestone",Vector3(x+(rib-2.5)*.31,14.82,1.02),Vector3(.31,19.63,.44),Vector3.ZERO,"round")
+		entrance_pier(x)
 		piece("brass",Vector3(x,1.62,1.21),Vector3(.34,.39,.055))
 	var w:=2.40
 	door_pair(0,w,.30)
@@ -200,14 +203,74 @@ func entry() -> void:
 			piece("steel",Vector3(x+(j-2)*.43,19.65,.44),Vector3(.055,2.34,.13))
 	# Two upper openings pierce the lintel beneath the gilt inscription.
 	for span in [[20.70,21.68],[23.78,26.28]]:
-		piece("limestone",Vector3(0,(span[0]+span[1])*.5,.25),Vector3(8.10,span[1]-span[0],1.26))
+		piece("portal_stone",Vector3(0,(span[0]+span[1])*.5,.25),Vector3(8.10,span[1]-span[0],1.26))
 	for strip in [[-3.15,1.80],[0.,1.25],[3.15,1.80]]:
-		piece("limestone",Vector3(strip[0],22.73,.25),Vector3(strip[1],2.1,1.26))
+		piece("portal_stone",Vector3(strip[0],22.73,.25),Vector3(strip[1],2.1,1.26))
 	for x in [-1.44,1.44]:
 		piece("reveal",Vector3(x,22.73,-.63),Vector3(1.65,2.1,.1))
 		pane(x,22.73,.11,1.68,2.1)
 		piece("sash",Vector3(x,22.73,.21),Vector3(1.7,.12,.14))
-	lettering("E M P I R E   S T A T E",Vector3(0,24.95,1.02),1.03)
+	# Continuous fascia across both piers. Fit the actual glyph mesh between
+	# the capitals, leaving clearance even when seen from directly below.
+	piece("portal_stone",Vector3(0,25.49,.44),Vector3(PORTAL*2,1.58,1.30))
+	var inscription:=TextMesh.new()
+	inscription.text="EMPIRE STATE"
+	inscription.font_size=96
+	inscription.pixel_size=.011
+	inscription.depth=.045
+	var font:=FontVariation.new()
+	font.base_font=ThemeDB.fallback_font
+	font.spacing_glyph=8
+	inscription.font=font
+	var letters:=MeshInstance3D.new()
+	letters.name="EntranceInscription"
+	letters.mesh=inscription
+	var gold:=material("gilt","#eec375",.32,.62)
+	gold.emission_enabled=true
+	gold.emission=Color("#dbaa57")
+	gold.emission_energy_multiplier=.20
+	letters.material_override=gold
+	var fit:=7.13/inscription.get_aabb().size.x
+	letters.transform=frame*Transform3D(Basis.IDENTITY.scaled(Vector3(fit,fit,1)),Vector3(0,25.18,1.15))
+	add_child(letters)
+	entrance_flag()
+
+func entrance_pier(x: float) -> void:
+	if not meshes.has("eagle"):
+		meshes["eagle"]=preload("res://entrance_eagle.gd").carve()
+	# Broad convex flutes continue directly into the folded feather carving.
+	piece("portal_stone",Vector3(x,14.87,.26),Vector3(2.18,19.74,1.28))
+	for flute in 5:
+		var offset:float=(flute-2)*.405
+		var depth:=1.07-.22*pow(absf(offset),2)
+		piece("portal_stone",Vector3(x+offset,13.42,depth),Vector3(.46,16.78,.50),Vector3.ZERO,"round")
+	piece("carved_stone",Vector3(x,21.80,.93),Vector3(1.04,1.02,1.),Vector3.ZERO,"eagle")
+
+func entrance_flag() -> void:
+	var socket:=Vector3(0,26.22,-.64)
+	var top:=socket+Vector3(0,6.55,.30)
+	piece("steel",socket,Vector3(.32,.18,.32),Vector3.ZERO,"round")
+	bar(socket,top,.09,"steel")
+	var ball:=SphereMesh.new()
+	ball.radial_segments=12
+	ball.rings=6
+	meshes["finial"]=ball
+	piece("brass",top,Vector3.ONE*.17,Vector3.ZERO,"finial")
+	var flag:=MeshInstance3D.new()
+	flag.name="AvenueFlag"
+	var cloth:=QuadMesh.new()
+	cloth.size=Vector2(3.42,1.80)
+	cloth.subdivide_width=26
+	cloth.subdivide_depth=10
+	var fabric:=ShaderMaterial.new()
+	fabric.shader=preload("res://winter/avenue_flag.gdshader")
+	cloth.material=fabric
+	flag.mesh=cloth
+	var upper:=top-Vector3.UP*.16
+	flag.transform=frame*Transform3D(Basis.IDENTITY,upper+Vector3(cloth.size.x*.5,-cloth.size.y*.5,.025))
+	flag.extra_cull_margin=.55
+	add_child(flag)
+	bar(socket+Vector3(.15,.12,.08),upper+Vector3(.03,0,.03),.021,"steel")
 
 func rotary(x: float) -> void:
 	var axis:=Vector3(x,0,.14)
