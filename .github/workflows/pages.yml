@@ -44,6 +44,26 @@ jobs:
           export GODOT_BIN="$HOME/.local/bin/godot"
           node scripts/godot.cjs test
           node scripts/build.cjs
+      # Pin the optional snow block independently from the classic desktop game.
+      - name: Check out the tested Fifth Avenue preview
+        uses: actions/checkout@v6
+        with:
+          ref: 3d15d7df306392953f05d872b3d3f31f48337818
+          path: fifth-source
+          sparse-checkout: |
+            preview
+            tests/midtown-block.gd
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Export Fifth Avenue alongside the regular game
+        run: |
+          set -eu
+          destination="$GITHUB_WORKSPACE/dist/site/fifth-avenue"
+          mkdir -p "$destination"
+          ~/.local/bin/godot --headless --path fifth-source/preview --editor --import --quit
+          ~/.local/bin/godot --headless --path fifth-source/preview --script ../tests/midtown-block.gd
+          ~/.local/bin/godot --headless --path fifth-source/preview --export-release Web "$destination/index.html"
+          test -s "$destination/index.pck" && test -s "$destination/index.wasm"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
