@@ -12,6 +12,19 @@ const PAINT := Color("#e8dfca")
 const SNOW := Color("#dfe9e9")
 const PINE := Color("#204c3e")
 const FRONT := Transform3D.IDENTITY
+# Use the sedan wheelbase with arcade steering angles and speed-dependent yaw.
+const CAR_WHEELBASE := 2.875
+const CAR_MAX_STEER := 1.0
+const CAR_MAX_FORWARD_SPEED := 58.1152 # 130 mph in metres per second.
+const CAR_MAX_REVERSE_SPEED := 5.0
+const CAR_STEER_RESPONSE_TIME := 0.026
+const CAR_MAX_YAW_RATE := 3.3
+const CAR_STEERING_FALLOFF_SPEED := 20.0
+const CAR_BRAKE_DECELERATION := 10.5
+const CAR_HIGH_SPEED_BRAKE_DECELERATION := 17.0
+const CAR_HANDBRAKE_DECELERATION := 5.5
+const CAR_MAX_DRIFT_ANGLE := 0.49
+const CAR_DRIFT_RECOVERY_RATE := 2.2
 var shapes: Dictionary = {}
 var batches: Dictionary = {}
 var context := FRONT
@@ -36,6 +49,7 @@ var yield_point := 0.0
 var driven := false
 var driver_speed := 0.0
 var steer := 0.0
+var drift_angle := 0.0
 var long_accel := 0.0
 var side_accel := 0.0
 var reverse_wait := 0.0
@@ -597,41 +611,61 @@ func _physics_process(dt: float) -> void:
 	update_taxi(dt)
 	update_cross_taxi(dt)
 
-func drive(dt: float, throttle: float, turn: float) -> void:
+func drive(dt: float, throttle: float, turn: float, allow_reverse: bool = true, handbrake: bool = false) -> void:
 	var previous := driver_speed
 	var speed := absf(previous)
 	# S applies the service brake first. Hold it briefly at rest to select R.
-	if throttle>=0:
+	if throttle>=0 or not allow_reverse or handbrake:
 		reverse_wait=0
 		backing=false
 	elif speed<.025:
 		reverse_wait+=dt
 		backing=reverse_wait>=.30
 	if throttle<0 and not backing:
-		driver_speed=move_toward(previous,0,10.5*absf(throttle)*dt)
+		# Fade out the high-speed braking assist as the sedan approaches city speeds.
+		var brake_strength := lerpf(CAR_BRAKE_DECELERATION, CAR_HIGH_SPEED_BRAKE_DECELERATION,
+			smoothstep(12.0, 38.0, speed))
+		driver_speed = move_toward(previous, 0.0, brake_strength * absf(throttle) * dt)
+	elif handbrake:
+		driver_speed = move_toward(previous, 0.0, CAR_HANDBRAKE_DECELERATION * dt)
 	elif throttle>0 and previous<-.02:
-		driver_speed=move_toward(previous,0,10.5*throttle*dt)
+		driver_speed = move_toward(previous, 0.0, CAR_BRAKE_DECELERATION * throttle * dt)
 	elif absf(throttle)>.001:
-		var limit := 36.0 if throttle>0 else 5.0
+		var limit := CAR_MAX_FORWARD_SPEED if throttle>0 else CAR_MAX_REVERSE_SPEED
 		var force := (5.1 if throttle>0 else 2.7)*absf(throttle)
 		driver_speed=move_toward(previous,signf(throttle)*limit,dt*force*maxf(.10,1.0-pow(speed/limit,1.6)))
 	else:
 		driver_speed=move_toward(previous,0,(1.12+.001*speed*speed)*dt)
-	var grip_limit:=atan(7.4*2.87/maxf(1,speed*speed))
-	var target:=clampf(turn,-1,1)*minf(.57,grip_limit)
-	steer=move_toward(steer,target,(1.48 if absf(target)>.001 else 2.0)*dt)
+	var steering_speed := absf(driver_speed)
+	# Taper maximum yaw at speed so holding a key stays useful without making taps twitchy.
+	var yaw_limit := CAR_MAX_YAW_RATE / (1.0 + steering_speed / CAR_STEERING_FALLOFF_SPEED)
+	var steering_limit := minf(CAR_MAX_STEER, atan(yaw_limit * CAR_WHEELBASE / maxf(1.0, steering_speed)))
+	steer = clampf(steer, -steering_limit, steering_limit)
+	var steering_input := clampf(turn, -1.0, 1.0)
+	var target := steering_input * steering_limit
+	steer = move_toward(steer, target, steering_limit * dt / CAR_STEER_RESPONSE_TIME)
+	var drift_amount := smoothstep(3.5, 8.0, driver_speed) * absf(steering_input) if handbrake else 0.0
 	var previous_yaw:=parked.rotation.y
-	var yaw_rate:=-driver_speed*tan(steer)/2.87
+	var yaw_rate := -driver_speed * tan(steer) / CAR_WHEELBASE * (1.0 + .20 * drift_amount)
 	parked.rotation.y+=yaw_rate*dt
 	if parked.test_move(parked.global_transform,Vector3.UP*.002):
 		parked.rotation.y=previous_yaw
-	var heading := -parked.global_basis.z
+		yaw_rate=0.0
+	# Keep the direction of travel behind the chassis rotation while grip is reduced.
+	if drift_amount > 0.0:
+		var slip_limit := CAR_MAX_DRIFT_ANGLE * drift_amount * lerpf(1.0, .55, smoothstep(16.0, 40.0, steering_speed))
+		drift_angle = clampf(drift_angle - yaw_rate * dt * .85, -slip_limit, slip_limit)
+	else:
+		drift_angle = move_toward(drift_angle, 0.0, CAR_DRIFT_RECOVERY_RATE * dt)
+	var heading := (-parked.global_basis.z).rotated(Vector3.UP, drift_angle)
 	var travel := heading*driver_speed*dt
 	var hit:=parked.move_and_collide(travel)
 	if hit:
 		var remainder:=hit.get_remainder().slide(hit.get_normal())
 		parked.move_and_collide(remainder)
-		driver_speed*=1.0-clampf(absf(heading.dot(hit.get_normal())),0,1)
+		var impact := clampf(absf(heading.dot(hit.get_normal())), 0.0, 1.0)
+		driver_speed *= 1.0 - impact
+		drift_angle *= 1.0 - impact
 	long_accel=clampf((driver_speed-previous)/dt,-15,8)
 	side_accel=driver_speed*yaw_rate
 	parked.velocity=heading*driver_speed
