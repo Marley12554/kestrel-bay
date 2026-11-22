@@ -1,5 +1,7 @@
 extends Node3D
 
+const GRADE := preload("res://survey/grade.gd")
+
 # Coordinates follow the Manhattan grid: x points along 34th toward Madison,
 # z points downtown along Fifth. The survey mesh stays in its original coordinates.
 const STONE := Color("#c7bdaa")
@@ -56,6 +58,7 @@ var cab_speed := 0.0
 var cycle := 0.0
 var cross_stop := 0.0
 var yield_point := 0.0
+var day_on_grade := false
 var driven := false
 var driver_speed := 0.0
 var steer := 0.0
@@ -646,7 +649,7 @@ func update_taxi(dt: float) -> void:
 	distance=fposmod(distance+advance,route.get_baked_length())
 	var p:=route.sample_baked(distance)
 	var next:=route.sample_baked(fposmod(distance+.45,route.get_baked_length()))
-	taxi.position=p+Vector3.UP*.025
+	taxi.position=p+Vector3.UP*(.025+GRADE.height(to_global(p)))
 	taxi.rotation.y=atan2(p.x-next.x,p.z-next.z)
 
 func update_cross_taxi(dt: float) -> void:
@@ -672,7 +675,7 @@ func update_cross_taxi(dt: float) -> void:
 	cross_distance=fposmod(cross_distance+minf(cross_speed*dt,gap),length)
 	var pos:=cross_route.sample_baked(cross_distance)
 	var nose:=cross_route.sample_baked(fposmod(cross_distance+.45,length))
-	cross_taxi.position=pos+Vector3.UP*.025
+	cross_taxi.position=pos+Vector3.UP*(.025+GRADE.height(to_global(pos)))
 	cross_taxi.rotation.y=atan2(pos.x-nose.x,pos.z-nose.z)
 
 func _physics_process(dt: float) -> void:
@@ -785,3 +788,8 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 		yaw_velocity *= 1.0 - impact
 	long_accel=clampf((driver_speed-previous)/dt,-15,8)
 	parked.velocity=heading*driver_speed
+	if not get_parent().has_node("Winter"):
+		var graded := GRADE.contains(parked.global_position)
+		if graded or day_on_grade:
+			parked.position.y = GRADE.physical_height(parked.get_world_3d().direct_space_state,parked.global_position)+.035
+		day_on_grade = graded

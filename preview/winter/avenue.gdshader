@@ -21,14 +21,17 @@ void vertex() {
 	direction=normalize(MODEL_NORMAL_MATRIX*NORMAL);
 }
 void fragment() {
-	bool pavement=UV2.x>.99;
+	// The city mesh carries a surface class on surveyed, draped pavement.
+	bool graded_road=COLOR.a<.45, graded_walk=COLOR.a>.58 && COLOR.a<.73;
+	bool graded_curb=COLOR.a>.74 && COLOR.a<.84;
+	bool pavement=UV2.x>.99 || graded_road || graded_walk || graded_curb;
 	if(!pavement && (modeled_empire_base(street,direction) || demarest_wall(street,direction))) discard;
 	vec3 p=street; vec3 base=COLOR.rgb;
 	if(pavement || (abs(direction.y)>.68 && p.y<1.0)){
 		vec2 uv=p.xz*.54;
 		float bias=sprint_softness*smoothstep(.38,1.,length(SCREEN_UV*2.-1.));
 		float drift=texture(snow_depth,p.xz/64.0).r;
-		bool road=UV2.x>2.5 || (!pavement && p.y<.09 && base.r<.3);
+		bool road=graded_road || UV2.x>2.5 || (!pavement && p.y<.09 && base.r<.3);
 		float lateral=abs(p.x-81.)<9.0?p.x:p.z+45.8;
 		float wheel=abs(mod(lateral+.12*sin(p.z*.07+p.x*.09),3.85)-1.925);
 		float tracks=1.-smoothstep(.14,.53,abs(wheel-.78));
@@ -46,7 +49,7 @@ void fragment() {
 		ROUGHNESS=mix(mix(texture(asphalt_rough,uv,bias).r*.67+.10,.13,water),.84,cover);
 		vec3 bump=mix(texture(asphalt_normal,uv,bias).rgb,texture(snow_normal,powder_uv,bias).rgb,cover)*2.-1.;
 		vec3 wx=vec3(.873,0,.488),wz=vec3(-.488,0,.873);
-		if(UV2.x>1.5 && UV2.x<2.5){
+		if(graded_curb || (UV2.x>1.5 && UV2.x<2.5)){
 			vec2 face_uv=vec2((p.x+p.z)*.82,p.y*.82);
 			ALBEDO=vec3(.15,.155,.16)*(.75+.5*texture(asphalt,face_uv,bias).r);
 			ROUGHNESS=.79;

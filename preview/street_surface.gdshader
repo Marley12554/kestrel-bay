@@ -12,7 +12,9 @@ void fragment() {
 	if(modeled_empire_base(street,face) || demarest_wall(street,face)) discard;
 	vec3 base = COLOR.rgb;
 	float near_block = 1.0-smoothstep(180.0,360.0,length(street.xz));
-	if(empire_shaft(street,face)){
+	if(COLOR.a<.9){
+		base=COLOR.rgb;
+	} else if(empire_shaft(street,face)){
 		float glass,lit;
 		base=shaft_surface(street,face,glass,lit);
 	} else if (near_block > .001 && abs(face.y) < .65 && street.y > .24) {

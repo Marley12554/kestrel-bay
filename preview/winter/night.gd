@@ -1,5 +1,7 @@
 extends Node3D
 
+const GRADE := preload("res://survey/grade.gd")
+
 const ASSET := "res://winter/assets/"
 const CAR := preload("res://winter/assets/sedan.glb")
 const LENS_SHADER := preload("res://winter/sedan_lens.gdshader")
@@ -16,6 +18,7 @@ var last_suspension_steer := INF
 var last_pressure_revision := -1
 var previous_contacts := PackedVector2Array()
 var road_ride_height := 0.0
+var on_survey_grade := false
 var body_heave := 0.0
 var heave_velocity := 0.0
 var tire_spray: Array[GPUParticles3D] = []
@@ -493,7 +496,7 @@ func add_controls() -> void:
 	hint.position=Vector2(18,get_viewport().get_visible_rect().size.y-39)
 	hint.add_theme_font_size_override("font_size",14)
 	hint.add_theme_constant_override("outline_size",4)
-	hint.text="WASD  Move / drive     ← / →  Signal     Space  Jump     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Interact / exit     F  Freecam     B  Camera motion     H  Hide"
+	hint.text="WASD  Move / drive     ← / →  Signal     Space  Jump     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Interact / exit     F  Freecam     B  Camera motion     J  Herald Sq     H  Hide"
 	get_viewport().size_changed.connect(func(): hint.position.y=get_viewport().get_visible_rect().size.y-39)
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -603,7 +606,7 @@ func walking_height(world: Vector3) -> float:
 	var local:=to_local(world)
 	var p:=Vector2(local.x,local.z)
 	var surface:=pack.surface_at(p)
-	if surface.x<0: return .15
+	if surface.x<0: return city.get_node("HeraldSquare").walking_height(world,.15)
 	return pack.SUPPORT_Y[int(surface.x)]+pack.remaining(p,surface)
 
 func plant_foot(world: Vector3, heading: Vector2, left: bool, effort: float) -> void:
@@ -648,23 +651,25 @@ func sample_wheel_support(car: CharacterBody3D) -> void:
 	for i in wheel_mounts.size():
 		var mount := wheel_mounts[i]
 		var start := car.to_global(mount)
-		start.y = base_y + mount.y + TIRE_PROBE_HEIGHT
+		var terrain := GRADE.physical_height(space,start)
+		start.y = base_y + terrain + mount.y + TIRE_PROBE_HEIGHT
 		var steering: float = -block.steer if i < 2 else 0.0
 		tire_probe.transform = Transform3D(car.global_basis * Basis(Vector3.UP, steering) * upright_tire, start)
 		# Sweep the tire profile so a curb corner can support it before the hub crosses.
 		var contact := space.cast_motion(tire_probe)
 		var hard_lift := maxf(0.0, TIRE_PROBE_HEIGHT - TIRE_PROBE_TRAVEL * contact[0])
 		var surface := pack.surface_at(contacts[i])
-		var packed_lift := 0.
+		var packed_lift := -INF
 		if surface.x >= 0 and surface.y > .001:
 			var remaining := pack.remaining(contacts[i],surface)
 			packed_lift = pack.SUPPORT_Y[int(surface.x)] + remaining - road_ride_height
 			if i >= 2: block.rear_snow_cover += .5 * smoothstep(.002,.045,remaining)
-		wheel_lift[i] = maxf(hard_lift, packed_lift)
+		wheel_lift[i] = maxf(hard_lift + terrain, packed_lift)
 
 func update_sedan_suspension(dt: float) -> void:
 	var car: CharacterBody3D = block.parked
-	if absf(car.position.y - road_ride_height) > .5:
+	on_survey_grade = GRADE.contains(car.global_position) or (on_survey_grade and absf(body_heave) > .08)
+	if not on_survey_grade and absf(car.position.y - road_ride_height) > .5:
 		return
 	var pose := Vector3(car.position.x, car.rotation.y, car.position.z)
 	if not pose.is_equal_approx(last_suspension_pose) or not is_equal_approx(block.steer, last_suspension_steer) or pack.pressure_revision != last_pressure_revision:

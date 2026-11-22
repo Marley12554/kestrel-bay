@@ -1,4 +1,5 @@
 """Stream TUM's citywide LoD2 CityGML ZIPs into a bounded Midtown source extract."""
+import json
 import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
@@ -8,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "source-assets/NYC-CityGML"
 CACHE = ROOT / "dist/midtown-source"
 # EPSG:32118, metres. Origin at Bryant Park, east/north axes.
-EAST, NORTH = 301419, 65177
+EAST, NORTH = json.loads((ROOT / "scripts/survey/frame.json").read_text())["origin_east_north_m"]
 HALF_X, HALF_Y = 1050, 1200
 LAYERS = ["Buildings", "Roadbed", "Intersection", "Sidewalk", "Plaza"]
 START = re.compile(rb"<(?:core:)?cityObjectMember>")

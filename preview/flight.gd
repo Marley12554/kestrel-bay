@@ -1,5 +1,7 @@
 extends Node3D
 
+const GRADE := preload("res://survey/grade.gd")
+
 @export var survey_material: ShaderMaterial
 @onready var block = $Block
 @onready var walker: CharacterBody3D = $Walker
@@ -26,6 +28,9 @@ var drive_audio := preload("res://drive_audio.gd").new()
 var gear_readout := Label.new()
 @onready var camera: Camera3D = $Camera
 @onready var body: Node3D = $Body
+var pilot_return: Transform3D
+var pilot_return_feet: Vector3
+var at_pilot := false
 var return_view: Transform3D
 var speed_mph := 95.0
 var yaw := 0.0
@@ -108,6 +113,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif not web and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_B:
 		set_motion_level((motion_setting + 2) % 3)
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_J:
+		visit_pilot()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F:
 		toggle_body()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E:
@@ -129,6 +136,28 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
 		if mouse_captured():
 			look(event.screen_relative)
+
+func visit_pilot() -> void:
+	if driving or body.visible: return
+	if at_pilot:
+		walker.global_position = pilot_return_feet
+		camera.global_transform = pilot_return
+	else:
+		pilot_return = camera.global_transform
+		pilot_return_feet = walker.global_position
+		var at: Vector3 = $HeraldSquare.LOOKOUT
+		at.y = GRADE.height(at)
+		walker.global_position = at
+		camera.global_position = at + Vector3.UP*MIN_HEIGHT
+		camera.look_at($HeraldSquare.TOWER)
+	yaw = camera.rotation.y
+	pitch = camera.rotation.x
+	walker.velocity = Vector3.ZERO
+	airborne = false
+	jump_requested = false
+	vertical_speed = 0.
+	stride.reset()
+	at_pilot = not at_pilot
 
 func set_motion_level(level: int) -> void:
 	motion_setting = clampi(level, 0, 2)
@@ -283,6 +312,7 @@ func fly(dir: Vector3, elapsed: float) -> void:
 		motion.y = 0.0
 	camera.position += motion.normalized() * speed_mph * METRES_PER_SECOND_PER_MPH * elapsed
 	camera.position = camera.position.clamp(Vector3(-1350, MIN_HEIGHT, -1500), Vector3(1350, MAX_HEIGHT, 1500))
+	camera.position.y = maxf(camera.position.y, GRADE.height(camera.position)+MIN_HEIGHT)
 
 
 func update_hud() -> void:
@@ -302,12 +332,13 @@ func interact() -> void:
 		var clear := false
 		for offset in [side, -side, block.parked.global_basis.z*1.8]:
 			exit_at = block.parked.global_position + offset*1.65
+			exit_at.y = GRADE.height(exit_at,.15)
 			params.transform = Transform3D(Basis.IDENTITY, exit_at + Vector3.UP*.94)
 			if space.intersect_shape(params,1).is_empty():
 				clear = true
 				break
 		if not clear: return
-		walker.global_position = Vector3(exit_at.x,.15,exit_at.z)
+		walker.global_position = exit_at
 		driving = false
 		brake_pressed = false
 		turn_signal_direction = 0
@@ -379,7 +410,7 @@ func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 	walker.velocity = intended
 	var travelled := walker.position - start
 	var motion:=Vector2(travelled.x,travelled.z)
-	var ground: float = stride.winter.walking_height(walker.global_position) if stride.winter else .15
+	var ground: float = stride.winter.walking_height(walker.global_position) if stride.winter else $HeraldSquare.walking_height(walker.global_position,.15)
 	var raised := walker.position.y > ground + .23
 	var supported := raised and walker.test_move(walker.global_transform,Vector3.DOWN*.035)
 	if jump_requested and not airborne and (not raised or supported):
@@ -434,7 +465,7 @@ func chase_view(dt: float, car_yaw_change: float = 0.0) -> void:
 	if orbit_pitch < 0.0:
 		# The survey pavement is rendered geometry without a floor collider.
 		var sample_at := pivot + horizontal * cos(orbit_pitch) * reach
-		var floor_y: float = stride.winter.walking_height(sample_at) if stride.winter else 0.0
+		var floor_y: float = stride.winter.walking_height(sample_at) if stride.winter else GRADE.height(sample_at)
 		var lowest := asin(clampf((floor_y + CAMERA_CLEARANCE - pivot.y) / reach, -1., 1.))
 		pitch_limit = maxf(orbit_pitch, lowest)
 	var offset := horizontal * cos(pitch_limit) + Vector3.UP * sin(pitch_limit)

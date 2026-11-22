@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://flight.gd" id="1"]
 [ext_resource type="PackedScene" path="res://meshes/midtown.scn" id="2"]
@@ -11,6 +11,10 @@
 
 [ext_resource type="Script" path="res://stride.gd" id="7"]
 [ext_resource type="Shader" path="res://sprint_blur.gdshader" id="8"]
+
+[ext_resource type="PackedScene" path="res://survey/herald.tscn" id="9"]
+
+[ext_resource type="Shape3D" path="res://survey/pavement.res" id="10"]
 
 [sub_resource type="ShaderMaterial" id="Blur"]
 shader = ExtResource("8")
@@ -61,6 +65,8 @@ mesh = SubResource("GroundMesh")
 
 [node name="Survey" parent="." instance=ExtResource("2")]
 
+[node name="HeraldSquare" parent="." instance=ExtResource("9")]
+
 [node name="Body" parent="." instance=ExtResource("3")]
 visible = false
 
@@ -71,6 +77,13 @@ script = ExtResource("4")
 
 [node name="Shape" type="CollisionShape3D" parent="Walls"]
 shape = ExtResource("5")
+
+[node name="SurveyPavement" type="StaticBody3D" parent="."]
+collision_layer = 8
+collision_mask = 0
+
+[node name="Surface" type="CollisionShape3D" parent="SurveyPavement"]
+shape = ExtResource("10")
 
 [node name="Walker" type="CharacterBody3D" parent="."]
 motion_mode = 1

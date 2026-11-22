@@ -1,4 +1,5 @@
 .DS_Store
 dist/
 node_modules/
+__pycache__/
 godot-prototype/.godot/

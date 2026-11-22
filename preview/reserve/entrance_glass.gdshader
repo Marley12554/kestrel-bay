@@ -4,9 +4,10 @@ render_mode cull_disabled, shadows_disabled;
 // The exterior reads in reflection at a shallow angle. A cooler transmitted
 // tint and two small rows of frosted safety dots also identify a closed pane
 // when the bright shop interior dominates the view from the sidewalk.
+uniform float floor_y = 0.;
 varying float height;
 void vertex() {
-	height = (MODEL_MATRIX * vec4(VERTEX, 1.0)).y;
+	height = (MODEL_MATRIX * vec4(VERTEX, 1.0)).y - floor_y;
 }
 void fragment() {
 	float angle = 1.0 - abs(dot(normalize(NORMAL), normalize(VIEW)));

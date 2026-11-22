@@ -1,0 +1,55 @@
+{
+  "address": "1350 Broadway, Manhattan",
+  "bbl": "1008110031",
+  "current_bin": "1080606",
+  "source_bins": {"south_wing": "1080605", "office_tower": "1080606"},
+  "sources": {
+    "massing": "https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/",
+    "footprint": "https://data.cityofnewyork.us/resource/5zhs-2jue.json?base_bbl=1008110031",
+    "footprint_state_plane": "https://services6.arcgis.com/yG5s3afENB5iO9fj/arcgis/rest/services/BUILDING_view/FeatureServer/0/query?where=DOITT_ID%3D354757&outFields=*&outSR=2263&returnGeometry=true&f=json",
+    "grade": "https://gisdata.ny.gov/elevation/DEM/NYC_TopoBathymetric2017/be_NYC_025.tif",
+    "owner": "https://www.esrtreit.com/properties/office/1350-broadway1/",
+    "northwest": "https://www.esrtreit.com/wp-content/uploads/3-1350-Broadway-637x800.jpg",
+    "southwest": "https://www.esrtreit.com/wp-content/uploads/6-1350-Broadway-618x800.jpg",
+    "northeast": "https://www.esrtreit.com/wp-content/uploads/8-1350-Broadway-541x800.jpg",
+    "access_plan_page_14": "https://www.esrtreit.com/wp-content/uploads/1350-RTO-Final-2.16.pdf",
+    "holdout_south": "https://www.noahre.com/hubfs/Building%20Photos/1350%20Broadway.jpg"
+  },
+  "survey_control": {"doitt_id": 354757, "ground_ft": 51, "roof_above_ground_ft": 328.21, "ring_epsg2263_us_ft": [[987743.6495, 212956.978], [987813.1352, 212918.09], [987816.7153, 212924.4866], [987836.5522, 212913.3846], [987778.3899, 212809.4599], [987770.7662, 212795.8376], [987740.2476, 212741.3069], [987688.1841, 212770.4446], [987700.2828, 212853.1731], [987715.2755, 212967.7765], [987726.91, 212973.2598], [987740.6656, 212965.5617], [987746.5957, 212962.2428], [987743.6495, 212956.978]]},
+  "shell_anchor_en": [301000, 64800],
+  "podium_top_navd88_m": 33.000762,
+  "office_floors_above_podium": 21,
+  "office_floor_spacing_m": 3.73,
+  "points": {
+    "SW":[47.96,52.56], "SE":[63.83,43.68], "Ejoin":[75.46,64.45], "NE":[93.18,96.10],
+    "NreturnE":[87.1,99.5], "NrecessE":[86.0,97.6], "NrecessW":[64.9,109.4],
+    "NreturnW":[65.8,111.0], "NWchamfer":[59.8,114.4], "Wchamfer":[56.2,112.7], "Wjoin":[51.65,77.78]
+  },
+  "podium": [
+    {"from":"SW","to":"SE","street":"35th","bays":3},
+    {"from":"SE","to":"Ejoin","street":"Sixth","bays":4},
+    {"from":"Ejoin","to":"NE","street":"Sixth","bays":7},
+    {"from":"NE","to":"NreturnE","street":"36th","bays":1},
+    {"from":"NreturnE","to":"NrecessE","street":"return","bays":0},
+    {"from":"NrecessE","to":"NrecessW","street":"36th","bays":5},
+    {"from":"NrecessW","to":"NreturnW","street":"return","bays":0},
+    {"from":"NreturnW","to":"NWchamfer","street":"36th","bays":1},
+    {"from":"NWchamfer","to":"Wchamfer","street":"corner","bays":1},
+    {"from":"Wchamfer","to":"Wjoin","street":"Broadway","bays":7},
+    {"from":"Wjoin","to":"SW","street":"Broadway","bays":4}
+  ],
+  "office_rhythm": {
+    "Broadway":{"from":"Wchamfer","to":"Wjoin","columns":12},
+    "Sixth":{"from":"Ejoin","to":"NE","columns":12},
+    "36th":{"from":"NE","to":"NWchamfer","columns":12},
+    "south":{"from":"Wjoin","to":"Ejoin","columns":9},
+    "corner":{"from":"NWchamfer","to":"Wchamfer","columns":1}
+  },
+  "ground_frontages": {
+    "Broadway":[[0,0.255,"corner shop"],[0.255,0.355,"lobby"],[0.355,0.50,"FedEx"],[0.50,0.72,"pharmacy"],[0.72,1,"bank"]],
+    "Sixth":[[0,0.28,"bank"],[0.28,0.51,"pharmacy"],[0.51,0.65,"retail"],[0.65,0.73,"lobby"],[0.73,1,"corner shop"]],
+    "35th":[[0,1,"bank"]],
+    "36th":[[0,0.33,"corner shop"],[0.33,0.46,"freight"],[0.46,1,"retail"]],
+    "corner":[[0,1,"corner shop"]]
+  }
+}
