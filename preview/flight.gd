@@ -6,9 +6,14 @@ extends Node3D
 var driving := false
 var brake_pressed := false
 var steering_direction := 0
+var previous_steer_key := 0
+var steer_key_seconds := 0.0
 var can_enter_car := false
 var orbit_yaw := 0.0
-var orbit_pitch := .31
+const CHASE_PITCH := .31
+const CAMERA_CLEARANCE := .25
+var orbit_pitch := CHASE_PITCH
+var camera_probe := SphereShape3D.new()
 var manual_look := 0.0
 var road_bump := 0.0
 var last_road := true
@@ -36,6 +41,7 @@ const MIN_HEIGHT := 1.7
 const MAX_HEIGHT := 1800.0
 
 func _ready() -> void:
+	camera_probe.radius = CAMERA_CLEARANCE
 	add_child(drive_audio)
 	$Overlay.add_child(gear_readout)
 	gear_readout.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -83,7 +89,7 @@ func _release() -> void:
 func look(delta: Vector2) -> void:
 	if driving:
 		orbit_yaw-=delta.x*.0034
-		orbit_pitch=clampf(orbit_pitch+delta.y*.0025,.07,1.14)
+		orbit_pitch=clampf(orbit_pitch+delta.y*.0025,-PI*.5,PI*.5)
 		manual_look=1.5
 		return
 	yaw -= delta.x * .0026
@@ -216,13 +222,25 @@ func drive_from_input(dt: float) -> void:
 	var brake := 0.0
 	var turn := 0.0
 	var handbrake := false
+	var steer_key := 0
 	if not web or not bool(web.midtownInControls):
 		accelerator = float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP))
 		brake = float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))
 		handbrake = Input.is_physical_key_pressed(KEY_SHIFT)
 		var left := Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)
 		var right := Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)
-		turn = float(right) - float(left)
+		steer_key = int(right) - int(left)
+	if steer_key == 0 or steer_key != previous_steer_key:
+		steer_key_seconds = 0.0
+	previous_steer_key = steer_key
+	if steer_key != 0:
+		steer_key_seconds += dt
+		# A digital tap trims the line at highway speed. Holding the same
+		# direction builds to full lock. Handbraking keeps its immediate response.
+		var highway := smoothstep(40., 85., absf(block.driver_speed) / METRES_PER_SECOND_PER_MPH)
+		var held := smoothstep(0., .38, steer_key_seconds)
+		var strength := 1.0 if handbrake else lerpf(1.0, lerpf(.10, 1., held), highway)
+		turn = float(steer_key) * strength
 	if web:
 		var pedals := clampf(float(web.midtownZ), -1.0, 1.0)
 		accelerator = maxf(accelerator, -pedals)
@@ -280,8 +298,10 @@ func interact() -> void:
 		camera.rotation=Vector3(pitch,yaw,0)
 	elif walker.position.distance_to(block.parked.global_position)<5.8:
 		driving=true
+		previous_steer_key=0
+		steer_key_seconds=0.0
 		orbit_yaw=block.parked.global_rotation.y
-		orbit_pitch=.31
+		orbit_pitch=CHASE_PITCH
 		manual_look=0
 		road_bump=0
 		last_road=on_road(block.parked.global_position)
@@ -337,12 +357,21 @@ func on_road(world: Vector3) -> bool:
 func chase_view(dt: float, car_yaw_change: float = 0.0) -> void:
 	var car: CharacterBody3D=block.parked
 	var speed: float=absf(block.driver_speed)
-	manual_look=maxf(0,manual_look-dt)
-	if manual_look > 0.0:
+	var holding_view := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or look_finger >= 0
+	if holding_view:
+		# Deliberately holding a view pins its angle relative to the car.
 		orbit_yaw = wrapf(orbit_yaw + car_yaw_change, -PI, PI)
+		manual_look = 1.5
 	elif speed > 1.0:
-		var follow_rate := lerpf(6.0, 10.0, smoothstep(4.0, 28.0, speed))
-		orbit_yaw = lerp_angle(orbit_yaw, car.global_rotation.y, 1.0 - exp(-follow_rate * dt))
+		manual_look = maxf(0.0, manual_look - dt)
+		if manual_look == 0.0:
+			# Small corrections remain visible against the lane. A sustained corner
+			# opens a larger heading gap and brings the camera around sooner.
+			var gap := angle_difference(orbit_yaw, car.global_rotation.y)
+			var rate := lerpf(1.35, 5.5, smoothstep(deg_to_rad(5.), deg_to_rad(25.), absf(gap)))
+			var step := gap * (1.0 - exp(-rate * dt))
+			orbit_yaw = wrapf(orbit_yaw + clampf(step, -2.4*dt, 2.4*dt), -PI, PI)
+			orbit_pitch = lerpf(orbit_pitch, CHASE_PITCH, 1.0-exp(-1.8*dt))
 	var paved:=on_road(car.global_position)
 	if paved!=last_road:
 		road_bump=minf(speed*.008,.07)
@@ -351,10 +380,25 @@ func chase_view(dt: float, car_yaw_change: float = 0.0) -> void:
 	var heave: float=(road_bump+sin(camera_road_phase)*minf(speed*.0005,.009))*stride.strength
 	road_bump*=exp(-10.*dt)
 	var pivot:=car.global_position+Vector3.UP*(1.15+heave)
-	var offset:=Basis(Vector3.UP,orbit_yaw)*Vector3(0,sin(orbit_pitch),cos(orbit_pitch))
-	var reach:=5.8+minf(speed*.045,.95)
-	var query:=PhysicsRayQueryParameters3D.create(pivot,pivot+offset*reach,3,[car.get_rid()])
-	var hit:=get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty(): reach=maxf(.35,pivot.distance_to(hit.position)-.22)
-	camera.position=pivot+offset*reach
-	camera.look_at(pivot-offset.slide(Vector3.UP)*1.7)
+	var reach := 5.8 + minf(speed*.045, .95)
+	var yaw_basis := Basis(Vector3.UP, orbit_yaw)
+	var horizontal := yaw_basis.z
+	var pitch_limit := orbit_pitch
+	if orbit_pitch < 0.0:
+		# The survey pavement is rendered geometry without a floor collider.
+		var sample_at := pivot + horizontal * cos(orbit_pitch) * reach
+		var floor_y: float = stride.winter.walking_height(sample_at) if stride.winter else 0.0
+		var lowest := asin(clampf((floor_y + CAMERA_CLEARANCE - pivot.y) / reach, -1., 1.))
+		pitch_limit = maxf(orbit_pitch, lowest)
+	var offset := horizontal * cos(pitch_limit) + Vector3.UP * sin(pitch_limit)
+	var sweep := PhysicsShapeQueryParameters3D.new()
+	sweep.shape = camera_probe
+	sweep.transform.origin = pivot
+	sweep.motion = offset * reach
+	sweep.collision_mask = 3
+	sweep.exclude = [car.get_rid()]
+	var fraction := get_world_3d().direct_space_state.cast_motion(sweep)[0]
+	camera.global_position = pivot + sweep.motion * fraction
+	# The stored yaw supplies a stable right axis even when looking straight down or up.
+	var back := (offset * reach * maxf(.001, fraction) + horizontal * cos(pitch_limit) * 1.7).normalized()
+	camera.global_basis = Basis(yaw_basis.x, back.cross(yaw_basis.x).normalized(), back)

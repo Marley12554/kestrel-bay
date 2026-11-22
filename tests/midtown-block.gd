@@ -213,6 +213,19 @@ func winter_stride_checks() -> void:
 	var orbit: float=scene.orbit_yaw
 	scene.chase_view(1./60)
 	check(absf(angle_difference(orbit,block.parked.global_rotation.y))>.4,"orbit works while parked")
+	var ground_position: Vector3 = block.parked.position
+	scene.look(Vector2(0,-2200))
+	scene.chase_view(1./60)
+	check(scene.camera.global_position.y > .20, "pavement limits the downward camera orbit")
+	block.parked.position.y = 1000
+	scene.chase_view(1./60)
+	check(scene.camera.global_basis.z.y < -.9999, "an elevated sedan can be inspected from directly underneath")
+	scene.look(Vector2(0,2200))
+	for i in 150: scene.chase_view(1./60)
+	check(scene.camera.global_basis.z.y > .9999 and scene.camera.global_basis.determinant() > .999,
+		"overhead orbit stays upright and parked inspection holds")
+	block.parked.position = ground_position
+	scene.orbit_pitch = scene.CHASE_PITCH
 	for i in 150:
 		block.drive(1./60,1,0)
 	check(block.driver_speed>11.2,"electric sedan accelerates beyond prototype speed cap")
@@ -330,6 +343,7 @@ func winter_stride_checks() -> void:
 		var mph: int = config[0]
 		var accelerator: Key = config[1]
 		var steering_key: Key = config[2]
+		scene._physics_process(1.0 / 60.0) # Sample key-up between independent runs.
 		var turn_direction: float = config[3]
 		sedan.position = Vector3(81, .035, -31)
 		sedan.rotation.y = PI
@@ -349,7 +363,7 @@ func winter_stride_checks() -> void:
 		var settled_yaw := sedan.global_rotation.y
 		scene._physics_process(1.0 / 60.0)
 		var settled_yaw_step := absf(angle_difference(settled_yaw, sedan.global_rotation.y))
-		check(initial_yaw > deg_to_rad(.10) and initial_yaw < deg_to_rad(.30) and settled_yaw_step > initial_yaw * 3.0,
+		check(initial_yaw > 0 and initial_yaw < deg_to_rad(.15) and settled_yaw_step > initial_yaw * 3.0,
 			"%d mph steering starts gently and builds through the first seven frames" % mph)
 		for tick in 23:
 			scene._physics_process(1.0 / 60.0)
@@ -358,8 +372,29 @@ func winter_stride_checks() -> void:
 		var heading_change := absf(angle_difference(start_yaw, sedan.global_rotation.y))
 		var camera_change := absf(angle_difference(start_yaw, scene.orbit_yaw))
 		var lateral_distance := (sedan.position - start_position).dot(right) * turn_direction
-		check(lateral_distance > 4.2 and lateral_distance < 6.0, "%d mph keyboard turn shifts %.2f m in half a second" % [mph, lateral_distance])
-		check(camera_change > heading_change * 0.70, "%d mph chase camera follows the initial turn" % mph)
+		check(lateral_distance > 2.0 and lateral_distance < 5.0, "%d mph keyboard turn shifts %.2f m in half a second" % [mph, lateral_distance])
+		check(camera_change > heading_change * .17 and camera_change < heading_change * .70, "%d mph camera follows a sustained turn while showing chassis rotation" % mph)
+
+	# A digital tap should provide a lane trim, including the residual wheel
+	# motion after key-up. Test both directions on a clear stretch of Fifth.
+	for key: Key in [KEY_A, KEY_D]:
+		for ticks in [3, 6]:
+			scene._physics_process(1./60.)
+			sedan.position = Vector3(81, .035, -50)
+			sedan.rotation.y = PI
+			block.driver_speed = block.CAR_MAX_FORWARD_SPEED
+			block.reset_steering()
+			var trim_heading := sedan.global_rotation.y
+			var lateral := sedan.global_basis.x
+			movement_key(key, true)
+			for tick in ticks: scene._physics_process(1./60.)
+			movement_key(key, false)
+			var release_position := sedan.global_position
+			for tick in 60: scene._physics_process(1./60.)
+			var degrees := absf(rad_to_deg(angle_difference(trim_heading, sedan.global_rotation.y)))
+			var feet := absf((sedan.global_position-release_position).dot(lateral)) * 3.28084
+			var expected_degrees := .30 if ticks==3 else .81
+			check(absf(degrees-expected_degrees)<.15 and feet<3.2, "130 mph %d-tick trim: %.2f degrees, %.2f ft" % [ticks,degrees,feet])
 
 	# Switch directions at speed and let the wheels return to center.
 	sedan.position = Vector3(81, 1000, -31)
@@ -374,12 +409,12 @@ func winter_stride_checks() -> void:
 	movement_key(KEY_D, false)
 	movement_key(KEY_A, true)
 	scene._physics_process(1.0 / 60.0)
-	check(block.steer > right_lock * .55 and block.steer < right_lock * .8,
+	check(block.steer > right_lock * .55 and block.steer < right_lock * .90,
 		"switching to A eases the wheels out of right lock")
 	for tick in 11:
 		scene._physics_process(1.0 / 60.0)
 	var left_lock: float = block.steer
-	check(left_lock < -right_lock * .95, "holding A settles the wheels into left lock")
+	check(left_lock < -right_lock * .90, "equal-duration A and D holds give comparable wheel angles")
 	movement_key(KEY_A, false)
 	scene._physics_process(1.0 / 60.0)
 	check(block.steer < left_lock * .7 and block.steer > left_lock,
@@ -417,14 +452,14 @@ func winter_stride_checks() -> void:
 	var brake_start_yaw := sedan.rotation.y
 	block.driver_speed = 130.0 * scene.METRES_PER_SECOND_PER_MPH
 	scene.look(Vector2(90, 0))
-	var orbit_offset := angle_difference(sedan.global_rotation.y, scene.orbit_yaw)
+	var manual_heading: float = scene.orbit_yaw
 	movement_key(KEY_D, true)
 	for tick in 60:
 		scene._physics_process(1.0 / 60.0)
 	movement_key(KEY_D, false)
 	check(absf(block.driver_speed / scene.METRES_PER_SECOND_PER_MPH - 92.0) < .2, "S slows from 130 to 92 mph in one second with W held")
-	check(angle_difference(brake_start_yaw, sedan.rotation.y) < deg_to_rad(-50.0), "D steers past 50 degrees while braking from 130 mph")
-	check(absf(angle_difference(sedan.global_rotation.y, scene.orbit_yaw) - orbit_offset) < .02, "mouse orbit stays aligned with the car during a turn")
+	check(angle_difference(brake_start_yaw, sedan.rotation.y) < deg_to_rad(-40.0), "holding D still steers decisively while braking from 130 mph")
+	check(absf(angle_difference(manual_heading, scene.orbit_yaw)) < .002, "after mouse look the view holds its world heading while the car turns")
 	for tick in 360:
 		scene._physics_process(1.0 / 60.0)
 	check(is_zero_approx(block.driver_speed) and not block.backing, "holding both pedals stops without shifting into reverse")
