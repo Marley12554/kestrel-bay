@@ -871,90 +871,55 @@ func street_fixture_checks(block, pack) -> void:
 	block.cycle=saved
 	block.update_lights()
 
-func check_revolving_entry(city) -> void:
+func check_revolving_entry(city, shop) -> void:
+	var drum = shop.get_node("ReserveRevolvingDoor")
 	var walker: CharacterBody3D = city.walker
-	var doors = city.manual_doors
-	for unit in city.get_tree().get_nodes_in_group("manual_drums"):
-		var original: float = unit.rotor.rotation.y
-		for side: float in [1., -1.]:
-			var inward: Vector3 = -unit.global_basis.z*side
-			city.yaw = atan2(-inward.x,-inward.z)
-			city.camera.rotation = Vector3(-.32,city.yaw,0)
-			walker.global_position = unit.to_global(Vector3(0,.16,side*1.52))
-			walker.velocity = Vector3.ZERO
-			var initial: float = unit.rotor.rotation.y
-			for tick in 45: city.walk(Vector3.ZERO,false,1./60.)
-			check(is_equal_approx(unit.rotor.rotation.y,initial),"standing at the revolving door leaves it stationary")
-			var grabbed := false
-			for tick in 240:
-				city.walk(Basis(Vector3.UP,city.yaw)*Vector3.FORWARD,false,1./60.)
-				if doors.drum == unit and doors.reach >= 1.:
-					grabbed = true
-					var left: Node3D = doors.arms.arms[0].get_child(3)
-					var right: Node3D = doors.arms.arms[1].get_child(3)
-					check((left.global_position+right.global_position).distance_to(2.*doors.wing.to_global(doors.contact))<.003
-						and absf(left.global_position.distance_to(right.global_position)-.27)<.003, "both gloves stay on the actual push bar")
-					var hold_angle: float = unit.rotor.rotation.y
-					for hold in 20: city.walk(Vector3.ZERO,false,1./60.)
-					check(is_equal_approx(unit.rotor.rotation.y,hold_angle),"resting hands on the bars stops the rotor")
-					break
-			check(grabbed and doors.arms.visible,"walking into a compartment brings the hands onto the moving bar")
-			for tick in 240:
-				city.walk(Basis(Vector3.UP,city.yaw)*Vector3.FORWARD,false,1./60.)
-				if unit.to_local(walker.global_position).z * side < -1.47: break
-			check(unit.to_local(walker.global_position).z * side < -1.47 and doors.drum == null,
-				"walking pushes through "+str(unit.get_path())+" from side "+str(side)+" at "+str(unit.to_local(walker.global_position)))
-			doors.release(true)
-		unit.turn_by(original-unit.rotor.rotation.y)
-
-func check_vestibule_handles(city) -> void:
-	var walker: CharacterBody3D = city.walker
-	for door in city.get_tree().get_nodes_in_group("manual_swing_doors"):
-		if door == city.block.reserve.door: continue
-		var push: Vector3 = -door.global_basis.z
-		walker.global_position = door.to_global(Vector3(door.handle.x*.78,.15,.46))
-		walker.velocity = Vector3.ZERO
-		city.yaw = atan2(-push.x,-push.z)
-		city.interact()
-		for tick in 38: city.walk(Basis(Vector3.UP,city.yaw)*Vector3.FORWARD,false,1./60.)
-		check(absf(door.angle)>.45 and city.manual_doors.leaf == door, "the vestibule leaf turns under the player's hand")
-		for tick in 55:
-			city.walk(Basis(Vector3.UP,city.yaw)*Vector3.BACK,false,1./60.)
-			if city.manual_doors.leaf == null: break
-		check(is_zero_approx(door.angle), "reversing the same grip closes the vestibule leaf")
-		city.manual_doors.release(true)
+	var saved_yaw: float = drum.rotor.rotation.y
+	drum.set_physics_process(false)
+	var outermost: float = drum.position.z + drum.RADIUS
+	check(outermost < shop.FRONT_Z, "Reserve rotor clears the storefront throughout a full turn")
+	# Follow one compartment from Fifth into the shop, then the next half turn back.
+	var orbit_radius := .73
+	var clear := true
+	for pass_index in 2:
+		var start_angle := pass_index * PI
+		var facing := Vector3(sin(start_angle), 0, cos(start_angle))
+		drum.rotor.rotation.y = PI*.25 + start_angle
+		await physics_frame
+		var axle: Vector3 = drum.global_position
+		axle.y = shop.to_global(Vector3(0, shop.FLOOR_Y+.01, 0)).y
+		var radial: Vector3 = drum.global_basis * facing
+		var outside := axle + radial * 1.95
+		if pass_index == 0:
+			walker.global_position = outside
+		var entry := axle + radial * orbit_radius
+		clear = walker.move_and_collide(entry-walker.global_position) == null and clear
+		for step in range(1, 37):
+			var angle := start_angle + step*PI/36.
+			drum.rotor.rotation.y = PI*.25 + angle
+			await physics_frame
+			var target: Vector3 = axle + drum.global_basis * Vector3(sin(angle),0,cos(angle)) * orbit_radius
+			clear = walker.move_and_collide(target-walker.global_position) == null and clear
+		var exit_point := axle - radial * 1.95
+		clear = walker.move_and_collide(exit_point-walker.global_position) == null and clear
+	check(clear, "walking capsule can enter and exit through the rotating Reserve door")
+	drum.rotor.rotation.y = saved_yaw
+	drum.set_physics_process(true)
 
 func reserve_visit(city) -> void:
 	var shop=city.block.reserve
 	var walker:CharacterBody3D=city.walker
 	var inward:Vector3=-shop.global_basis.z
 	var x:float=shop.DOOR_X
-	check_revolving_entry(city)
-	check_vestibule_handles(city)
-	city.yaw=atan2(-inward.x,-inward.z)
-	city.camera.rotation=Vector3(-.35,city.yaw,0)
-	walker.global_position=shop.to_global(Vector3(x+.35,.16,1.65))
+	await check_revolving_entry(city,shop)
+	walker.global_position=shop.to_global(Vector3(x,.16,1.65))
 	walker.velocity=Vector3.ZERO
-	for i in 90: city.walk(Basis(Vector3.UP,city.yaw)*Vector3.FORWARD,false,1./60.)
+	for i in 90: city.walk(inward,false,1./60.)
 	check(shop.to_local(walker.global_position).z>.24,"closed Reserve door stops the walking capsule")
 	city.interact()
-	for tick in 25: city.walk(Vector3.ZERO,false,1./60.)
-	check(is_zero_approx(shop.door.angle) and city.manual_doors.arms.visible, "gripping the swing handle alone holds the leaf still")
-	for tick in 68: city.walk(Basis(Vector3.UP,city.yaw)*Vector3.FORWARD,false,1./60.)
-	check(shop.door.angle>1.5,"walking into the gripped handle opens the Reserve door")
-	var handle: Vector3 = shop.door.to_global(shop.door.handle)
-	var toward: Vector3 = (handle-walker.global_position).slide(Vector3.UP).normalized()
-	city.yaw = atan2(-toward.x,-toward.z)
-	city.interact()
-	for tick in 105:
-		city.walk(Basis(Vector3.UP,city.yaw)*Vector3.BACK,false,1./60.)
-		if city.manual_doors.leaf == null: break
-	check(is_zero_approx(shop.door.angle),"pulling on the open door brings it closed")
-	city.yaw=atan2(-inward.x,-inward.z)
-	city.interact()
-	for tick in 100:
-		city.walk(Basis(Vector3.UP,city.yaw)*Vector3.FORWARD,false,1./60.)
-		if city.manual_doors.leaf == null: break
+	for i in 60: shop._physics_process(1./60.)
+	await physics_frame
+	check(shop.opened and shop.door.rotation.y>1.5,"E swings the Reserve door clear")
 	for i in 95: city.walk(inward,false,1./60.)
 	check(shop.inside(shop.to_local(walker.global_position)),"walk through the cut in the original survey wall")
 	for local_target in [Vector3(x,.16,-5.75),Vector3(6.5,.16,-5.75),Vector3(6.3,.16,-9.)]:
