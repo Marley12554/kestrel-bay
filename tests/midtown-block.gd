@@ -227,6 +227,16 @@ func winter_stride_checks() -> void:
 	check(block.backing and block.driver_speed<-1,"hold brake at rest to reverse")
 	scene.drive_audio.update(block.driver_speed,1,0,1./60)
 	check(scene.drive_audio.motor.playing and scene.drive_audio.tires.playing,"driving activates rolling and motor audio")
+	for tick in 60:
+		scene.drive_audio.update(13.4, 1.0, 0.0, 1.0 / 60.0)
+	var city_motor_pitch: float = scene.drive_audio.motor.pitch_scale
+	check(scene.drive_audio.motor.volume_db > scene.drive_audio.tires.volume_db + 10.0,
+		"sedan motor thrum leads the tire noise under acceleration")
+	for tick in 60:
+		scene.drive_audio.update(50.0, 0.0, 30.0, 1.0 / 60.0)
+	check(scene.drive_audio.motor.pitch_scale > city_motor_pitch + .4
+		and scene.drive_audio.motor.volume_db > scene.drive_audio.tires.volume_db + 4.0,
+		"motor pitch rises at speed and the thrum stays audible during tire scrub")
 	block.driver_speed=0
 	scene.interact()
 	check(not scene.driving and not scene.drive_audio.motor.playing,"parking stops the drive loops")

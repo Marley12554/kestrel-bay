@@ -5,6 +5,7 @@ const CAR := preload("res://winter/assets/sedan.glb")
 const LENS_SHADER := preload("res://winter/sedan_lens.gdshader")
 const SIGNAL_HALF_PERIOD := 0.38
 var wheel_pivots: Array[Node3D] = []
+var tire_spray: Array[GPUParticles3D] = []
 var body_roll := 0.0
 var body_pitch := 0.0
 var headlight_beams := Node3D.new()
@@ -135,9 +136,13 @@ func dress_sedan() -> void:
 	model.position = -(model.basis * Vector3(-5.265, 0, 9.93))
 	chassis = model
 	chassis_rest = model.transform
+	var car: CharacterBody3D = block.parked
+	var powder_mesh := tire_powder_mesh()
 	for axle in ["Front", "Rear"]:
 		for side in ["Left", "Right"]:
-			wheel_pivots.append(model.find_child("Wheel" + axle + side, true, false))
+			var pivot := model.find_child("Wheel" + axle + side, true, false) as Node3D
+			wheel_pivots.append(pivot)
+			add_tire_spray(car, car.to_local(pivot.global_position), powder_mesh)
 
 	headlight_beams.name = "HeadlightBeams"
 	headlight_beams.hide()
@@ -180,8 +185,88 @@ func dress_sedan() -> void:
 				"ln7mtl":
 					headlight_lenses = sedan_lens_material(source)
 					panel.set_surface_override_material(surface, headlight_lenses)
+				"tire1mtl":
+					var rubber := source.duplicate() as StandardMaterial3D
+					rubber.albedo_color = Color("#26272a")
+					rubber.emission_enabled = false
+					rubber.metallic = 0.0
+					rubber.metallic_texture = null
+					rubber.roughness = .86
+					rubber.roughness_texture = null
+					panel.set_surface_override_material(surface, rubber)
 
 	add_sedan_plate()
+
+func tire_powder_mesh() -> QuadMesh:
+	var falloff := Gradient.new()
+	falloff.colors = PackedColorArray([Color.WHITE, Color(1.0, 1.0, 1.0, 0.0)])
+	var puff := GradientTexture2D.new()
+	puff.width = 32
+	puff.height = 32
+	puff.fill = GradientTexture2D.FILL_RADIAL
+	puff.fill_from = Vector2(.5, .5)
+	puff.fill_to = Vector2(.98, .5)
+	puff.gradient = falloff
+
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	material.vertex_color_use_as_albedo = true
+	material.albedo_color = Color(.79, .86, .94, .68)
+	material.albedo_texture = puff
+	var mesh := QuadMesh.new()
+	mesh.size = Vector2(.19, .16)
+	mesh.material = material
+	return mesh
+
+func add_tire_spray(car: CharacterBody3D, contact: Vector3, mesh: QuadMesh) -> void:
+	var fade := Gradient.new()
+	fade.colors = PackedColorArray([Color.WHITE, Color(1.0, 1.0, 1.0, 0.0)])
+	var fade_texture := GradientTexture1D.new()
+	fade_texture.gradient = fade
+	var motion := ParticleProcessMaterial.new()
+	motion.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	motion.emission_box_extents = Vector3(.09, .02, .10)
+	motion.direction = Vector3(signf(contact.x) * .5, .72, .54)
+	motion.spread = 22.0
+	motion.initial_velocity_min = 1.2
+	motion.initial_velocity_max = 3.0
+	motion.gravity = Vector3(0.0, -6.8, 0.0)
+	motion.scale_min = .25
+	motion.scale_max = 1.0
+	motion.color_ramp = fade_texture
+
+	var spray := GPUParticles3D.new()
+	spray.emitting = false
+	spray.amount = 24
+	spray.lifetime = .46
+	spray.local_coords = false
+	spray.visibility_aabb = AABB(Vector3(-3, -1, -30), Vector3(6, 4, 60))
+	spray.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	spray.process_material = motion
+	spray.draw_pass_1 = mesh
+	spray.position = Vector3(contact.x, .06, contact.z)
+	car.add_child(spray)
+	tire_spray.append(spray)
+
+func update_tire_spray() -> void:
+	var speed: float = block.driver_speed
+	var movement := smoothstep(.65, 7.0, absf(speed)) if block.driven else 0.0
+	for spray in tire_spray:
+		if movement <= 0.0:
+			spray.emitting = false
+			continue
+		var contact := spray.global_position
+		var powder := snow_underfoot(contact, city.on_road(contact))
+		var rate := movement * smoothstep(.015, .60, powder)
+		spray.amount_ratio = rate
+		spray.emitting = rate >= .06
+		if spray.emitting:
+			spray.position.y = maxf(.06, walking_height(contact) + .02)
+			var motion := spray.process_material as ParticleProcessMaterial
+			if signf(motion.direction.z) != signf(speed):
+				motion.direction = Vector3(motion.direction.x, motion.direction.y, .54 * signf(speed))
 
 func add_sedan_plate() -> void:
 	var backing := BoxMesh.new()
@@ -490,6 +575,7 @@ func plant_foot(world: Vector3, heading: Vector2, left: bool, effort: float) -> 
 func _physics_process(dt: float) -> void:
 	if not chassis: return
 	update_sedan_lights(dt)
+	update_tire_spray()
 	if block.driven or absf(body_roll)+absf(body_pitch)>.0001:
 		wheel_roll=fmod(wheel_roll+block.driver_speed*dt/.345,TAU)
 		for pivot in wheel_pivots:
