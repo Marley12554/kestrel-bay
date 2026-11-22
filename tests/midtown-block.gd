@@ -264,10 +264,10 @@ func winter_stride_checks() -> void:
 		block.drive(1./60,-1,0)
 	check(block.backing and block.driver_speed<-1,"hold brake at rest to reverse")
 	var drive_sound = scene.drive_audio
-	for source in [drive_sound.chirp, drive_sound.tires, drive_sound.skid, drive_sound.turn_signal]:
+	for source in [drive_sound.scuff_voices[0], drive_sound.scuff_voices[1], drive_sound.tires, drive_sound.turn_signal]:
 		check(source is AudioStreamPlayer3D and source.is_inside_tree() and source.max_distance > 0.,
 			"each driving sound has a world position and distance attenuation")
-	check(drive_sound.skid.position.z > 1. and drive_sound.tires.position.z < -1.,
+	check(drive_sound.scuff_voices[0].position.z > 1. and drive_sound.tires.position.z < -1.,
 		"rolling and rear slip originate at distinct axle positions")
 	for tick in 120:
 		drive_sound.update(-4.0, 0.0, 1.0 / 60.0)
@@ -283,22 +283,37 @@ func winter_stride_checks() -> void:
 		drive_sound.update(13.4, 0., 1./60.)
 	check(drive_sound.forward_warning.volume_db < -60. and drive_sound.tires.volume_db > -18.,
 		"rolling sound carries through the low-speed warning fade")
-	for tick in 20: drive_sound.update(14., 6., 1./60., .6)
-	check(drive_sound.skid.playing and drive_sound.chirp.playing and not drive_sound.chirp_armed,
-		"hard breakaway adds a single short rubber chirp over the rear scuff")
-	drive_sound.chirp.stop()
-	for tick in 120: drive_sound.update(14., 6., 1./60., .6)
-	check(drive_sound.skid.playing and not drive_sound.chirp.playing, "sustaining a slide cannot retrigger squeal")
+	for tick in 60: drive_sound.update(14., 3., 1./60., .09)
+	var mild_gain: float = drive_sound.scuff_gain
+	var mild_pitch: float = drive_sound.scuff_voices[0].pitch_scale
+	for tick in 60: drive_sound.update(14., 3., 1./60., .35)
+	var medium_gain: float = drive_sound.scuff_gain
+	for tick in 60: drive_sound.update(14., 3., 1./60., .8)
+	var hard_gain: float = drive_sound.scuff_gain
+	check(mild_gain > 0. and medium_gain > mild_gain * 1.5 and hard_gain > medium_gain * 1.2
+		and drive_sound.scuff_voices[0].pitch_scale > mild_pitch + .15, "increasing slip continuously raises scuff level and pitch")
+	var switches := 0
+	var continuous := true
+	for tick in 900:
+		var previous_voice: int = drive_sound.active_voice
+		drive_sound.update(14., 3., 1./60., .8)
+		if previous_voice != drive_sound.active_voice: switches += 1
+		var power := 0.
+		for voice in drive_sound.scuff_voices:
+			if voice.playing: power += pow(db_to_linear(voice.volume_db), 2.)
+		continuous = continuous and absf(sqrt(power) - hard_gain) < .002
+	check(switches >= 4 and continuous, "sustained slip crosses recording segments without a gain dip or restart")
+	for tick in 120: drive_sound.update(14., 3., 1./60., .8, 1.)
+	check(drive_sound.scuff_gain < hard_gain * .6, "the same slide on snow has softer tire contact")
 	for tick in 120: drive_sound.update(14., 0., 1./60.)
-	check(drive_sound.chirp_armed and not drive_sound.skid.playing, "regaining traction fades the scuff and rearms the chirp")
-	for tick in 20: drive_sound.update(14., 6., 1./60., .6, 1.)
-	check(drive_sound.skid.playing and not drive_sound.chirp.playing, "a packed-snow slide has scuff without pavement squeal")
+	check(not drive_sound.scuff_voices[0].playing and not drive_sound.scuff_voices[1].playing,
+		"both scuff voices fade out after traction returns")
 	movement_key(KEY_LEFT, true)
 	movement_key(KEY_LEFT, false)
 	winter.update_sedan_lights(0.0)
 	block.driver_speed=0
 	scene.interact()
-	check(not scene.driving and not drive_sound.chirp.playing and not drive_sound.skid.playing and not drive_sound.tires.playing
+	check(not scene.driving and not drive_sound.scuff_voices[0].playing and not drive_sound.scuff_voices[1].playing and not drive_sound.tires.playing
 		and not drive_sound.forward_warning.playing and not drive_sound.reverse_warning.playing
 		and not drive_sound.turn_signal.playing and scene.turn_signal_direction == 0,
 		"parking clears the turn signal and stops all driving sounds")
@@ -601,7 +616,7 @@ func winter_stride_checks() -> void:
 		movement_key(KEY_SHIFT, false)
 		movement_key(turn_key, false)
 		scene._physics_process(1.0 / 60.0)
-		check(absf(block.drift_angle) > .1 and drive_sound.skid.playing, "slip and tire scrub persist into grip recovery")
+		check(absf(block.drift_angle) > .1 and drive_sound.scuff_voices[drive_sound.active_voice].playing, "slip and tire scrub persist into grip recovery")
 		for tick in 180:
 			scene._physics_process(1.0 / 60.0)
 		check(is_zero_approx(block.drift_angle) and sedan.velocity.normalized().dot(-sedan.global_basis.z) > .999
