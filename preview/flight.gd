@@ -5,6 +5,14 @@ extends Node3D
 @onready var walker: CharacterBody3D = $Walker
 var driving := false
 var can_enter_car := false
+var orbit_yaw := 0.0
+var orbit_pitch := .31
+var manual_look := 0.0
+var road_bump := 0.0
+var last_road := true
+var camera_road_phase := 0.0
+var drive_audio := preload("res://drive_audio.gd").new()
+var gear_readout := Label.new()
 @onready var camera: Camera3D = $Camera
 @onready var body: Node3D = $Body
 var return_view: Transform3D
@@ -26,6 +34,16 @@ const MIN_HEIGHT := 1.7
 const MAX_HEIGHT := 1800.0
 
 func _ready() -> void:
+	add_child(drive_audio)
+	$Overlay.add_child(gear_readout)
+	gear_readout.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	gear_readout.offset_left=-165
+	gear_readout.offset_top=-100
+	gear_readout.offset_right=-24
+	gear_readout.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+	gear_readout.add_theme_constant_override("outline_size",5)
+	gear_readout.add_theme_font_size_override("font_size",22)
+	gear_readout.hide()
 	for tile in $Survey.find_children("*", "MeshInstance3D", true, false):
 		var bounds: AABB = tile.global_transform * tile.get_aabb()
 		if bounds.grow(360).has_point(block.global_position):
@@ -61,7 +79,11 @@ func _release() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func look(delta: Vector2) -> void:
-	if driving: return
+	if driving:
+		orbit_yaw-=delta.x*.0034
+		orbit_pitch=clampf(orbit_pitch+delta.y*.0025,.07,1.14)
+		manual_look=1.5
+		return
 	yaw -= delta.x * .0026
 	pitch = clampf(pitch - delta.y * .0026, -1.53, 1.53)
 	camera.rotation = Vector3(pitch, yaw, 0)
@@ -218,12 +240,22 @@ func interact() -> void:
 		if not clear: return
 		walker.global_position = Vector3(exit_at.x,.15,exit_at.z)
 		driving = false
+		drive_audio.park()
+		gear_readout.hide()
+		block.reverse_wait=0
+		block.backing=false
+		block.steer=0
 		block.driver_speed=0
 		pitch=0
 		yaw=block.parked.global_rotation.y
 		camera.rotation=Vector3(pitch,yaw,0)
 	elif walker.position.distance_to(block.parked.global_position)<5.8:
 		driving=true
+		orbit_yaw=block.parked.global_rotation.y
+		orbit_pitch=.31
+		manual_look=0
+		road_bump=0
+		last_road=on_road(block.parked.global_position)
 		walker.velocity = Vector3.ZERO
 		stride.reset()
 	block.driven=driving
@@ -234,9 +266,10 @@ func _physics_process(dt: float) -> void:
 	if driving:
 		var dir:=input_direction()
 		block.drive(dt,-dir.z,dir.x)
-		var car: Transform3D=block.parked.global_transform
-		camera.position=car*Vector3(0,3.4,6.6)
-		camera.look_at(car*Vector3(0,.93,-4))
+		drive_audio.update(block.driver_speed,-dir.z,block.side_accel,dt)
+		chase_view(dt)
+		gear_readout.visible=(not bool(web.midtownHudHidden) if web else hud_visible)
+		gear_readout.text="%s   %d mph" % ["R" if block.backing else "D",roundi(absf(block.driver_speed)/METRES_PER_SECOND_PER_MPH)]
 	elif not body.visible:
 		var input:=input_direction()
 		var flat:=Basis(Vector3.UP,yaw)*Vector3(input.x,0,input.z).limit_length(1.0)
@@ -265,3 +298,29 @@ func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 	walker.velocity = intended
 	var travelled := walker.position - start
 	stride.advance(walker.global_position, Vector2(travelled.x, travelled.z).length(), dt)
+
+func on_road(world: Vector3) -> bool:
+	var pixel:=Vector2i(floori(world.x)+1350,floori(world.z)+1500)
+	return Rect2i(Vector2i.ZERO,stride.ROADS.get_size()).has_point(pixel) and stride.ROADS.get_bitv(pixel)
+
+func chase_view(dt: float) -> void:
+	var car: CharacterBody3D=block.parked
+	var speed: float=absf(block.driver_speed)
+	manual_look=maxf(0,manual_look-dt)
+	if manual_look<=0 and speed>1.0:
+		orbit_yaw=lerp_angle(orbit_yaw,car.global_rotation.y,1.0-exp(-2.6*dt))
+	var paved:=on_road(car.global_position)
+	if paved!=last_road:
+		road_bump=minf(speed*.008,.07)
+		last_road=paved
+	camera_road_phase=fmod(camera_road_phase+speed*dt*2.7,TAU)
+	var heave: float=(road_bump+sin(camera_road_phase)*minf(speed*.0005,.009))*stride.strength
+	road_bump*=exp(-10.*dt)
+	var pivot:=car.global_position+Vector3.UP*(1.15+heave)
+	var offset:=Basis(Vector3.UP,orbit_yaw)*Vector3(0,sin(orbit_pitch),cos(orbit_pitch))
+	var reach:=5.8+minf(speed*.045,.95)
+	var query:=PhysicsRayQueryParameters3D.create(pivot,pivot+offset*reach,3,[car.get_rid()])
+	var hit:=get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty(): reach=maxf(.35,pivot.distance_to(hit.position)-.22)
+	camera.position=pivot+offset*reach
+	camera.look_at(pivot-offset.slide(Vector3.UP)*1.7)

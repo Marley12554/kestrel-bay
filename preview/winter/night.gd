@@ -2,7 +2,13 @@ extends Node3D
 
 const ASSET := "res://winter/assets/"
 const CAR := preload("res://winter/assets/sedan.glb")
-var display_panorama: Texture2D
+var wheel_pivots: Array[Node3D] = []
+var body_roll := 0.0
+var body_pitch := 0.0
+var headlights: SpotLight3D
+var wheel_roll := 0.0
+var chassis: Node3D
+var chassis_rest := Transform3D.IDENTITY
 @onready var city = get_parent()
 @onready var block = get_node("../Block")
 var lamp_metal := StandardMaterial3D.new()
@@ -33,7 +39,6 @@ func dress_street() -> void:
 	var panorama := PanoramaSkyMaterial.new()
 	var lighting_dir := "res://winter/web_lighting/" if OS.has_feature("web") else ASSET
 	panorama.panorama = load(lighting_dir + "urban_street_04_hdri.exr")
-	display_panorama = load(lighting_dir + "christmas_photo_studio_01_hdri.exr")
 	sky.sky_material = panorama
 	env.sky = sky
 	env.background_mode = Environment.BG_COLOR
@@ -97,6 +102,21 @@ func dress_street() -> void:
 	model.rotation.y = PI/2
 	model.scale = Vector3.ONE * (4.72/17.52)
 	model.position = -(model.basis * Vector3(-5.265,0,9.93))
+	headlights=SpotLight3D.new()
+	block.parked.add_child(headlights)
+	headlights.position=Vector3(0,.65,-2.22)
+	headlights.rotation_degrees.x=-7.5
+	headlights.light_color=Color("#e4edff")
+	headlights.light_energy=4.2
+	headlights.spot_angle=34
+	headlights.spot_range=31
+	headlights.spot_attenuation=1.18
+	headlights.visible=false
+	chassis=model
+	chassis_rest=model.transform
+	for axle in ["Front","Rear"]:
+		for side in ["Left","Right"]:
+			wheel_pivots.append(model.find_child("Wheel"+axle+side,true,false))
 	for panel: MeshInstance3D in model.find_children("*","MeshInstance3D",true,false):
 		for surface in panel.mesh.get_surface_count():
 			var source := panel.mesh.surface_get_material(surface) as StandardMaterial3D
@@ -146,6 +166,7 @@ func rod(a: Vector3, b: Vector3, bottom: float, top: float) -> void:
 	n.quaternion = Quaternion(Vector3.UP,(b-a).normalized())
 
 func lamp(x: float,z: float,arm: float, hero: bool) -> void:
+	block.solid(Vector3(x,2.95,z),Vector3(.24,5.9,.24))
 	var foot := Vector3(x,.13,z)
 	rod(foot,foot+Vector3.UP*.32,.24,.19)
 	rod(foot+Vector3.UP*.32,foot+Vector3.UP*6.28,.117,.075)
@@ -196,6 +217,9 @@ func furnish() -> void:
 	for i in range(-14,15):
 		if i not in [4,5,6]:
 			display_window(Vector3(-9-i*5.,2.08,-30.58),PI,4.52,i+21)
+	for i in range(-6,7):
+		if i not in [-5,-2,1,5]:
+			display_window(Vector3(95.98,2.16,i*4.45),-PI/2,3.94,i)
 	for x in [64.2,65.5]:
 		var glow := OmniLight3D.new()
 		add_child(glow)
@@ -206,6 +230,9 @@ func furnish() -> void:
 	for side in [71.6,90.45]:
 		bank(Vector2(side,-125),Vector2(side,-62),.73)
 		bank(Vector2(side,-32),Vector2(side,29),.63)
+	for z in [33.1,44.9]:
+		bank(Vector2(-47,z),Vector2(65,z),.58)
+		bank(Vector2(98,z),Vector2(146,z),.62)
 	for z in [-55.1,-36.5]:
 		bank(Vector2(-96,z),Vector2(65,z),.73)
 
@@ -216,7 +243,6 @@ func display_window(at: Vector3, angle: float, width: float, index: int) -> void
 	pane.mesh=mesh
 	var material:=ShaderMaterial.new()
 	material.shader=preload("res://winter/shop_glass.gdshader")
-	material.set_shader_parameter("interior",display_panorama)
 	material.set_shader_parameter("variation",floorf(index/3.0))
 	pane.material_override=material
 	add_child(pane)
@@ -402,3 +428,17 @@ func snow_underfoot(world: Vector3, road: bool) -> float:
 	var wheel := absf(fposmod(lateral+.12*sin(p.y*.07+p.x*.09),3.85)-1.925)
 	var tracks := 1.0-smoothstep(.14,.53,absf(wheel-.78))
 	return smoothstep(.57,.83,drift-tracks*.27)
+
+func _physics_process(dt: float) -> void:
+	if not chassis: return
+	headlights.visible=block.driven
+	if block.driven or absf(body_roll)+absf(body_pitch)>.0001:
+		wheel_roll=fmod(wheel_roll+block.driver_speed*dt/.345,TAU)
+		for pivot in wheel_pivots:
+			var angle: float=-block.steer if "Front" in pivot.name else 0.0
+			pivot.basis=Basis(Vector3.BACK,angle)*Basis(Vector3.UP,wheel_roll)
+		var weight := 1.0-exp(-7.0*dt)
+		body_roll=lerpf(body_roll,clampf(-block.side_accel*.006,-.05,.05) if block.driven else 0.0,weight)
+		body_pitch=lerpf(body_pitch,clampf(-block.long_accel*.0035,-.038,.038) if block.driven else 0.0,weight)
+		var sprung_basis:=Basis(Vector3.BACK,body_roll)*Basis(Vector3.RIGHT,body_pitch)*chassis_rest.basis
+		chassis.transform=Transform3D(sprung_basis,sprung_basis*(chassis_rest.basis.inverse()*chassis_rest.origin))

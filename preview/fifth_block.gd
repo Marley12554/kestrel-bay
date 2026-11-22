@@ -15,9 +15,16 @@ const FRONT := Transform3D.IDENTITY
 var shapes: Dictionary = {}
 var batches: Dictionary = {}
 var context := FRONT
+var signal_materials := {}
 var lights: Array = []
 var last_light_state := -1
 var walkers: Array = []
+var cross_taxi: AnimatableBody3D
+var cross_route := Curve3D.new()
+var cross_distance := 0.0
+var cross_speed := 0.0
+var south_stop := 0.0
+var north_return_stop := 0.0
 var taxi: Node3D
 var parked: CharacterBody3D
 var route := Curve3D.new()
@@ -29,6 +36,10 @@ var yield_point := 0.0
 var driven := false
 var driver_speed := 0.0
 var steer := 0.0
+var long_accel := 0.0
+var side_accel := 0.0
+var reverse_wait := 0.0
+var backing := false
 var street_user := Vector3.INF
 const BODY := preload("res://body.tscn")
 
@@ -50,7 +61,9 @@ func _ready() -> void:
 	for mesh in shapes.values():
 		mesh.material=mat
 	make_facades()
+	make_east_frontage()
 	make_streets()
+	finish_sidewalks()
 	flush_static()
 	make_traffic()
 	if OS.has_feature("web"):
@@ -155,6 +168,111 @@ func make_facades() -> void:
 	part(Vector3(25,4.9,1.65),Vector3(15,.48,3.0),BASE)
 	label("EMPIRE STATE BUILDING",Vector3(25,4.9,3.19),.46,Color("#f4d18b"))
 	label("O B S E R V A T O R Y",Vector3(25,6.2,.64),.63,BRASS)
+	facade_frame(Vector3(50,0,29.4),0)
+	for i in range(-4,4):
+		shop(i*4.35,4.25,false)
+		part(Vector3(i*4.35+2.03,3.12,.35),Vector3(.32,6.22,.61),STONE)
+		part(Vector3(i*4.35,4.86,.18),Vector3(3.7,.75,.19),GLASS)
+	part(Vector3(-2.175,6.0,.38),Vector3(34.8,.42,.76),TRIM)
+	context=FRONT
+
+# Each bay is assembled from the sidewalk face inward. The deep jambs and
+# raised stone sills leave room behind the closed doors for future shops.
+func east_bay(x: float, width: float, door: bool) -> void:
+	var trim := Color("#887466")
+	part(Vector3(x,2.05,.12),Vector3(width,4.1,.24),BASE)
+	part(Vector3(x,2.0,.30),Vector3(width-.48,3.45,.08),GLASS)
+	for side in [-1,1]:
+		var edge: float=x+side*(width*.5-.13)
+		part(Vector3(edge,2.24,.45),Vector3(.26,4.48,.82),trim)
+		part(Vector3(edge,.45,.49),Vector3(.36,.9,.86),STONE)
+	part(Vector3(x,4.18,.49),Vector3(width,.42,.92),TRIM)
+	if door:
+		for side in [-1,1]:
+			part(Vector3(x+side*width*.23,1.45,.42),Vector3(width*.42,2.86,.14),BASE)
+			part(Vector3(x+side*width*.23,1.87,.51),Vector3(width*.35,1.76,.045),GLASS)
+			part(Vector3(x+side*.17,1.17,.56),Vector3(.05,.42,.11),BRASS)
+		part(Vector3(x,.10,.57),Vector3(width-.36,.20,1.0),STONE)
+	else:
+		part(Vector3(x,.48,.5),Vector3(width-.24,.58,.82),trim)
+		part(Vector3(x,2.26,.43),Vector3(.08,2.98,.18),BRASS)
+
+func make_east_frontage() -> void:
+	facade_frame(Vector3(96.34,0,0),-PI/2)
+	for i in range(-6,7):
+		var x := i*4.45
+		east_bay(x,4.45,i in [-5,-2,1,5])
+		if i<2:
+			for level in 4:
+				var y := 6.0+level*3.05
+				part(Vector3(x,y,.13),Vector3(3.75,2.38,.25),BASE)
+				for side in [-1,1]:
+					part(Vector3(x+side*.87,y,.29),Vector3(1.61,2.12,.09),GLASS)
+				part(Vector3(x,y-1.22,.4),Vector3(4.25,.17,.64),TRIM)
+	for i in range(2,7):
+		arched_bay(i*4.45)
+	for y in [4.5,15.1,15.46]:
+		part(Vector3(17.8,y,.48),Vector3(22.25,.24,1.12),TRIM)
+	# Return the corner frontage onto 33rd so it has a side elevation too.
+	facade_frame(Vector3(96.34,0,29.05),0)
+	for i in 5:
+		var x := 2.225+i*4.45
+		east_bay(x,4.45,i==3)
+		arched_bay(x)
+	part(Vector3(11.125,15.3,.5),Vector3(22.25,.56,1.14),TRIM)
+	context=FRONT
+
+func arched_bay(x: float) -> void:
+	part(Vector3(x,9.55,.19),Vector3(3.55,9.98,.36),Color("#51443c"))
+	part(Vector3(x,9.2,.42),Vector3(3.12,8.48,.10),GLASS)
+	for side in [-1,1]:
+		part(Vector3(x+side*1.73,8.94,.5),Vector3(.32,8.65,.85),STONE)
+	for j in 13:
+		var a := PI*(j+.5)/13.
+		part(Vector3(x+1.73*cos(a),13.22+1.73*sin(a),.53),Vector3(.46,.33,.83),TRIM,"box",Vector3(0,0,a+PI/2))
+	for y in [7.8,10.74,13.18]:
+		part(Vector3(x,y,.55),Vector3(3.24,.20,.42),BRASS)
+	part(Vector3(x,9.15,.52),Vector3(.095,8.3,.18),BASE)
+
+func solid(at: Vector3, size: Vector3) -> void:
+	var body:=StaticBody3D.new()
+	var shape:=BoxShape3D.new()
+	shape.size=size
+	var collision:=CollisionShape3D.new()
+	collision.shape=shape
+	body.add_child(collision)
+	body.position=at
+	add_child(body)
+
+func finish_sidewalks() -> void:
+	# Frontages extend beyond the survey wall. Collide with the dressed base
+	# while retaining space to step between projecting piers at doorways.
+	solid(Vector3(96.34,2.1,0),Vector3(.52,4.2,57.85))
+	solid(Vector3(107.46,2.1,29.42),Vector3(22.2,4.2,.68))
+	for i in range(-6,8):
+		solid(Vector3(95.84,1.9,i*4.45-2.225),Vector3(.8,3.8,.28))
+	solid(Vector3(65.59,1.8,0),Vector3(.60,3.6,58.5))
+	# Ribbed steel baskets and salt-stained granite planters mark the corners.
+	for pos in [Vector3(93.4,0,-33.3),Vector3(69.4,0,29.6),Vector3(93.55,0,47.55)]:
+		part(pos+Vector3.UP*.57,Vector3(.53,.90,.53),BASE)
+		for i in 12:
+			var a:=i*TAU/12
+			part(pos+Vector3(.32*cos(a),.62,.32*sin(a)),Vector3(.045,.91,.045),STEEL)
+		part(pos+Vector3.UP*1.08,Vector3(.77,.10,.77),BASE,"ball")
+		solid(pos+Vector3.UP*.58,Vector3(.65,1.16,.65))
+	for z in [-19.4,2.0,24.4]:
+		var loc:=Vector3(95.35,0,z)
+		part(loc+Vector3.UP*.37,Vector3(.94,.64,1.08),Color("#514c48"))
+		part(loc+Vector3.UP*.71,Vector3(.96,.10,1.10),SNOW)
+		for j in 3:
+			part(loc+Vector3(.13*sin(j*2.1),1.02+j*.23,.15*cos(j*2.1)),Vector3(.79-j*.14,.90-j*.10,.79-j*.14),PINE,"cone")
+		solid(loc+Vector3.UP*.42,Vector3(.94,.84,1.08))
+	for z in [-17.,12.]:
+		# Bronze storefront canopy rods, gate guides, and door kick plates.
+		facade_frame(Vector3(96.25,0,z),-PI/2)
+		part(Vector3(0,3.4,1.04),Vector3(3.75,.16,1.65),Color("#343b39"))
+		for side in [-1,1]:
+			part(Vector3(side*1.65,3.92,.90),Vector3(.045,1.52,.045),BRASS,"box",Vector3(-.85,0,0))
 	context=FRONT
 
 func stripe(at: Vector3, size: Vector3) -> void:
@@ -166,7 +284,7 @@ func make_streets() -> void:
 			stripe(Vector3(81.0+side*10.9,.07,-53.1+i*1.62),Vector3(3.1,.036,.66))
 	for i in range(-8,8):
 		var z:float=-45.8+i*8.0
-		if abs(z+45.8)>13:
+		if abs(z+45.8)>13 and abs(z-39)>9:
 			for x in [76.0,80.0,84.2]:
 				stripe(Vector3(x,.064,z),Vector3(.095,.024,3))
 	for i in range(-27,17):
@@ -179,6 +297,17 @@ func make_streets() -> void:
 	stripe(Vector3(81,.07,-60.2),Vector3(16.0,.04,.48))
 	stripe(Vector3(65,.07,-41.5),Vector3(.48,.04,7.8))
 	stripe(Vector3(97,.07,-50.1),Vector3(.48,.04,7.8))
+	# 33rd is a narrower one-way cross street.
+	for side in [-1,1]:
+		for i in 10:
+			stripe(Vector3(73.4+i*1.66,.07,39+side*7.6),Vector3(.67,.036,2.8))
+		for i in 6:
+			stripe(Vector3(81+side*11.2,.07,34.9+i*1.52),Vector3(2.9,.036,.63))
+	stripe(Vector3(81,.07,28.9),Vector3(16,.04,.43))
+	stripe(Vector3(95.1,.07,39),Vector3(.43,.04,9.3))
+	for x in [70.,92.]:
+		for z in [30.0,48.0]:
+			build_signal(Vector3(x,0,z),x<81,z<39,"33")
 	# Plowed curb snow is interrupted at crossings and entrances.
 	for i in range(-38,40):
 		var x:=i*3.8
@@ -215,14 +344,14 @@ func lamp(at: Vector3) -> void:
 	for i in 4:
 		part(at+Vector3(.15*sin(i*2),2.31+i*.2,.15*cos(i*2)),Vector3.ONE*.1,BRASS,"ball")
 
-func build_signal(at: Vector3, west: bool, north: bool) -> void:
+func build_signal(at: Vector3, west: bool, north: bool, number: String="34") -> void:
 	part(at+Vector3.UP*2.6,Vector3(.14,5.2,.14),STEEL)
 	var sign_yaw:=0.0 if north else PI
 	for j in 2:
 		context=Transform3D(Basis(Vector3.UP,sign_yaw+j*PI/2),at)
 		part(Vector3(0,3.75+j*.31,0),Vector3(1.55,.31,.075),Color("#23574b"))
 		for rot in [0.0,PI]:
-			label("W 34 St" if j==0 else "5 Av",Vector3(0,3.75+j*.31,.042*cos(rot)),.237,Color.WHITE,rot)
+			label((("W " if west else "E ")+number+" St") if j==0 else "5 Av",Vector3(0,3.75+j*.31,.042*cos(rot)),.237,Color.WHITE,rot)
 	context=FRONT
 	var arm:=5.2 if west else -5.2
 	part(at+Vector3(arm/2,5.12,0),Vector3(abs(arm),.12,.13),STEEL)
@@ -241,10 +370,13 @@ func signal_head(at: Vector3,angle: float,avenue: bool,ped: bool=false) -> void:
 		n.mesh=shapes["ball"]
 		n.transform=context*Transform3D(Basis.IDENTITY.scaled(Vector3(.22,.22,.077)),Vector3(0,0 if ped else .28-i*.28,.21))
 		add_child(n)
-		var mat:=StandardMaterial3D.new()
-		mat.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
-		n.material_override=mat
-		lights.append([mat,avenue,ped,i])
+		var key := Vector3i(int(avenue),int(ped),i)
+		if not signal_materials.has(key):
+			var mat:=StandardMaterial3D.new()
+			mat.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+			signal_materials[key]=mat
+			lights.append([mat,avenue,ped,i])
+		n.material_override=signal_materials[key]
 	context=FRONT
 
 func car_visual(cab: bool) -> Node3D:
@@ -300,9 +432,35 @@ func make_traffic() -> void:
 			add_walker(Vector3(68.5-i%3,0,-56.7+shift),Vector3(93.4+i%3,0,-56.7+shift),i,1)
 	for i in 6:
 		if i%2==0:
-			add_walker(Vector3(94+i*.3,0,-33),Vector3(94+i*.3,0,31),i+10,2)
+			add_walker(Vector3(93.3+i*.15,0,-33),Vector3(93.3+i*.15,0,31),i+10,2)
 		else:
 			add_walker(Vector3(-75,0,-32-i*.27),Vector3(68,0,-32-i*.27),i+10,2)
+	cross_taxi=AnimatableBody3D.new()
+	cross_taxi.sync_to_physics=false
+	cross_taxi.collision_layer=2
+	cross_taxi.collision_mask=0
+	add_child(cross_taxi)
+	cross_taxi.add_child(collider.duplicate())
+	cross_taxi.add_child(car_visual(false))
+	# Return on the next block, rather than popping back into view.
+	var loop := [Vector3(750,0,40),Vector3(-225,0,40),Vector3(-225,0,-42),Vector3(750,0,-42)]
+	for i in loop.size():
+		var corner: Vector3=loop[i]
+		var entry:=corner.move_toward(loop[posmod(i-1,4)],7)
+		var exit:=corner.move_toward(loop[(i+1)%4],7)
+		for j in 9:
+			var t:=j/8.0
+			cross_route.add_point(entry.lerp(corner,t).lerp(corner.lerp(exit,t),t))
+	cross_route.add_point(cross_route.get_point_position(0))
+	south_stop=cross_route.get_closest_offset(Vector3(97.5,0,40))
+	north_return_stop=cross_route.get_closest_offset(Vector3(63.0,0,-42))
+	cross_distance=south_stop-22
+	for i in 4:
+		add_walker(Vector3(68.5,0,31.2+i*.21),Vector3(93.7,0,31.2+i*.21),16+i,1)
+	add_walker(Vector3(92.25,0,29),Vector3(92.25,0,49),20,0)
+	for i in 3:
+		add_walker(Vector3(68.3+i*.32,0,-30),Vector3(68.3+i*.32,0,29),21+i,2)
+	update_cross_taxi(0)
 	update_lights()
 	update_taxi(0)
 
@@ -389,6 +547,13 @@ func update_walkers(dt: float) -> void:
 		if w.moving:
 			var goal:Vector3=w.end
 			var d:=goal-n.position
+			# Stay at the kerb if the sedan will reach the same spot first.
+			if driven and absf(driver_speed)>1.0:
+				var travel: Vector3=-parked.basis.z*signf(driver_speed)
+				var relative:=n.position+d.normalized()*1.4-parked.position
+				var ahead:=relative.dot(travel)
+				if ahead>2.7 and ahead<minf(22,absf(driver_speed)*1.6+2.5) and absf(relative.dot(parked.basis.x))<1.65:
+					continue
 			n.rotation.y=atan2(-d.x,-d.z)
 			n.position=n.position.move_toward(goal,float(w.pace)*dt)
 			w.phase+=dt*6.0
@@ -438,21 +603,74 @@ func update_taxi(dt: float) -> void:
 	taxi.position=p+Vector3.UP*.025
 	taxi.rotation.y=atan2(p.x-next.x,p.z-next.z)
 
+func update_cross_taxi(dt: float) -> void:
+	var gap := INF
+	if vehicle_signal(false)!=2:
+		for stop_offset: float in [south_stop,north_return_stop]:
+			var until_stop:=fposmod(stop_offset-cross_distance,cross_route.get_baked_length())
+			if until_stop<24: gap=minf(gap,until_stop)
+	var front := -cross_taxi.basis.z
+	var obstacles: Array[Vector3]=[parked.position,street_user]
+	for w in walkers:
+		if absf(w.node.position.z-40)<4:
+			obstacles.append(w.node.position)
+	for p in obstacles:
+		if not p.is_finite(): continue
+		var offset := p-cross_taxi.position
+		var ahead := offset.dot(front)
+		if ahead>0 and ahead<22 and absf(offset.dot(cross_taxi.basis.x))<1.8:
+			gap=minf(gap,maxf(0,ahead-3.8))
+	var target:=minf(7.3,sqrt(6.5*gap))
+	cross_speed=move_toward(cross_speed,target,(2.2 if target>cross_speed else 4.8)*dt)
+	var length:=cross_route.get_baked_length()
+	cross_distance=fposmod(cross_distance+minf(cross_speed*dt,gap),length)
+	var pos:=cross_route.sample_baked(cross_distance)
+	var nose:=cross_route.sample_baked(fposmod(cross_distance+.45,length))
+	cross_taxi.position=pos+Vector3.UP*.025
+	cross_taxi.rotation.y=atan2(pos.x-nose.x,pos.z-nose.z)
+
 func _physics_process(dt: float) -> void:
 	cycle=fposmod(cycle+dt,46)
 	update_lights()
 	update_walkers(dt)
 	update_taxi(dt)
+	update_cross_taxi(dt)
 
 func drive(dt: float, throttle: float, turn: float) -> void:
-	var goal:=throttle*(11.2 if throttle>0 else 3.8)
-	var accel:=8.2 if driver_speed*throttle<0 else (3.8 if throttle!=0 else 2.8)
-	driver_speed=move_toward(driver_speed,goal,accel*dt)
-	steer=move_toward(steer,turn*.52,1.8*dt)
-	var prev_yaw:=parked.rotation.y
-	parked.rotation.y-=driver_speed*tan(steer)/2.65*dt
+	var previous := driver_speed
+	var speed := absf(previous)
+	# S applies the service brake first. Hold it briefly at rest to select R.
+	if throttle>=0:
+		reverse_wait=0
+		backing=false
+	elif speed<.025:
+		reverse_wait+=dt
+		backing=reverse_wait>=.30
+	if throttle<0 and not backing:
+		driver_speed=move_toward(previous,0,10.5*absf(throttle)*dt)
+	elif throttle>0 and previous<-.02:
+		driver_speed=move_toward(previous,0,10.5*throttle*dt)
+	elif absf(throttle)>.001:
+		var limit := 36.0 if throttle>0 else 5.0
+		var force := (5.1 if throttle>0 else 2.7)*absf(throttle)
+		driver_speed=move_toward(previous,signf(throttle)*limit,dt*force*maxf(.10,1.0-pow(speed/limit,1.6)))
+	else:
+		driver_speed=move_toward(previous,0,(1.12+.001*speed*speed)*dt)
+	var grip_limit:=atan(7.4*2.87/maxf(1,speed*speed))
+	var target:=clampf(turn,-1,1)*minf(.57,grip_limit)
+	steer=move_toward(steer,target,(1.48 if absf(target)>.001 else 2.0)*dt)
+	var previous_yaw:=parked.rotation.y
+	var yaw_rate:=-driver_speed*tan(steer)/2.87
+	parked.rotation.y+=yaw_rate*dt
 	if parked.test_move(parked.global_transform,Vector3.UP*.002):
-		parked.rotation.y=prev_yaw
-	parked.velocity=-parked.global_basis.z*driver_speed
-	parked.move_and_slide()
-	if parked.get_slide_collision_count()>0: driver_speed*=.65
+		parked.rotation.y=previous_yaw
+	var heading := -parked.global_basis.z
+	var travel := heading*driver_speed*dt
+	var hit:=parked.move_and_collide(travel)
+	if hit:
+		var remainder:=hit.get_remainder().slide(hit.get_normal())
+		parked.move_and_collide(remainder)
+		driver_speed*=1.0-clampf(absf(heading.dot(hit.get_normal())),0,1)
+	long_accel=clampf((driver_speed-previous)/dt,-15,8)
+	side_accel=driver_speed*yaw_rate
+	parked.velocity=heading*driver_speed

@@ -5,7 +5,7 @@ https://sketchfab.com/RBLXSupercars
 https://sketchfab.com/3d-models/2024-tesla-model-3-fd22be415215453693d67e33aa7812d0
 Additional upload credited to brandonleong28. Source copy from erictfree/Carbon-Footprint-AI-Visualizer.
 Creative Commons Attribution 4.0 International — https://creativecommons.org/licenses/by/4.0/
-In this scene the model is rescaled, reoriented and given a metallic paint finish.
+In this scene the model is rescaled, reoriented and given a metallic paint finish and separately articulated wheels.
 
 Photographed materials and lighting, via Poly Haven (CC0)
 https://polyhaven.com/a/asphalt_snow

@@ -36,7 +36,7 @@ func run() -> void:
 			var delta: Vector2 = dest - Vector2(car.position.x,car.position.z)
 			if delta.length()<3.1: break
 			var angle := wrapf(atan2(-delta.x,-delta.y)-car.rotation.y,-PI,PI)
-			block.drive(1.0/60, .55, clampf(-angle*2.4,-1,1))
+			block.drive(1.0/60, clampf((6.1-block.driver_speed)*1.5,0,1), clampf(-angle*2.4,-1,1))
 		check(Vector2(car.position.x,car.position.z).distance_to(dest)<3.1,"drive to "+str(dest))
 		if failures: break
 	check(car.position.distance_to(start)<7, "complete the circuit")
@@ -177,4 +177,42 @@ func winter_stride_checks() -> void:
 	check(not scene.stride.blur.visible and scene.camera.v_offset==0 and scene.camera.h_offset==0 and scene.camera.fov==scene.stride.base_fov,"camera motion off leaves footsteps independent")
 	scene.toggle_body()
 	check(not scene.stride.blur.visible and not scene.stride.snow.playing and not scene.stride.pavement.playing,"freecam clears the walking effects")
+	scene.toggle_body()
+	var block=scene.block
+	block.set_physics_process(false)
+	block.parked.rotation.y=PI
+	block.parked.position=Vector3(83,.035,-27)
+	scene.walker.position=block.parked.global_position+Vector3.RIGHT*3
+	scene.interact()
+	check(scene.driving and winter.wheel_pivots.size()==4 and null not in winter.wheel_pivots,"winter sedan has four independent wheel pivots")
+	scene.look(Vector2(200,-28))
+	var orbit: float=scene.orbit_yaw
+	scene.chase_view(1./60)
+	check(absf(angle_difference(orbit,block.parked.global_rotation.y))>.4,"orbit works while parked")
+	for i in 150:
+		block.drive(1./60,1,0)
+	check(block.driver_speed>11.2,"electric sedan accelerates beyond prototype speed cap")
+	block.drive(1./60,0,.6)
+	winter._physics_process(1./60)
+	check(absf(block.steer)>.005 and absf(winter.wheel_roll)>.1,"front wheels steer while axles roll")
+	for i in 90:
+		block.drive(1./60,-1,0)
+	check(block.driver_speed<=.02 and block.driver_speed>-.6,"service brake arrests forward motion before reverse builds")
+	for i in 90:
+		block.drive(1./60,-1,0)
+	check(block.backing and block.driver_speed<-1,"hold brake at rest to reverse")
+	scene.drive_audio.update(block.driver_speed,1,0,1./60)
+	check(scene.drive_audio.motor.playing and scene.drive_audio.tires.playing,"driving activates rolling and motor audio")
+	block.driver_speed=0
+	scene.interact()
+	check(not scene.driving and not scene.drive_audio.motor.playing,"parking stops the drive loops")
+	block.street_user=Vector3.INF
+	block.cross_distance=block.south_stop-12
+	block.cross_speed=3.5
+	block.cycle=5
+	for i in 600: block.update_cross_taxi(1./60)
+	check(absf(block.cross_distance-block.south_stop)<.15,"33rd Street traffic holds at the red signal")
+	block.cycle=26
+	for i in 360: block.update_cross_taxi(1./60)
+	check(block.cross_taxi.position.x<80 and block.cross_taxi.position.z>36,"33rd Street traffic crosses west on green")
 	scene.queue_free()
