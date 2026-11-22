@@ -33,7 +33,8 @@ func dress_street() -> void:
 	var carved := ShaderMaterial.new()
 	carved.shader = preload("res://winter/stonework.gdshader")
 	for batch in block.get_children():
-		if batch is MultiMeshInstance3D: batch.material_override = carved
+		if batch is MultiMeshInstance3D and not batch.is_in_group(&"street_fixtures"):
+			batch.material_override = carved
 	# Night sky supplies the cool fill; the warm key is a local lamp.
 	var env: Environment = city.get_node("Environment").environment.duplicate()
 	var sky := Sky.new()
@@ -166,16 +167,16 @@ func rod(a: Vector3, b: Vector3, bottom: float, top: float) -> void:
 	n.position = (a+b)*.5
 	n.quaternion = Quaternion(Vector3.UP,(b-a).normalized())
 
-func lamp(x: float,z: float,arm: float, hero: bool) -> void:
-	block.solid(Vector3(x,2.95,z),Vector3(.24,5.9,.24))
-	var foot := Vector3(x,.13,z)
+func lamp(site: Transform3D, hero: bool) -> void:
+	var foot := site.origin
+	var out := site.basis.z*(2.25 if hero else 2.15)
 	rod(foot,foot+Vector3.UP*.32,.24,.19)
 	rod(foot+Vector3.UP*.32,foot+Vector3.UP*6.28,.117,.075)
-	var elbow := foot+Vector3(arm*.26,6.91,0)
-	var tip := foot+Vector3(arm,7.04,0)
+	var elbow := foot+out*.26+Vector3.UP*6.91
+	var tip := foot+out+Vector3.UP*7.04
 	rod(foot+Vector3.UP*5.84,elbow,.077,.063)
 	rod(elbow,tip,.063,.052)
-	rod(foot+Vector3.UP*5.24,foot+Vector3(arm*.68,7.,0),.037,.032)
+	rod(foot+Vector3.UP*5.24,foot+out*.68+Vector3.UP*7.,.037,.032)
 	var shade := MeshInstance3D.new()
 	var shell := SphereMesh.new()
 	shell.radius=.54
@@ -184,7 +185,7 @@ func lamp(x: float,z: float,arm: float, hero: bool) -> void:
 	shade.material_override=lamp_metal
 	add_child(shade)
 	shade.position=tip
-	shade.scale.z=.53
+	shade.basis=site.basis.scaled_local(Vector3(.53,1,1))
 	var lens:=MeshInstance3D.new()
 	lens.mesh=shell
 	lens.material_override=hot_glass
@@ -205,11 +206,10 @@ func lamp(x: float,z: float,arm: float, hero: bool) -> void:
 	light.light_size=.38
 
 func furnish() -> void:
-	lamp(91.05,6.35,-2.25,true)
-	for z in [-94.,-64.,-30.,35.]:
-		lamp(91.05,z,-2.15,false)
-	for x in [-70.,-36.,-4.,30.,64.]:
-		lamp(x,-55.9,1.65,false)
+	for site: Transform3D in block.night_lamps:
+		var p:=Vector2(site.origin.x,site.origin.z)
+		var hero:=p.is_equal_approx(block.HERO_LAMP)
+		lamp(site,hero)
 	curb_furniture()
 	# Full-height window glass sits inside the original bronze display frames.
 	for i in range(-14,15):

@@ -234,6 +234,7 @@ func winter_stride_checks() -> void:
 	for i in 360: block.update_cross_taxi(1./60)
 	check(block.cross_taxi.position.x<80 and block.cross_taxi.position.z>36,"33rd Street traffic crosses west on green")
 	snow_contact_checks(scene,winter)
+	street_fixture_checks(scene.block,winter.pack)
 	scene.queue_free()
 
 func snow_contact_checks(scene, winter) -> void:
@@ -278,3 +279,40 @@ func snow_contact_checks(scene, winter) -> void:
 	check(pack.surface_at(dry).y<.003,"plowed road test point is bare")
 	pack.stamp(dry,Vector2.RIGHT,true,1.)
 	check(pack.tracks.size()==count,"bare pavement takes no imprint")
+
+func street_fixture_checks(block, pack) -> void:
+	var lamps:=get_nodes_in_group(&"streetlight_posts")
+	var posts:=get_nodes_in_group(&"traffic_posts")
+	check(lamps.size()==22 and posts.size()==8,"winter renders one set of streetlights and four traffic posts per junction")
+	var supported:=true
+	for post: Node3D in lamps+posts:
+		var base:=Vector2(post.position.x,post.position.z)
+		for offset in [Vector2.ZERO,Vector2(.25,.25),Vector2(-.25,.25),Vector2(.25,-.25),Vector2(-.25,-.25)]:
+			var level:int=int(pack.surface_at(base+offset).x)
+			supported=supported and level in [1,3]
+	check(supported,"every pole footprint sits on the sidewalk")
+	var directions:={}
+	var lanes:={}
+	for child in block.get_children():
+		if child is MeshInstance3D and child.material_override in [block.signal_materials[Vector2i(0,0)],block.signal_materials[Vector2i(1,0)]]:
+			var normal:Vector3=child.basis.z.normalized()
+			var approach:=Vector3i(roundi(normal.x),int(child.position.z>0),roundi(normal.z))
+			lanes[approach]=lanes.get(approach,0)+1
+		if child is MeshInstance3D and child.material_override in block.pedestrian_materials.values():
+			var facing:Vector3=child.basis.z
+			var across:bool=child.material_override==block.pedestrian_materials[true]
+			var direction:=Vector3i(roundi(facing.x),int(child.position.z>0),roundi(facing.z))
+			check((absf(facing.x)>.99)==across,"pedestrian icon faces its own crossing")
+			directions[direction]=directions.get(direction,0)+1
+	check(lanes=={Vector3i(0,0,-1):2,Vector3i(0,1,-1):2,Vector3i(1,0,0):1,Vector3i(-1,0,0):1,Vector3i(1,1,0):1},"vehicle heads serve southbound Fifth, two-way 34th and westbound 33rd")
+	check(directions.size()==8 and directions.values().count(2)==8,"both ends of every marked crossing have an opposing pedestrian face")
+	var saved:float=block.cycle
+	for across:bool in [false,true]:
+		var mat:StandardMaterial3D=block.pedestrian_materials[across]
+		var start:=23. if across else 0.
+		for sample in [[4.,block.WALK_ICON,1.],[10.1,block.HAND_ICON,1.],[10.7,block.HAND_ICON,0.],[21.7,block.HAND_ICON,1.]]:
+			block.cycle=start+sample[0]
+			block.update_lights()
+			check(mat.albedo_texture==sample[1] and is_equal_approx(mat.albedo_color.a,sample[2]),"pedestrian display follows walk, flashing clearance and steady stop")
+	block.cycle=saved
+	block.update_lights()

@@ -16,7 +16,12 @@ var shapes: Dictionary = {}
 var batches: Dictionary = {}
 var context := FRONT
 var signal_materials := {}
-var lights: Array = []
+var pedestrian_materials := {}
+var night_lamps: Array[Transform3D] = []
+const SIDEWALK_Y := .1524
+const HERO_LAMP := Vector2(91.05,6.35)
+const WALK_ICON := preload("res://signals/walk.svg")
+const HAND_ICON := preload("res://signals/hand.svg")
 var last_light_state := -1
 var walkers: Array = []
 var cross_taxi: AnimatableBody3D
@@ -74,7 +79,7 @@ func part(at: Vector3, size: Vector3, color: Color, kind: String="box", rot: Vec
 		batches[kind]=[]
 	batches[kind].append([context*Transform3D(Basis.from_euler(rot).scaled_local(size),at),color])
 
-func flush_static() -> void:
+func flush_static(street_fixtures: bool=false) -> void:
 	for kind in batches:
 		var multi:=MultiMesh.new()
 		multi.transform_format=MultiMesh.TRANSFORM_3D
@@ -86,6 +91,7 @@ func flush_static() -> void:
 			multi.set_instance_color(i,batches[kind][i][1])
 		var node:=MultiMeshInstance3D.new()
 		node.multimesh=multi
+		if street_fixtures: node.add_to_group(&"street_fixtures")
 		add_child(node)
 	batches.clear()
 
@@ -175,7 +181,7 @@ func make_east_frontage() -> void:
 	demarest.name="Demarest"
 	add_child(demarest)
 
-func solid(at: Vector3, size: Vector3) -> void:
+func solid(at: Vector3, size: Vector3) -> StaticBody3D:
 	var body:=StaticBody3D.new()
 	var shape:=BoxShape3D.new()
 	shape.size=size
@@ -184,6 +190,7 @@ func solid(at: Vector3, size: Vector3) -> void:
 	body.add_child(collision)
 	body.position=at
 	add_child(body)
+	return body
 
 func finish_sidewalks() -> void:
 	# Frontages extend beyond the survey wall. Collide with the dressed base
@@ -244,9 +251,6 @@ func make_streets() -> void:
 			stripe(Vector3(81+side*11.2,.07,34.9+i*1.52),Vector3(2.9,.036,.63))
 	stripe(Vector3(81,.07,28.9),Vector3(16,.04,.43))
 	stripe(Vector3(95.1,.07,39),Vector3(.43,.04,9.3))
-	for x in [70.,92.]:
-		for z in [30.0,48.0]:
-			build_signal(Vector3(x,0,z),x<81,z<39,"33")
 	# Plowed curb snow is interrupted at crossings and entrances.
 	for i in range(-38,40):
 		var x:=i*3.8
@@ -258,14 +262,27 @@ func make_streets() -> void:
 		for x in [71.5,90.5]:
 			if abs(z+45.8)>14 and abs(z-39)>9:
 				snow(x,z,i)
-	for x in [-58.0,-17.0,27.0,66.0,98.0]:
-		for z in [-56.4,-35.1]:
-			lamp(Vector3(x,0,z))
-	for z in [-100.0,-78.0,-17.0,17.0]:
-		lamp(Vector3(70.3,0,z))
-	for x in [70.0,92.0]:
-		for z in [-56.4,-35.1]:
-			build_signal(Vector3(x,0,z),x<81,z < -45.8)
+	flush_static()
+	# Each basis points local +Z from the surveyed sidewalk into the adjacent lane.
+	for x in [-70.,-36.,-4.,30.,59.,111.]:
+		add_lamp_site(Vector2(x,-55.15),0.,x<70.)
+		add_lamp_site(Vector2(x,-35.6),PI)
+	for z in [-100.,-70.,-16.,17.,65.]:
+		add_lamp_site(Vector2(71.15,z),PI/2)
+	for z in [-94.,-64.,-22.,60.]:
+		add_lamp_site(Vector2(90.85,z),-PI/2,true)
+	add_lamp_site(HERO_LAMP,-PI/2,true)
+	# Two far-side avenue heads per junction. Cross-street mast arms extend
+	# over approaching lanes on 34th and the single westbound approach on 33rd.
+	build_signal(Vector2(67.6,-58.4),true,true,34)
+	build_signal(Vector2(91.,-58.6),false,true,34)
+	build_signal(Vector2(67.3,-32.7),true,false,34)
+	build_signal(Vector2(90.8,-32.8),false,false,34)
+	build_signal(Vector2(71.25,28.8),true,true,33)
+	build_signal(Vector2(90.8,28.8),false,true,33)
+	build_signal(Vector2(71.3,49.5),true,false,33)
+	build_signal(Vector2(90.8,49.5),false,false,33)
+	flush_static(true)
 
 func snow(x: float,z: float,i: int) -> void:
 	if get_parent().has_node("Winter"): return
@@ -275,47 +292,99 @@ func snow(x: float,z: float,i: int) -> void:
 	if along_fifth: size=Vector3(size.z,size.y,size.x)
 	part(Vector3(x,.17,z),size,SNOW,"ball")
 
-func lamp(at: Vector3) -> void:
-	part(at+Vector3.UP*3.1,Vector3(.13,6.2,.13),BASE)
-	part(at+Vector3(.49,6.08,0),Vector3(1.08,.1,.12),STEEL)
-	part(at+Vector3(.97,6.03,0),Vector3(.55,.14,.28),TRIM)
-	part(at+Vector3(0,2.7,0),Vector3(.39,1.25,.34),PINE,"cone")
-	for i in 4:
-		part(at+Vector3(.15*sin(i*2),2.31+i*.2,.15*cos(i*2)),Vector3.ONE*.1,BRASS,"ball")
+func add_lamp_site(site: Vector2, yaw: float, illuminate: bool=false) -> void:
+	var foot := Vector3(site.x,SIDEWALK_Y,site.y)
+	var frame := Transform3D(Basis(Vector3.UP,yaw),foot)
+	solid(foot+Vector3.UP*3.1,Vector3(.29,6.2,.29)).add_to_group(&"streetlight_posts")
+	if illuminate and get_parent().has_node("Winter"):
+		night_lamps.append(frame)
+		return
+	context=frame
+	part(Vector3.UP*3.1,Vector3(.13,6.2,.13),BASE)
+	part(Vector3(0,6.08,1.05),Vector3(.12,.10,2.22),STEEL)
+	part(Vector3(0,6.03,2.1),Vector3(.28,.14,.55),TRIM)
+	context=FRONT
 
-func build_signal(at: Vector3, west: bool, north: bool, number: String="34") -> void:
-	part(at+Vector3.UP*2.6,Vector3(.14,5.2,.14),STEEL)
+func build_signal(site: Vector2, west: bool, north: bool, street: int) -> void:
+	var foot := Vector3(site.x,SIDEWALK_Y,site.y)
+	var toward_x := 1. if west else -1.
+	var toward_z := 1. if north else -1.
+	part(foot+Vector3.UP*.15,Vector3(.32,.30,.32),STEEL)
+	part(foot+Vector3.UP*2.7,Vector3(.16,5.4,.16),STEEL)
+	solid(foot+Vector3.UP*2.7,Vector3(.24,5.4,.24)).add_to_group(&"traffic_posts")
 	var sign_yaw:=0.0 if north else PI
 	for j in 2:
-		context=Transform3D(Basis(Vector3.UP,sign_yaw+j*PI/2),at)
-		part(Vector3(0,3.75+j*.31,0),Vector3(1.55,.31,.075),Color("#23574b"))
+		context=Transform3D(Basis(Vector3.UP,sign_yaw+j*PI/2),foot)
+		part(Vector3(.79,3.75+j*.31,0),Vector3(1.72,.31,.075),Color("#23574b"))
 		for rot in [0.0,PI]:
-			label((("W " if west else "E ")+number+" St") if j==0 else "5 Av",Vector3(0,3.75+j*.31,.042*cos(rot)),.237,Color.WHITE,rot)
+			label((("W " if west else "E ")+str(street)+" St") if j==0 else "5 Av",Vector3(.79,3.75+j*.31,.055*cos(rot)),.237,Color.WHITE,rot)
 	context=FRONT
-	var arm:=5.2 if west else -5.2
-	part(at+Vector3(arm/2,5.12,0),Vector3(abs(arm),.12,.13),STEEL)
-	signal_head(at+Vector3(arm,4.58,0),PI,true)
-	signal_head(at+Vector3(0,3.0,0),PI/2 if west else -PI/2,false)
-	var face_rot:=PI/2 if west else -PI/2
-	signal_head(at+Vector3(0,2.34,.32),face_rot,false,true)
-	signal_head(at+Vector3(.32,2.34,0),0.0 if north else PI,true,true)
+	if not north:
+		var arm := (75.5 if west else 86.5)-foot.x
+		part(foot+Vector3(arm*.5,5.31,0),Vector3(absf(arm),.14,.14),STEEL)
+		vehicle_head(foot+Vector3(arm,4.84,0),PI,true)
+	if (west and north) or (street==34 and not west and not north):
+		var lane_z := 39. if street==33 else (-49.8 if west else -41.6)
+		var reach := lane_z-foot.z
+		part(foot+Vector3(0,5.25,reach*.5),Vector3(.14,.14,absf(reach)),STEEL)
+		vehicle_head(foot+Vector3(0,4.78,reach),toward_x*PI/2,false)
+	# Brackets on adjacent sides of the pole give each crossing its own face.
+	for across_avenue in [true,false]:
+		var yaw := toward_x*PI/2 if across_avenue else (0. if north else PI)
+		var forward := Basis(Vector3.UP,yaw).z
+		context=Transform3D(Basis(Vector3.UP,yaw),foot+Vector3.UP*2.72)
+		part(Vector3(0,0,.13),Vector3(.12,.12,.26),STEEL)
+		pedestrian_head(foot+Vector3.UP*2.72+forward*.34,yaw,across_avenue)
+	if street==33 and north and not west:
+		# The Demarest corner photographs show two pendant lamps above the signs.
+		part(foot+Vector3.UP*5.85,Vector3(.15,1.1,.15),BASE)
+		for side in [-1.,1.]:
+			var last := foot+Vector3.UP*6.1
+			for i in range(1,11):
+				var t:=PI*i/10.
+				var tip:=foot+Vector3(side*.57*(1.-cos(t)),6.1+.5*sin(t),0)
+				var delta:=tip-last
+				part((tip+last)*.5,Vector3(.062,delta.length()+.025,.062),BASE,"box",Vector3(0,0,-atan2(delta.x,delta.y)))
+				last=tip
+			part(last-Vector3.UP*.09,Vector3(.35,.24,.35),BASE,"ball")
+			part(last-Vector3.UP*.17,Vector3(.26,.19,.26),TRIM,"ball")
 
-func signal_head(at: Vector3,angle: float,avenue: bool,ped: bool=false) -> void:
+func vehicle_head(at: Vector3,angle: float,avenue: bool) -> void:
 	context=Transform3D(Basis(Vector3.UP,angle),at)
-	part(Vector3.ZERO,Vector3(.38,.45 if ped else .94,.30),Color("#c38e31"))
-	part(Vector3(0,0,.16),Vector3(.34,.39 if ped else .86,.055),BASE)
-	for i in (1 if ped else 3):
-		var n:=MeshInstance3D.new()
-		n.mesh=shapes["ball"]
-		n.transform=context*Transform3D(Basis.IDENTITY.scaled(Vector3(.22,.22,.077)),Vector3(0,0 if ped else .28-i*.28,.21))
-		add_child(n)
-		var key := Vector3i(int(avenue),int(ped),i)
+	part(Vector3.ZERO,Vector3(.38,.94,.30),Color("#c38e31"))
+	part(Vector3(0,0,.16),Vector3(.34,.86,.055),BASE)
+	for i in 3:
+		var key := Vector2i(int(avenue),i)
 		if not signal_materials.has(key):
-			var mat:=StandardMaterial3D.new()
+			var mat := StandardMaterial3D.new()
 			mat.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
 			signal_materials[key]=mat
-			lights.append([mat,avenue,ped,i])
+		var n:=MeshInstance3D.new()
+		n.mesh=shapes["ball"]
+		n.transform=context*Transform3D(Basis.IDENTITY.scaled(Vector3(.22,.22,.077)),Vector3(0,.28-i*.28,.21))
 		n.material_override=signal_materials[key]
+		add_child(n)
+	context=FRONT
+
+func pedestrian_head(at: Vector3,yaw: float,across_avenue: bool) -> void:
+	context=Transform3D(Basis(Vector3.UP,yaw),at)
+	part(Vector3.ZERO,Vector3(.52,.56,.21),Color("#b88833"))
+	part(Vector3(0,0,.109),Vector3(.48,.51,.024),Color("#111518"))
+	part(Vector3(0,.257,.169),Vector3(.52,.028,.16),BASE)
+	if not pedestrian_materials.has(across_avenue):
+		var mat:=StandardMaterial3D.new()
+		mat.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		mat.texture_filter=BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		pedestrian_materials[across_avenue]=mat
+	var face:=MeshInstance3D.new()
+	var quad:=QuadMesh.new()
+	quad.size=Vector2(.445,.445)
+	face.mesh=quad
+	face.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	face.material_override=pedestrian_materials[across_avenue]
+	face.transform=context.translated_local(Vector3(0,0,.126))
+	add_child(face)
 	context=FRONT
 
 func car_visual(cab: bool) -> Node3D:
@@ -464,17 +533,27 @@ func vehicle_signal(avenue: bool) -> int:
 func walk_sign(across_avenue: bool) -> bool:
 	return (cycle>=23 and cycle<32) if across_avenue else cycle<9
 
+enum PedSignal { HAND, WALK, DARK }
+
+func pedestrian_signal(across_avenue: bool) -> PedSignal:
+	if walk_sign(across_avenue): return PedSignal.WALK
+	var elapsed := cycle-(23. if across_avenue else 0.)
+	if elapsed>=9. and elapsed<20. and fmod(elapsed,1.)>=.5:
+		return PedSignal.DARK
+	return PedSignal.HAND
+
 func update_lights() -> void:
-	var state := vehicle_signal(true) + 3 * vehicle_signal(false) + 9 * int(walk_sign(true)) + 18 * int(walk_sign(false))
-	if state == last_light_state: return
-	last_light_state = state
-	for l in lights:
-		var color:=Color("#302e29")
-		if l[2]:
-			color=Color("#eeeacf") if walk_sign(not l[1]) else Color("#d77642")
-		elif l[3]==vehicle_signal(l[1]):
-			color=[Color("#ff4b32"),Color("#ffc055"),Color("#54d598")][l[3]]
-		l[0].albedo_color=color
+	var state := vehicle_signal(true) + 3*vehicle_signal(false) + 9*pedestrian_signal(true) + 27*pedestrian_signal(false)
+	if state==last_light_state: return
+	last_light_state=state
+	for key: Vector2i in signal_materials:
+		var active := key.y==vehicle_signal(bool(key.x))
+		signal_materials[key].albedo_color=[Color("#ff4b32"),Color("#ffc055"),Color("#54d598")][key.y] if active else Color("#302e29")
+	for across: bool in pedestrian_materials:
+		var aspect:=pedestrian_signal(across)
+		var mat: StandardMaterial3D=pedestrian_materials[across]
+		mat.albedo_texture=WALK_ICON if aspect==PedSignal.WALK else HAND_ICON
+		mat.albedo_color=Color.TRANSPARENT if aspect==PedSignal.DARK else Color.WHITE
 
 func update_walkers(dt: float) -> void:
 	for w in walkers:
