@@ -148,6 +148,15 @@ func winter_stride_checks() -> void:
 	var displacement: Vector3 = scene.walker.position - start
 	check(displacement.dot(heading)>12.5 and displacement.cross(heading).length()<.02, "first six seconds of walking clear the parked car")
 	var winter = scene.get_node("Winter")
+	var frontage=scene.block.get_node("EmpireFrontage")
+	var space: PhysicsDirectSpaceState3D = scene.get_world_3d().direct_space_state
+	for probe in [
+		[Vector3(70,1.25,-.72),Vector3(64,1.25,-.72),"center entry"],
+		[Vector3(70,1.25,1.94),Vector3(64,1.25,1.94),"revolving door"],
+		[Vector3(42.29,1.5,33),Vector3(42.29,1.5,28),"side-street loading door"]]:
+		var query:=PhysicsRayQueryParameters3D.create(scene.block.to_global(probe[0]),scene.block.to_global(probe[1]),1)
+		var hit:=space.intersect_ray(query)
+		check(not hit.is_empty() and frontage.is_ancestor_of(hit.collider),probe[2]+" meets the new frontage")
 	var road: Vector3 = scene.block.to_global(Vector3(81, 0, -45.8))
 	var bank: Vector3 = scene.block.to_global(Vector3(90.45,0,6))
 	check(scene.stride.ROADS.get_bitv(Vector2i(floori(road.x)+1350, floori(road.z)+1500)), "road mask matches the Fifth Avenue intersection")

@@ -1,5 +1,6 @@
 shader_type spatial;
 render_mode cull_disabled;
+#include "res://frontage_mask.gdshaderinc"
 varying vec3 street;
 varying vec3 face;
 void vertex() {
@@ -8,9 +9,13 @@ void vertex() {
 	face = normalize(MODEL_NORMAL_MATRIX*NORMAL);
 }
 void fragment() {
+	if(modeled_empire_base(street,face)) discard;
 	vec3 base = COLOR.rgb;
 	float near_block = 1.0-smoothstep(180.0,360.0,length(street.xz));
-	if (near_block > .001 && abs(face.y) < .65 && street.y > .24) {
+	if(empire_shaft(street,face)){
+		float glass,lit;
+		base=shaft_surface(street,face,glass,lit);
+	} else if (near_block > .001 && abs(face.y) < .65 && street.y > .24) {
 		float along = abs(dot(face.xz,vec2(.873,.488)))>.65 ? street.z : street.x;
 		vec2 bay=vec2(along/2.65,street.y/3.75);
 		vec2 p=abs(fract(bay)-.5);

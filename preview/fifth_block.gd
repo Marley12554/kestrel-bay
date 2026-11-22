@@ -120,41 +120,9 @@ func shop(x: float, width: float, decorated: bool) -> void:
 			part(Vector3(x-width*.43+i*width*.107,3.46+.08*cos(i*.78),.57),Vector3.ONE*.095,Color("#ffcf73"),"ball")
 
 func make_facades() -> void:
-	facade_frame(Vector3(65.30,0,0),PI/2)
-	part(Vector3(0,8,-.18),Vector3(58.6,16,.57),STONE)
-	for i in range(-9,10):
-		var x:=i*3.04
-		if abs(i)>2:
-			shop(x,3.03,i%2==0)
-			for floor_no in 3:
-				var y:=6.15+floor_no*3.3
-				part(Vector3(x,y,.17),Vector3(1.81,2.25,.12),Color("#643b39"))
-				part(Vector3(x,y,.25),Vector3(1.61,2.03,.05),GLASS)
-				part(Vector3(x,y+.39,.30),Vector3(1.64,.085,.06),BASE)
-	# Fifth Avenue's limestone frame and three tall diamond-pattern metal bays.
-	part(Vector3(0,6.8,.26),Vector3(12.5,13.6,.55),BASE)
-	for i in [-1,0,1]:
-		var x:float=i*2.63
-		part(Vector3(x,7.0,.60),Vector3(2.52,7.3,.16),GLASS)
-		for side in [-1,1]:
-			part(Vector3(x+side*1.23,6.8,.74),Vector3(.12,7.8,.12),STEEL)
-		for j in 3:
-			for side in [-1,1]:
-				part(Vector3(x,4.5+j*2.1,.79),Vector3(.073,3.17,.09),STEEL,"box",Vector3(0,0,side*.84))
-		part(Vector3(x,1.53,.67),Vector3(2.32,2.98,.13),GLASS)
-		part(Vector3(x,1.52,.78),Vector3(.11,2.98,.1),BRASS)
-		part(Vector3(x,3.12,.85),Vector3(2.61,.23,.45),STEEL)
-	for side in [-1,1]:
-		var x:int=side*5
-		part(Vector3(x,8.0,.65),Vector3(1.72,16,1.0),STONE)
-		for j in 5:
-			part(Vector3(x+(j-2)*.29,8.9,1.18),Vector3(.13,13.8,.20),TRIM)
-		part(Vector3(x,1.8,1.0),Vector3(1.75,3.6,.55),BASE)
-	part(Vector3(0,13.5,.66),Vector3(11.6,4.9,.76),STONE)
-	label("E M P I R E   S T A T E",Vector3(0,14.7,1.07),.86,Color("#e4b45f"))
-	for side in [-1,1]:
-		part(Vector3(side*2.05,12.3,1.06),Vector3(1.92,1.64,.08),GLASS)
-	label("350",Vector3(0,2.91,.91),.26,PAINT)
+	var empire:=preload("res://empire_frontage.gd").new()
+	empire.name="EmpireFrontage"
+	add_child(empire)
 	facade_frame(Vector3(-9,0,-30.08),PI)
 	part(Vector3(0,3.5,0),Vector3(148,7,.32),STONE)
 	for i in range(-14,15):
@@ -168,12 +136,6 @@ func make_facades() -> void:
 	part(Vector3(25,4.9,1.65),Vector3(15,.48,3.0),BASE)
 	label("EMPIRE STATE BUILDING",Vector3(25,4.9,3.19),.46,Color("#f4d18b"))
 	label("O B S E R V A T O R Y",Vector3(25,6.2,.64),.63,BRASS)
-	facade_frame(Vector3(50,0,29.4),0)
-	for i in range(-4,4):
-		shop(i*4.35,4.25,false)
-		part(Vector3(i*4.35+2.03,3.12,.35),Vector3(.32,6.22,.61),STONE)
-		part(Vector3(i*4.35,4.86,.18),Vector3(3.7,.75,.19),GLASS)
-	part(Vector3(-2.175,6.0,.38),Vector3(34.8,.42,.76),TRIM)
 	context=FRONT
 
 # Each bay is assembled from the sidewalk face inward. The deep jambs and
@@ -251,7 +213,6 @@ func finish_sidewalks() -> void:
 	solid(Vector3(107.46,2.1,29.42),Vector3(22.2,4.2,.68))
 	for i in range(-6,8):
 		solid(Vector3(95.84,1.9,i*4.45-2.225),Vector3(.8,3.8,.28))
-	solid(Vector3(65.59,1.8,0),Vector3(.60,3.6,58.5))
 	# Ribbed steel baskets and salt-stained granite planters mark the corners.
 	for pos in [Vector3(93.4,0,-33.3),Vector3(69.4,0,29.6),Vector3(93.55,0,47.55)]:
 		part(pos+Vector3.UP*.57,Vector3(.53,.90,.53),BASE)

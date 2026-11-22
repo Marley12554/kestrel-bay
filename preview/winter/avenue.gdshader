@@ -1,5 +1,6 @@
 shader_type spatial;
 render_mode cull_disabled;
+#include "res://frontage_mask.gdshaderinc"
 uniform sampler2D snow_depth : filter_linear, repeat_enable;
 uniform sampler2D asphalt : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D asphalt_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -20,6 +21,7 @@ void vertex() {
 	direction=normalize(MODEL_NORMAL_MATRIX*NORMAL);
 }
 void fragment() {
+	if(modeled_empire_base(street,direction)) discard;
 	vec3 p=street; vec3 base=COLOR.rgb;
 	if(abs(direction.y)>.68 && p.y<1.0){
 		vec2 uv=p.xz*.54;
@@ -41,6 +43,11 @@ void fragment() {
 		vec3 bump=mix(texture(asphalt_normal,uv,bias).rgb,texture(snow_normal,uv*.65,bias).rgb,cover)*2.-1.;
 		vec3 wx=vec3(.873,0,.488),wz=vec3(-.488,0,.873);
 		NORMAL=normalize((VIEW_MATRIX*vec4(normalize(vec3(0,1,0)+(wx*bump.x+wz*bump.y)*.45),0)).xyz);
+	} else if(empire_shaft(p,direction)) {
+		float glass,lit;
+		ALBEDO=shaft_surface(p,direction,glass,lit);
+		EMISSION=vec3(.37,.26,.16)*lit;
+		ROUGHNESS=mix(.73,.21,glass);
 	} else if(abs(direction.y)<.70) {
 		float along=abs(dot(direction.xz,vec2(.873,.488)))>.7?p.z:p.x;
 		vec2 bay=vec2(along/2.66,(p.y-.52)/3.55), cell=floor(bay), q=fract(bay);

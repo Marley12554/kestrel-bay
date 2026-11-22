@@ -211,21 +211,25 @@ func furnish() -> void:
 		lamp(x,-55.9,1.65,false)
 	curb_furniture()
 	# Full-height window glass sits inside the original bronze display frames.
-	for i in range(-9,10):
-		if absi(i)>2:
-			display_window(Vector3(65.80,2.1,-i*3.04), PI/2,2.8,i)
 	for i in range(-14,15):
 		if i not in [4,5,6]:
 			display_window(Vector3(-9-i*5.,2.08,-30.58),PI,4.52,i+21)
 	for i in range(-6,7):
 		if i not in [-5,-2,1,5]:
 			display_window(Vector3(95.98,2.16,i*4.45),-PI/2,3.94,i)
-	for x in [64.2,65.5]:
+	# A broad wash from inside the closed display reaches the shelves and jambs.
+	var display_light:=OmniLight3D.new()
+	display_light.position=Vector3(64.75,2.95,14.7)
+	display_light.light_color=Color("#f6dcab")
+	display_light.light_energy=1.25
+	display_light.omni_range=6.1
+	add_child(display_light)
+	for x in [64.2,66.75]:
 		var glow := OmniLight3D.new()
 		add_child(glow)
 		glow.position=Vector3(x,5.8,0)
 		glow.light_color=Color("#ffda99")
-		glow.light_energy=3
+		glow.light_energy=2.5
 		glow.omni_range=12
 	for side in [71.6,90.45]:
 		bank(Vector2(side,-125),Vector2(side,-62),.73)
@@ -365,7 +369,7 @@ func curb_furniture() -> void:
 		lantern.position=bracket+Vector3(.68,.17,0)
 		lantern.light_color=Color("#ffcb8b")
 		lantern.omni_range=7.5
-		lantern.light_energy=4.2
+		lantern.light_energy=2.35
 	# Small evergreen boughs in the marquee, each tipped with warm bulbs.
 	var branch:=PrismMesh.new()
 	branch.size=Vector3(.34,.17,.31)
@@ -378,8 +382,8 @@ func curb_furniture() -> void:
 	needles.mesh=branch
 	needles.instance_count=220
 	for i in needles.instance_count:
-		var z:float=-27.+i*.25
-		var y:float=4.07+.17*cos(z*1.02)
+		var z:float=(-28.5 if i<110 else 6.5)+float(i%110)*.20
+		var y:float=4.06+.09*cos(z*1.02)
 		needles.set_instance_transform(i,Transform3D(Basis.from_euler(Vector3(.35*sin(i*5.),i*.86,.4*cos(i))),Vector3(65.95,y,z)))
 	var garland:=MultiMeshInstance3D.new()
 	garland.multimesh=needles
@@ -395,7 +399,7 @@ func curb_furniture() -> void:
 	bulbs.mesh=bulb
 	bulbs.instance_count=104
 	for i in bulbs.instance_count:
-		var z:float=-27.+i*.52
+		var z:float=(-28.5 if i<52 else 6.5)+float(i%52)*.42
 		bulbs.set_instance_transform(i,Transform3D(Basis.IDENTITY,Vector3(66.09,4.+.17*cos(z*1.02),z)))
 	var strand:=MultiMeshInstance3D.new()
 	strand.multimesh=bulbs
