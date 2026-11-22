@@ -233,4 +233,48 @@ func winter_stride_checks() -> void:
 	block.cycle=26
 	for i in 360: block.update_cross_taxi(1./60)
 	check(block.cross_taxi.position.x<80 and block.cross_taxi.position.z>36,"33rd Street traffic crosses west on green")
+	snow_contact_checks(scene,winter)
 	scene.queue_free()
+
+func snow_contact_checks(scene, winter) -> void:
+	var pack= winter.pack
+	var paving: Mesh = winter.sidewalks.get_node("PavingAndCurb").mesh
+	var arrays:=paving.surface_get_arrays(0)
+	var flat:=true
+	for i in arrays[Mesh.ARRAY_VERTEX].size():
+		if is_equal_approx(arrays[Mesh.ARRAY_TEX_UV2][i].x,1.):
+			flat=flat and is_equal_approx(arrays[Mesh.ARRAY_VERTEX][i].y,winter.sidewalks.CURB_TOP)
+	check(flat,"every top vertex of the paving stays at curb height")
+	scene.walker.global_position=scene.block.to_global(Vector3(90.48,.159,-2))
+	scene.walker.velocity=Vector3.ZERO
+	scene.stride.reset()
+	for i in 190: scene.walk(scene.block.global_basis.z,false,1./60.)
+	var left:=false
+	var right:=false
+	for x in [90.377,90.583]:
+		for i in 280:
+			var p:=Vector2(x,-1.8+i*.02)
+			var surface:Vector2=pack.surface_at(p)
+			if surface.y-pack.remaining(p,surface)>.020:
+				if x<90.48: left=true
+				else: right=true
+	check(left and right,"ordinary walking compresses the snow under alternating feet")
+	var p:=Vector2(90.48,0.)
+	pack.stamp(p,Vector2.DOWN,true,.5)
+	var toe:=p+Vector2(.103,.065)
+	var heel:=p+Vector2(.103,-.095)
+	var original:Vector2=pack.surface_at(toe)
+	var depth:float=pack.remaining(toe,original)
+	check(depth<original.y-.02 and depth>=0 and pack.remaining(heel,pack.surface_at(heel))<pack.surface_at(heel).y-.02,"one boot compresses both sides of a snow tile seam without penetrating paving")
+	var west=pack.tile_at(toe,int(original.x))
+	winter.city.camera.position+=Vector3.UP*100
+	pack._process(1.)
+	check(not pack.visible_tracks.has(west),"distant prints release their detailed render meshes")
+	winter.city.camera.position=scene.block.to_global(Vector3(toe.x,1.7,toe.y))
+	pack._process(1.)
+	check(pack.visible_tracks.has(west) and is_equal_approx(pack.remaining(toe,original),depth),"the same depression returns when revisiting the tile")
+	var count:int=pack.tracks.size()
+	var dry:=Vector2(81.,-45.8)
+	check(pack.surface_at(dry).y<.003,"plowed road test point is bare")
+	pack.stamp(dry,Vector2.RIGHT,true,1.)
+	check(pack.tracks.size()==count,"bare pavement takes no imprint")

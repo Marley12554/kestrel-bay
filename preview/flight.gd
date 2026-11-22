@@ -297,7 +297,10 @@ func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 		remaining = hit.get_remainder().slide(normal)
 	walker.velocity = intended
 	var travelled := walker.position - start
-	stride.advance(walker.global_position, Vector2(travelled.x, travelled.z).length(), dt)
+	var motion:=Vector2(travelled.x,travelled.z)
+	if stride.winter:
+		walker.position.y=move_toward(walker.position.y,stride.winter.walking_height(walker.global_position),1.8*dt)
+	stride.advance(walker.global_position,motion.length(),dt,motion.normalized())
 
 func on_road(world: Vector3) -> bool:
 	var pixel:=Vector2i(floori(world.x)+1350,floori(world.z)+1500)

@@ -33,6 +33,8 @@ void fragment() {
 		float wheel=abs(mod(lateral+.12*sin(p.z*.07+p.x*.09),3.85)-1.925);
 		float tracks=1.-smoothstep(.14,.53,abs(wheel-.78));
 		float cover=road?smoothstep(.57,.83,drift-tracks*.27):smoothstep(.17,.47,drift+(pavement?UV2.y:0.));
+		// The modeled block has an independent snow surface above this substrate.
+		if(all(greaterThanEqual(p.xz,vec2(-240.,-136.))) && all(lessThan(p.xz,vec2(160.,72.)))) cover=0.;
 		vec3 grit=texture(asphalt,uv,bias).rgb;
 		vec2 powder_uv=uv*.65+vec2(.32,-.21)*texture(snow_depth,p.xz/18.).r;
 		vec3 powder=texture(snow,powder_uv,bias).rgb;

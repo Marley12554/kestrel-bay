@@ -17,6 +17,7 @@ var street_material: ShaderMaterial
 var hint: Label
 const SNOW_DEPTH := preload("res://winter/snow_depth.png")
 var depth_samples: Image
+var pack := preload("res://winter/snowpack.gd").new()
 var sidewalks := preload("res://winter/sidewalk_snow.gd").new()
 
 func _ready() -> void:
@@ -233,6 +234,7 @@ func furnish() -> void:
 		glow.omni_range=12
 	add_child(sidewalks)
 	sidewalks.build(street_material)
+	add_child(pack)
 	# Unsurveyed strips at property boundaries use the same winter pavement.
 	city.get_node("Terrain").material_override=street_material
 
@@ -365,7 +367,9 @@ func curb_furniture() -> void:
 func snow_underfoot(world: Vector3, road: bool) -> float:
 	var local := to_local(world)
 	var foot := Vector2(local.x, local.z)
-	var bias:=sidewalks.snow_bias(foot)
+	var surface:=pack.surface_at(foot)
+	if physical_block(foot):
+		return smoothstep(.001,.033,pack.remaining(foot,surface))
 	var delta := Vector2(world.x + 208.099, world.z - 573.891)
 	var p := Vector2(delta.dot(Vector2(.873,.488)), delta.dot(Vector2(-.488,.873)))
 	var size := depth_samples.get_width()
@@ -379,12 +383,27 @@ func snow_underfoot(world: Vector3, road: bool) -> float:
 	var top := lerpf(depth_samples.get_pixel(x,y).r, depth_samples.get_pixel(xn,y).r, f.x)
 	var bottom := lerpf(depth_samples.get_pixel(x,yn).r, depth_samples.get_pixel(xn,yn).r, f.x)
 	var drift := lerpf(top, bottom, f.y)
-	if not road or bias!=0.:
-		return smoothstep(.17, .47, drift+bias)
+	if not road:
+		return smoothstep(.17, .47, drift)
 	var lateral := p.x if absf(p.x-81.0)<9.0 else p.y+45.8
 	var wheel := absf(fposmod(lateral+.12*sin(p.y*.07+p.x*.09),3.85)-1.925)
 	var tracks := 1.0-smoothstep(.14,.53,absf(wheel-.78))
 	return smoothstep(.57,.83,drift-tracks*.27)
+
+func physical_block(p: Vector2) -> bool:
+	return Rect2(pack.ORIGIN,Vector2(pack.FIELD.get_size())/4.).has_point(p)
+
+func walking_height(world: Vector3) -> float:
+	var local:=to_local(world)
+	var p:=Vector2(local.x,local.z)
+	var surface:=pack.surface_at(p)
+	if surface.x<0: return .15
+	return pack.SUPPORT_Y[int(surface.x)]+pack.remaining(p,surface)
+
+func plant_foot(world: Vector3, heading: Vector2, left: bool, effort: float) -> void:
+	var foot:=to_local(world)
+	var local_direction:=global_basis.inverse()*Vector3(heading.x,0,heading.y)
+	pack.stamp(Vector2(foot.x,foot.z),Vector2(local_direction.x,local_direction.z).normalized(),left,effort)
 
 func _physics_process(dt: float) -> void:
 	if not chassis: return

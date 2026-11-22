@@ -36,17 +36,6 @@ func accumulation(p: Vector2, inset: float, section: Array, along: float) -> Vec
 	var depth:=.27*deposit+.026*maxf(0.,broken+.4)*(1.-path)
 	return Vector2(depth,deposit*.60-path*.29)*blend
 
-func snow_bias(p: Vector2) -> float:
-	for section in CURBS:
-		var start: Vector2=section[0]
-		var edge: Vector2=section[1]-start
-		var fraction: float=(p.y-start.y)/edge.y if section[2].x!=0 else (p.x-start.x)/edge.x
-		if fraction<0. or fraction>1.: continue
-		var inset: float=(p-start-edge*fraction).dot(section[2])
-		if inset>=0. and inset<=section[3]:
-			return accumulation(p,inset,section,fraction*edge.length()).y
-	return 0.
-
 func build(material: Material) -> void:
 	var st:=SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -56,11 +45,9 @@ func build(material: Material) -> void:
 		var finish: Vector2=section[1]
 		var inward: Vector2=section[2]
 		var width: float=section[3]
-		var length:=start.distance_to(finish)
-		var rows:=ceili(length/.39)
-		var cols:=ceili(width/.23)
-		# Duplicate the two curb corners so Godot smooths the snow across
-		# triangles while preserving the hard edge of the granite.
+		var rows:=1
+		var cols:=1
+		# The stone is a flat slab with independent normals for its curb face.
 		var stride:=cols+5
 		var triangles: Array[int]=[0,stride,1,1,stride,stride+1]
 		if (finish-start).cross(inward)<0.: triangles.reverse()
@@ -71,11 +58,10 @@ func build(material: Material) -> void:
 				var inset:=maxf(0.,j*width/cols)
 				if j==-4: inset=-.36
 				var p:=edge+inward*inset
-				var snow:=accumulation(p,inset,section,t*length)
-				var y:=CURB_TOP+snow.x if j>=0 else (CURB_TOP if j==-1 else .002)
+				var y:=CURB_TOP if j>=-1 else .002
 				var surface:=1 if j>=0 else (2 if j>=-2 else 3)
 				st.set_smooth_group(surface)
-				st.set_uv2(Vector2(surface,snow.y if j>=0 else 0.))
+				st.set_uv2(Vector2(surface,0.))
 				st.add_vertex(Vector3(p.x,y,p.y))
 				if i==rows or j==cols or j in [-3,-1]: continue
 				var k:=cursor+i*stride+j+4
@@ -93,7 +79,7 @@ func build(material: Material) -> void:
 			cursor+=4
 	st.generate_normals()
 	var mesh:=MeshInstance3D.new()
-	mesh.name="SnowAndPaving"
+	mesh.name="PavingAndCurb"
 	mesh.mesh=st.commit()
 	mesh.material_override=material
 	add_child(mesh)

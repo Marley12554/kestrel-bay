@@ -14,6 +14,7 @@ var snow := AudioStreamPlayer.new()
 var hard_steps: Array[AudioStream] = []
 var snow_steps: Array[AudioStream] = []
 var last_take := -1
+var left_foot := false
 var phase := 0.5
 var strength := 1.0
 var activity := 0.0
@@ -29,7 +30,7 @@ func _ready() -> void:
 		hard_steps.append(load("res://audio/footstep_concrete_%03d.ogg" % i))
 		snow_steps.append(load("res://audio/footstep_snow_%03d.ogg" % i))
 
-func advance(at: Vector3, distance: float, dt: float) -> void:
+func advance(at: Vector3, distance: float, dt: float, heading:=Vector2.ZERO) -> void:
 	if base_fov == 0.0:
 		base_fov = camera.fov
 	var speed := distance / dt
@@ -42,6 +43,9 @@ func advance(at: Vector3, distance: float, dt: float) -> void:
 		phase = fmod(phase + distance / lerpf(0.98, 2.12, effort), 2.0)
 		if floori(phase) != previous:
 			play_step(at, effort, speed)
+			if winter and not heading.is_zero_approx():
+				winter.plant_foot(at,heading,left_foot,effort)
+			left_foot=not left_foot
 	elif activity == 0.0:
 		phase = 0.5
 	var amplitude := activity * strength
