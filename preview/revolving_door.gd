@@ -7,11 +7,12 @@ const HALF_ARC := PI / 4.0
 const SILL := .12
 const HEAD := 2.69
 var rotor := Node3D.new()
-var speed := 0.0
-var traversable:=false
+var wings: Array[Node3D] = []
+var wing_bodies: Array[StaticBody3D] = []
 
 func _ready() -> void:
 	# Both doors reuse the entrance's metal and glazing resources.
+	add_to_group("manual_drums")
 	meshes={"box":cube}
 	var rail: Material=finishes["rail"]
 	var mat:=material("mat","#333332",.93)
@@ -49,6 +50,7 @@ func _ready() -> void:
 		var wing:=Node3D.new()
 		wing.rotation.y=index*PI/2
 		rotor.add_child(wing)
+		wings.append(wing)
 		var glass:=QuadMesh.new()
 		glass.size=Vector2(width-.045,HEAD-SILL-.20)
 		add_glass(wing,glass,Vector3(mid_x,(HEAD+SILL)*.5+.045,0))
@@ -62,19 +64,17 @@ func _ready() -> void:
 		piece("rail",Vector3(mid_x,1.13,.10),Vector3(width-.27,.045,.035))
 	# Only the hardware collected above belongs to the rotor.
 	assemble(rotor)
-	if traversable:
-		for side in [-1.,1.]:
-			for i in 8:
-				var a:float=side*PI*.5+lerpf(-HALF_ARC,HALF_ARC,(i+.5)/8.)
-				var radius:=RADIUS+.03
-				add_barrier(self,Vector3(sin(a)*radius,1.39,cos(a)*radius),Vector3(.24,2.50,.05),a)
-		for i in 4:
-			var a:=i*PI*.5
-			add_barrier(rotor,Vector3(cos(a)*outer*.5,1.39,-sin(a)*outer*.5),Vector3(outer,2.50,.036),a)
+	for side in [-1.,1.]:
+		for i in 8:
+			var a:float=side*PI*.5+lerpf(-HALF_ARC,HALF_ARC,(i+.5)/8.)
+			var radius:=RADIUS+.03
+			add_barrier(self,Vector3(sin(a)*radius,1.39,cos(a)*radius),Vector3(.24,2.50,.05),a)
+	for i in 4:
+		var a:=i*PI*.5
+		add_barrier(rotor,Vector3(cos(a)*outer*.5,1.39,-sin(a)*outer*.5),Vector3(outer,2.50,.036),a)
 
 func add_barrier(parent:Node3D,at:Vector3,size:Vector3,yaw:float) -> void:
-	var body:=AnimatableBody3D.new()
-	body.sync_to_physics=false
+	var body:=StaticBody3D.new()
 	body.position=at
 	body.rotation.y=yaw
 	var shape:=CollisionShape3D.new()
@@ -83,6 +83,7 @@ func add_barrier(parent:Node3D,at:Vector3,size:Vector3,yaw:float) -> void:
 	shape.shape=box
 	body.add_child(shape)
 	parent.add_child(body)
+	if parent == rotor: wing_bodies.append(body)
 
 
 func add_glass(parent: Node3D,mesh: Mesh,at: Vector3) -> void:
@@ -129,9 +130,7 @@ func fixed_screen(side: int) -> void:
 		jamb.position=Vector3(sin(a)*RADIUS,(HEAD+SILL)*.5,cos(a)*RADIUS)
 		add_child(jamb)
 
-func _physics_process(delta: float) -> void:
-	var camera:=get_viewport().get_camera_3d()
-	if not camera: return
-	var near_door:=global_position.distance_squared_to(camera.global_position)<16.
-	speed=move_toward(speed,.55 if near_door else 0.,delta*.7)
-	rotor.rotate_y(speed*delta)
+
+func turn_by(angle: float) -> void:
+	rotor.rotate_y(angle)
+	for panel in wing_bodies: panel.force_update_transform()

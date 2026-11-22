@@ -77,6 +77,7 @@ func update(speed: float, cornering: float, dt: float, reversing: bool, slip_ang
 	var forward_gain := lerpf(.027, .085, smoothstep(0., 9., road_speed)) * (1. - smoothstep(9., 11.18, road_speed))
 	var reverse_gain := lerpf(.085, .36, smoothstep(0., 5., road_speed))
 	var front_db := linear_to_db(maxf(.00025, forward_gain)) if not reversing else MUTED_DB
+	reverse_warning.pitch_scale = lerpf(reverse_warning.pitch_scale, lerpf(1., 1.32, smoothstep(0., 5., road_speed)) if reversing else 1., blend)
 	var rear_db := linear_to_db(reverse_gain) if reversing else MUTED_DB
 	forward_warning.volume_db = lerpf(forward_warning.volume_db, front_db, blend)
 	reverse_warning.volume_db = lerpf(reverse_warning.volume_db, rear_db, blend)

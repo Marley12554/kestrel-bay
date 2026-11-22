@@ -15,9 +15,7 @@ const CUP:=preload("res://reserve/coffee_cup.tscn")
 enum Order { AVAILABLE, BREWING, READY, CARRIED }
 var order:=Order.AVAILABLE
 var brew_time:=0.
-var opened:=false
-var door:=StaticBody3D.new()
-var open_angle:=1.63
+var door:=preload("res://hinged_door.gd").new()
 var cup:Node3D
 var grip:=Node3D.new()
 var server:Node3D
@@ -147,7 +145,6 @@ func install_revolving_entrance() -> void:
 	finishes["entry_glass"] = glass
 	revolving.finishes["rail"] = finishes["bronze"]
 	revolving.finishes["door_glass"] = glass
-	revolving.traversable = true
 	# Place the entry mat just above the terrazzo so the threshold is visible.
 	revolving.position = Vector3(DRUM_X, FLOOR_Y + .004 - revolving.SILL, drum_z)
 	add_child(revolving)
@@ -180,6 +177,7 @@ func window_span(begin:float,end:float) -> void:
 		collider(Vector3(x,1.65,.22),Vector3(w,3.1,.12))
 
 func entrance_leaf() -> void:
+	door.moved.connect(chime.play.bind(0.))
 	add_child(door)
 	door.name="FifthAvenueDoor"
 	door.position=Vector3(DOOR_X-DOOR_WIDTH*.5,0,.22)
@@ -409,12 +407,6 @@ func inside(p:Vector3) -> bool:
 	return p.x>0 and p.x<WIDTH and p.z<.18 and p.z> -DEPTH and p.y<4.9 and p.y>-.2
 
 func action_at(p:Vector3) -> String:
-	if absf(p.x-DOOR_X)<1.35 and absf(p.z-.22)<2.0:
-		var hinge:=Vector2(DOOR_X-DOOR_WIDTH*.5,.22)
-		var offset:=Vector2(p.x,p.z)-hinge
-		if opened and offset.x>-.28 and offset.y*signf(open_angle)<.28 and offset.length()<DOOR_WIDTH+.28:
-			return ""
-		return "Close door" if opened else "Open door"
 	if p.distance_to(COUNTER+Vector3(1.5,.16,0))<2.1 and p.x>COUNTER.x+.48 and inside(p):
 		match order:
 			Order.AVAILABLE: return "Order coffee"
@@ -426,10 +418,6 @@ func interact() -> bool:
 	var p:=to_local(city.walker.global_position)
 	var action:=action_at(p)
 	match action:
-		"Open door","Close door":
-			if not opened: open_angle=1.63 if p.z>=.22 else -1.63
-			opened=not opened
-			chime.play()
 		"Order coffee":
 			order=Order.BREWING
 			brew_time=2.6
@@ -445,7 +433,6 @@ func interact() -> bool:
 	return true
 
 func _physics_process(dt:float) -> void:
-	door.rotation.y=move_toward(door.rotation.y,open_angle if opened else 0.,dt*2.8)
 	if order==Order.BREWING:
 		brew_time-=dt
 		if brew_time<=.7:
@@ -458,5 +445,8 @@ func _physics_process(dt:float) -> void:
 		serving_arm.rotation.x=move_toward(serving_arm.rotation.x,0.,dt*2.)
 		cup.visible=not city.driving and not city.body.visible
 	var action:="" if city.driving or city.body.visible else action_at(to_local(city.walker.global_position))
+	if not city.driving and not city.body.visible:
+		var door_hint: String = city.manual_doors.hint()
+		if door_hint != "": action = door_hint
 	cue.visible=city.hud_visible and (not city.web or not bool(city.web.midtownHudHidden)) and action!=""
-	if cue.visible: cue.text=action if order==Order.BREWING and action.begins_with("Brewing") else "E   "+action
+	if cue.visible: cue.text=action if action.begins_with("Move") or action.begins_with("Brewing") else "E   "+action

@@ -142,6 +142,35 @@ func door_pair(x: float,width: float,z: float) -> void:
 	piece("steel",Vector3(x,.035,z+.06),Vector3(width,.07,.39))
 	collider(Vector3(x,1.38,z),Vector3(width,2.76,.11))
 
+func vestibule_doors() -> void:
+	for side: float in [-1.,1.]:
+		var panel := preload("res://hinged_door.gd").new()
+		panel.transform = frame * Transform3D(Basis.IDENTITY,Vector3(side*1.08,0,.40))
+		panel.handle = Vector3(-side*.92,1.23,.17)
+		add_child(panel)
+		var trim := preload("res://frontage_geometry.gd").new()
+		trim.meshes = meshes
+		trim.finishes = finishes
+		panel.add_child(trim)
+		var center := -side*.54
+		for x in [center-.50,center+.50]:
+			trim.piece("steel",Vector3(x,1.38,0),Vector3(.08,2.76,.11))
+		trim.piece("steel",Vector3(center,.19,0),Vector3(1.08,.36,.10))
+		trim.piece("steel",Vector3(center,2.72,0),Vector3(1.08,.10,.11))
+		trim.pane(center,1.52,-.025,.94,2.31)
+		for face: float in [-1.,1.]:
+			var x := panel.handle.x
+			for y in [.98,1.48]:
+				trim.bar(Vector3(x,y,0),Vector3(x,y,.17*face),.035,"brass")
+			trim.bar(Vector3(x,.98,.17*face),Vector3(x,1.48,.17*face),.04,"brass")
+		trim.assemble()
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.08,2.76,.11)
+		shape.shape = box
+		shape.position = Vector3(center,1.38,0)
+		panel.add_child(shape)
+
 func service_bay(x: float,width: float) -> void:
 	piece("limestone",Vector3(x,2.5,.02),Vector3(width,5,.45))
 	piece("granite",Vector3(x,2.05,.40),Vector3(4.05,4.1,.65))
@@ -188,14 +217,18 @@ func entry() -> void:
 		door.transform=frame*Transform3D(Basis.IDENTITY,Vector3(side*2.50,0,-.24))
 		add_child(door)
 		piece("door_trim",Vector3(side*2.50,2.76,-.22),Vector3(2.39,.14,2.44))
-		collider(Vector3(side*2.50,1.40,-.24),Vector3(2.26,2.62,.24))
+		collider(Vector3(side*3.78,1.40,.40),Vector3(.64,2.62,.51))
+		collider(Vector3(side*1.31,1.40,.40),Vector3(.48,2.62,.51))
 	for side in [-1,1]:
 		var x: float=side*5.12
 		piece("granite",Vector3(x,2.52,.43),Vector3(2.18,5.04,1.5))
 		collider(Vector3(x,2.52,.43),Vector3(2.18,5.04,1.50))
 		entrance_pier(x)
 		piece("brass",Vector3(x,1.62,1.21),Vector3(.34,.39,.055))
-	door_pair(0,2.16,.40)
+	vestibule_doors()
+	collider(Vector3(0,1.75,-2.73),Vector3(8.44,3.5,.20))
+	for side in [-1.,1.]:
+		collider(Vector3(side*4.15,1.77,-1.05),Vector3(.33,3.54,4.25))
 	lettering("350",Vector3(0,3.04,.724),.235)
 	# Glass and dark backing are separated by the screen depth.
 	for bay in [-1,0,1]:

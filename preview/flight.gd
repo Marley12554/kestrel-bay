@@ -3,6 +3,7 @@ extends Node3D
 @export var survey_material: ShaderMaterial
 @onready var block = $Block
 @onready var walker: CharacterBody3D = $Walker
+var manual_doors := preload("res://manual_doors.gd").new()
 var driving := false
 var brake_pressed := false
 var turn_signal_direction := 0
@@ -45,6 +46,7 @@ const MIN_HEIGHT := 1.7
 const MAX_HEIGHT := 1800.0
 
 func _ready() -> void:
+	add_child(manual_doors)
 	camera_probe.radius = CAMERA_CLEARANCE
 	block.parked.add_child(drive_audio)
 	$Overlay.add_child(gear_readout)
@@ -137,6 +139,7 @@ func mouse_captured() -> bool:
 	return bool(web.midtownLocked) if web else Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 
 func toggle_body() -> void:
+	manual_doors.release(true)
 	if driving:
 		return
 	stride.reset()
@@ -289,7 +292,7 @@ func update_hud() -> void:
 
 func interact() -> void:
 	if body.visible: return
-	if not driving and block.reserve.interact(): return
+	if not driving and (manual_doors.interact() or block.reserve.interact()): return
 	if driving:
 		if absf(block.driver_speed)>.15: return
 		var side: Vector3 = block.parked.global_basis.x
@@ -322,6 +325,7 @@ func interact() -> void:
 		camera.rotation=Vector3(pitch,yaw,0)
 	elif walker.position.distance_to(block.parked.global_position)<5.8:
 		driving=true
+		manual_doors.release(true)
 		previous_steer_key=0
 		steer_key_seconds=0.0
 		orbit_yaw=block.parked.global_rotation.y
@@ -351,6 +355,12 @@ func _physics_process(dt: float) -> void:
 	block.street_user=block.to_local(walker.global_position)
 
 func walk(direction: Vector3, sprint: bool, dt: float) -> void:
+	var before := walker.position
+	if manual_doors.step(direction,dt):
+		var travel := walker.position-before
+		walker.velocity = Vector3.ZERO
+		stride.advance(walker.global_position,travel.length(),dt,Vector2(travel.x,travel.z).normalized())
+		return
 	var target: Vector3 = direction * (stride.SPRINT_SPEED if sprint else stride.WALK_SPEED)
 	var acceleration := 14.0 if target.length_squared() > walker.velocity.length_squared() else 28.0
 	var intended := walker.velocity.move_toward(target, acceleration * dt * (.14 if airborne else 1.0))
