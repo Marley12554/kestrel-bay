@@ -17,7 +17,7 @@ var street_material: ShaderMaterial
 var hint: Label
 const SNOW_DEPTH := preload("res://winter/snow_depth.png")
 var depth_samples: Image
-var banks: Array[Dictionary] = []
+var sidewalks := preload("res://winter/sidewalk_snow.gd").new()
 
 func _ready() -> void:
 	city.ready.connect(dress_street)
@@ -231,14 +231,10 @@ func furnish() -> void:
 		glow.light_color=Color("#ffda99")
 		glow.light_energy=2.5
 		glow.omni_range=12
-	for side in [71.6,90.45]:
-		bank(Vector2(side,-125),Vector2(side,-62),.73)
-		bank(Vector2(side,-32),Vector2(side,29),.63)
-	for z in [33.1,44.9]:
-		bank(Vector2(-47,z),Vector2(65,z),.58)
-		bank(Vector2(98,z),Vector2(146,z),.62)
-	for z in [-55.1,-36.5]:
-		bank(Vector2(-96,z),Vector2(65,z),.73)
+	add_child(sidewalks)
+	sidewalks.build(street_material)
+	# Unsurveyed strips at property boundaries use the same winter pavement.
+	city.get_node("Terrain").material_override=street_material
 
 func display_window(at: Vector3, angle: float, width: float, index: int) -> void:
 	var pane:=MeshInstance3D.new()
@@ -252,46 +248,6 @@ func display_window(at: Vector3, angle: float, width: float, index: int) -> void
 	add_child(pane)
 	pane.position=at
 	pane.rotation.y=angle
-
-func bank(a: Vector2,b: Vector2,width: float) -> void:
-	banks.append({"a":a,"b":b,"width":width})
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var noise:=FastNoiseLite.new()
-	noise.seed=417
-	noise.frequency=.75
-	var axis:=(b-a).normalized()
-	var across:=Vector2(-axis.y,axis.x)
-	var rows:Array[PackedVector3Array]=[]
-	var count:=ceili(a.distance_to(b)/.43)
-	for i in count+1:
-		var center:=a.lerp(b,float(i)/count)
-		var n:=noise.get_noise_2dv(center)
-		var taper:=clampf(minf(i,count-i)*.25,0,1)
-		var row:=PackedVector3Array()
-		for j in 7:
-			var s:=(j-3.)/3.
-			var pos:=center+across*(s*width*(1.+.56*n)+.14*n)
-			var crest:=pow(maxf(0,1.-s*s),1.35)*(.30+.20*n+.09*noise.get_noise_2dv(pos*3.1))
-			row.append(Vector3(pos.x,.071+taper*crest,pos.y))
-		rows.append(row)
-	for i in count:
-		for j in 6:
-			for v:Vector3 in [rows[i][j],rows[i+1][j],rows[i][j+1],rows[i][j+1],rows[i+1][j],rows[i+1][j+1]]:
-				st.set_uv(Vector2(v.x,v.z)*.72)
-				st.add_vertex(v)
-	st.generate_normals()
-	st.generate_tangents()
-	var berm:=MeshInstance3D.new()
-	berm.mesh=st.commit()
-	var powder:=StandardMaterial3D.new()
-	powder.cull_mode=BaseMaterial3D.CULL_DISABLED
-	powder.albedo_texture=preload("res://winter/assets/snow_02_Diffuse.jpg")
-	powder.normal_enabled=true
-	powder.normal_texture=preload("res://winter/assets/snow_02_nor_gl.jpg")
-	powder.roughness=.86
-	berm.material_override=powder
-	add_child(berm)
 
 func snowfall() -> void:
 	var flakes:=GPUParticles3D.new()
@@ -352,11 +308,11 @@ func fitting(at: Vector3, size: Vector3, material: Material) -> MeshInstance3D:
 func curb_furniture() -> void:
 	# Machined steel cover, slotted gutter drains, and stone joints near the parked sedan.
 	for z in [-24.,3.,28.]:
-		fitting(Vector3(89.8,.063,z),Vector3(.54,.04,.94),lamp_metal)
+		fitting(Vector3(89.29,.003,z),Vector3(.54,.012,.94),lamp_metal)
 		var slots:=StandardMaterial3D.new()
 		slots.albedo_color=Color("#161b20")
 		for j in 9:
-			fitting(Vector3(89.8,.09,z-.37+j*.092),Vector3(.43,.012,.035),slots)
+			fitting(Vector3(89.29,.011,z-.37+j*.092),Vector3(.43,.005,.035),slots)
 	for side in [-1,1]:
 		var z:float=side*5.25
 		var bracket:=Vector3(66.45,3.27,z)
@@ -409,10 +365,7 @@ func curb_furniture() -> void:
 func snow_underfoot(world: Vector3, road: bool) -> float:
 	var local := to_local(world)
 	var foot := Vector2(local.x, local.z)
-	for bank_data in banks:
-		var closest := Geometry2D.get_closest_point_to_segment(foot, bank_data.a, bank_data.b)
-		if foot.distance_squared_to(closest) < bank_data.width * bank_data.width:
-			return 1.0
+	var bias:=sidewalks.snow_bias(foot)
 	var delta := Vector2(world.x + 208.099, world.z - 573.891)
 	var p := Vector2(delta.dot(Vector2(.873,.488)), delta.dot(Vector2(-.488,.873)))
 	var size := depth_samples.get_width()
@@ -426,8 +379,8 @@ func snow_underfoot(world: Vector3, road: bool) -> float:
 	var top := lerpf(depth_samples.get_pixel(x,y).r, depth_samples.get_pixel(xn,y).r, f.x)
 	var bottom := lerpf(depth_samples.get_pixel(x,yn).r, depth_samples.get_pixel(xn,yn).r, f.x)
 	var drift := lerpf(top, bottom, f.y)
-	if not road:
-		return smoothstep(.17, .47, drift)
+	if not road or bias!=0.:
+		return smoothstep(.17, .47, drift+bias)
 	var lateral := p.x if absf(p.x-81.0)<9.0 else p.y+45.8
 	var wheel := absf(fposmod(lateral+.12*sin(p.y*.07+p.x*.09),3.85)-1.925)
 	var tracks := 1.0-smoothstep(.14,.53,absf(wheel-.78))
