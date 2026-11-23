@@ -21,12 +21,12 @@ func run() -> void:
 	block.set_physics_process(false)
 	var eye: Transform3D = scene.camera.transform
 	scene.toggle_body()
-	check(scene.body.visible, "freecam leaves the figure on the sidewalk")
+	check(scene.freecam and scene.body.visible, "freecam leaves the figure on the sidewalk")
 	scene.fly(Vector3.FORWARD, 1.0)
 	scene.toggle_body()
 	check(scene.camera.transform.is_equal_approx(eye), "return to the same viewpoint")
 	scene.interact()
-	check(scene.driving, "enter car at spawn")
+	check(scene.driving and not scene.body.visible and block.parked_visual.driver.visible, "driver takes the seat at spawn")
 	# Drive a closed loop with the ordinary steering and collision controller.
 	var car = block.parked
 	var start: Vector3 = car.position
@@ -42,7 +42,7 @@ func run() -> void:
 	check(car.position.distance_to(start)<7, "complete the circuit")
 	block.driver_speed=0
 	scene.interact()
-	check(not scene.driving,"exit a stopped car")
+	check(not scene.driving and scene.body.visible and not block.parked_visual.driver.visible,"exit a stopped car on foot")
 	# Time a crossing at the normal on-foot speed, between the two curbs.
 	var walker: CharacterBody3D = scene.walker
 	walker.position = block.to_global(Vector3(90.5,.15,-56.6))
@@ -95,14 +95,9 @@ func run() -> void:
 	var turned := false
 	var crossed := false
 	var first_walker: Vector3 = block.walkers[0].node.position
-	block.batch_walkers()
-	var expected_parts := 0
-	var drawn_parts := 0
 	for person in block.walkers:
-		expected_parts += person.node.get_child_count()
-	for batch in block.get_node("Crowd").get_children():
-		drawn_parts += batch.multimesh.instance_count
-	check(drawn_parts == expected_parts and block.get_node("Crowd").get_child_count() < block.walkers.size(), "every pedestrian part is included in the shared draws")
+		check(person.node.skeleton.get_bone_count() > 40 and person.node.animator.has_animation(person.node.walk_clip), "pedestrian has an imported rig and gait")
+	check(scene.body.skeleton.find_bone("hand_r") >= 0, "player uses the civilian skeleton")
 	for frame in 3600:
 		block._physics_process(1.0/60)
 		waited = waited or (absf(block.distance-block.cross_stop)<.15 and block.vehicle_signal(true)==0)
@@ -113,13 +108,6 @@ func run() -> void:
 	check(yielded,"taxi yields to pedestrians")
 	check(turned,"taxi exits turn in the westbound lane")
 	check(crossed,"pedestrian completes crossing")
-	if DisplayServer.get_name() != "headless":
-		var person: Dictionary = block.walkers[0]
-		var posed := true
-		for draw in person.draw_parts:
-			var transform: Transform3D = draw[0].get_instance_transform(draw[1])
-			posed = posed and transform.is_equal_approx(person.node.transform * draw[2].transform)
-		check(posed, "shared draws follow the moving pedestrian and its limbs")
 	scene.queue_free()
 	await process_frame
 	await winter_stride_checks()
@@ -142,6 +130,14 @@ func winter_stride_checks() -> void:
 	root.add_child(scene)
 	await physics_frame
 	scene.set_physics_process(false)
+	var local_actor: Node3D = scene.block.walkers[0].node
+	check(absf(local_actor.model.global_position.y - scene.get_node("Winter").walking_height(local_actor.global_position)) < .035,
+			"imported pedestrian stands on the snow or paving at the crossing")
+	local_actor.set_pace(1.3)
+	check(local_actor.animator.current_animation == local_actor.walk_clip, "walking plays the character's gait")
+	local_actor.set_pace(0.)
+	check(local_actor.animator.current_animation == "Idle_Standing", "waiting at a crossing returns to idle")
+	check(scene.block.cab_visual.wheels.size() == 4 and scene.block.cross_visual.wheels.size() == 4, "both imported traffic cars have four rolling wheels")
 	var parked_spawn: Transform3D = scene.block.parked.transform
 	var start: Vector3 = scene.walker.position
 	var heading: Vector3 = Basis(Vector3.UP, scene.yaw) * Vector3.FORWARD
@@ -217,7 +213,7 @@ func winter_stride_checks() -> void:
 	check(scene.stride.pavement.stream in scene.stride.hard_steps,"road footfall uses pavement audio")
 	for i in 60:
 		scene.walk(heading, true, 1.0/60)
-	check(scene.stride.blur.visible and scene.camera.fov>scene.stride.base_fov,"peripheral blur and FOV respond at sprint speed")
+	check((scene.stride.blur.visible or scene.camera.compositor != null) and scene.camera.fov>scene.stride.base_fov,"peripheral blur and FOV respond at sprint speed")
 	var previous: float = scene.camera.fov
 	var smooth_return := true
 	for tick in 96:

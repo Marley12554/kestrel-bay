@@ -22,8 +22,9 @@ var door:=StaticBody3D.new()
 var open_angle:=1.63
 var cup:Node3D
 var grip:=Node3D.new()
+var showing_grip := false
 var server:Node3D
-var serving_arm:=Node3D.new()
+var serving_arm := preload("res://people/serve.gd").new()
 var chime:=AudioStreamPlayer3D.new()
 var pour:=AudioStreamPlayer3D.new()
 var cue:=Label.new()
@@ -56,19 +57,8 @@ func _ready() -> void:
 	add_child(cup)
 	cup.hide()
 	cup.add_child(grip)
-	var skin:=material("hand","#a87154",.75)
-	# Rest the cup against the palm. The thumb crosses its near side and
-	# the cuff continues out of the first-person frame.
-	for part in [[Vector3(.044,.048,.011),Vector3(.061,.109,.048),.19,skin],
-			[Vector3(.019,.076,.044),Vector3(.065,.022,.027),.32,skin],
-			[Vector3(.073,-.028,.055),Vector3(.084,.155,.082),.57,finishes["black"]]]:
-		var mesh:=MeshInstance3D.new()
-		mesh.mesh=meshes["oval"]
-		mesh.material_override=part[3]
-		grip.add_child(mesh)
-		mesh.position=part[0]
-		mesh.scale=part[1]
-		mesh.rotation.z=part[2]
+	grip.add_child(preload("res://people/cup-hand.glb").instantiate())
+	grip.rotation.y = -.35
 	grip.hide()
 	add_child(chime)
 	chime.stream=preload("res://reserve/door_chime.wav")
@@ -113,9 +103,10 @@ func shell() -> void:
 			add_child(light)
 			light.position=Vector3(x,3.65,z)
 			light.omni_range=10.
-			light.omni_attenuation=1.12
+			light.omni_attenuation=1.5
 			light.light_color=Color("#ffdfad")
-			light.light_energy=2.3
+			light.light_energy=1.55
+			light.light_bake_mode = Light3D.BAKE_STATIC
 			light.light_size=.42
 			light.shadow_enabled=(x>15. and z> -6.) or (x<10. and z< -10.)
 	# Glazing on both street frontages, including a full-height opening for the door.
@@ -359,6 +350,7 @@ func retail() -> void:
 	focal.spot_angle=40.
 	focal.light_color=Color("#fff1c9")
 	focal.light_energy=2.4
+	focal.light_bake_mode = Light3D.BAKE_STATIC
 	piece("bronze",Vector3(14.8,.19,-8.6),Vector3(3.36,.09,2.24))
 	piece("cobalt",Vector3(14.8,.247,-8.6),Vector3(3.25,.026,2.13))
 	collider(Vector3(14.8,.64,-8.6),Vector3(2.95,.98,1.65))
@@ -395,17 +387,7 @@ func staff() -> void:
 	server.position=COUNTER+Vector3(-.93,.155,-.2)
 	server.rotation.y=-PI/2
 	add_child(server)
-	for part in ["Jacket","Hem","LeftSleeve","RightSleeve","Beanie"]:
-		server.get_node(part).material_override=finishes["black"]
-	frame=server.transform
-	piece("walnut",Vector3(0,1.04,-.137),Vector3(.34,.62,.058))
-	piece("brass",Vector3(.081,1.30,-.172),Vector3(.071,.027,.014))
-	assemble()
-	frame=Transform3D.IDENTITY
-	server.add_child(serving_arm)
-	serving_arm.position=Vector3(.22,1.43,0)
-	for part in ["RightSleeve","RightHand"]:
-		server.get_node(part).reparent(serving_arm,true)
+	server.skeleton.add_child(serving_arm)
 
 func inside(p:Vector3) -> bool:
 	return p.x>0 and p.x<WIDTH and p.z<.18 and p.z> -DEPTH and p.y<4.9 and p.y>-.2
@@ -452,13 +434,17 @@ func _physics_process(dt:float) -> void:
 		brew_time-=dt
 		if brew_time<=.7:
 			var reach:=clampf(1.-brew_time/.7,0.,1.)
-			serving_arm.rotation.x=reach*1.22
+			serving_arm.reach=reach
 			cup.position=COUNTER+Vector3(lerpf(-.47,.33,reach),1.23+.11*sin(reach*PI),-.14)
+			serving_arm.target=cup.global_position+Vector3.UP*.08
 			cup.show()
 		if brew_time<=0: order=Order.READY
 	elif order==Order.CARRIED:
-		serving_arm.rotation.x=move_toward(serving_arm.rotation.x,0.,dt*2.)
-		cup.visible=not city.driving and not city.body.visible
-	var action:="" if city.driving or city.body.visible else action_at(to_local(city.walker.global_position))
+		serving_arm.reach=move_toward(serving_arm.reach,0.,dt*2.)
+		cup.visible=not city.driving and not city.freecam
+		if showing_grip != cup.visible:
+			showing_grip = cup.visible
+			city.body.shadow_only(showing_grip)
+	var action:="" if city.driving or city.freecam else action_at(to_local(city.walker.global_position))
 	cue.visible=city.hud_visible and (not city.web or not bool(city.web.midtownHudHidden)) and action!=""
 	if cue.visible: cue.text=action if order==Order.BREWING and action.begins_with("Brewing") else "E   "+action

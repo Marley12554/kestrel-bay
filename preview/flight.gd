@@ -46,6 +46,8 @@ var last_move_usec := 0
 const METRES_PER_SECOND_PER_MPH := 0.44704
 @onready var stride = $Stride
 @onready var revolving_doors := get_tree().get_nodes_in_group("revolving_doors")
+var shutter: CompositorEffect
+var freecam := false
 var motion_setting := 2
 const MIN_HEIGHT := 1.7
 const MAX_HEIGHT := 1800.0
@@ -118,11 +120,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F:
 		toggle_body()
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_E:
-		if not body.visible: interact()
+		if not freecam: interact()
 	elif driving and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_LEFT, KEY_RIGHT]:
 		select_signal(1 if event.physical_keycode == KEY_RIGHT else -1)
 	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_SPACE:
-		if not driving and not body.visible: jump_requested = true
+		if not driving and not freecam: jump_requested = true
 	elif event is InputEventScreenTouch:
 		if event.pressed and look_finger == -1:
 			look_finger = event.index
@@ -138,7 +140,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			look(event.screen_relative)
 
 func visit_pilot() -> void:
-	if driving or body.visible: return
+	if driving or freecam: return
 	if at_pilot:
 		walker.global_position = pilot_return_feet
 		camera.global_transform = pilot_return
@@ -162,6 +164,9 @@ func visit_pilot() -> void:
 func set_motion_level(level: int) -> void:
 	motion_setting = clampi(level, 0, 2)
 	stride.strength = [0.0, 0.45, 1.0][motion_setting]
+	if shutter:
+		shutter.enabled = motion_setting > 0
+		shutter.strength = .48 * stride.strength
 
 func mouse_captured() -> bool:
 	return bool(web.midtownLocked) if web else Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
@@ -171,14 +176,15 @@ func toggle_body() -> void:
 		return
 	stride.reset()
 	walker.velocity = Vector3.ZERO
-	if body.visible:
+	if freecam:
 		camera.transform = return_view
-		body.hide()
+		freecam = false
 	else:
 		return_view = camera.transform
 		body.position = camera.position - Vector3.UP * MIN_HEIGHT
 		body.rotation.y = yaw
-		body.show()
+		freecam = true
+		body.set_pace(0.)
 		var offset := body.basis * Vector3(1.5, 2.65, 2.8)
 		if absf(body.position.x + offset.x) > 1350:
 			offset.x *= -1
@@ -211,19 +217,21 @@ func _process(_dt: float) -> void:
 		if has_node("Winter"): $Winter.toggle_daylight()
 	if web and bool(web.midtownJump):
 		web.midtownJump = false
-		if not driving and not body.visible: jump_requested = true
+		if not driving and not freecam: jump_requested = true
 	if web and int(web.midtownSignal) != 0:
 		if driving: select_signal(signi(int(web.midtownSignal)))
 		web.midtownSignal = 0
 	if web and bool(web.midtownInteract):
 		web.midtownInteract = false
 		interact()
-	if body.visible:
+	if freecam:
 		if web: speed_mph = float(web.midtownSpeed)
 		fly(input_direction(), elapsed)
 	elif not driving:
 		camera.position = walker.position + Vector3.UP * MIN_HEIGHT
-	var near_car: bool = walker.position.distance_to(block.parked.global_position) < 5.8 and not body.visible
+		body.rotation.y = yaw
+		body.position = walker.position + body.basis.z * .16
+	var near_car: bool = walker.position.distance_to(block.parked.global_position) < 5.8 and not freecam
 	if near_car != can_enter_car:
 		can_enter_car = near_car
 		update_hud()
@@ -319,10 +327,10 @@ func fly(dir: Vector3, elapsed: float) -> void:
 
 
 func update_hud() -> void:
-	if web: web.midtownStreetMode("drive" if driving else ("fly" if body.visible else "walk"), can_enter_car)
+	if web: web.midtownStreetMode("drive" if driving else ("fly" if freecam else "walk"), can_enter_car)
 
 func interact() -> void:
-	if body.visible: return
+	if freecam: return
 	if not driving and block.reserve.interact(): return
 	if driving:
 		if absf(block.driver_speed)>.15: return
@@ -343,6 +351,8 @@ func interact() -> void:
 		if not clear: return
 		walker.global_position = exit_at
 		driving = false
+		block.parked_visual.driver.hide()
+		body.show()
 		brake_pressed = false
 		turn_signal_direction = 0
 		drive_audio.park()
@@ -357,6 +367,8 @@ func interact() -> void:
 		camera.rotation=Vector3(pitch,yaw,0)
 	elif walker.position.distance_to(block.parked.global_position)<5.8:
 		driving=true
+		block.parked_visual.driver.show()
+		body.hide()
 		previous_steer_key=0
 		steer_key_seconds=0.0
 		orbit_yaw=block.parked.global_rotation.y
@@ -378,7 +390,7 @@ func _physics_process(dt: float) -> void:
 		chase_view(dt, angle_difference(previous_yaw, block.parked.global_rotation.y))
 		gear_readout.visible=(not bool(web.midtownHudHidden) if web else hud_visible)
 		gear_readout.text="%s   %d mph" % ["R" if block.backing else "D",roundi(absf(block.driver_speed)/METRES_PER_SECOND_PER_MPH)]
-	elif not body.visible:
+	elif not freecam:
 		var input:=input_direction()
 		var flat:=Basis(Vector3.UP,yaw)*Vector3(input.x,0,input.z).limit_length(1.0)
 		var sprint := Input.is_physical_key_pressed(KEY_SHIFT) or (web != null and bool(web.midtownSprint))
@@ -443,6 +455,7 @@ func walk(direction: Vector3, sprint: bool, dt: float) -> void:
 			vertical_speed = 0.
 	elif not supported:
 		walker.position.y = move_toward(walker.position.y,ground,1.8*dt)
+	body.set_pace(0. if airborne else motion.length() / dt)
 	stride.advance(walker.global_position,0. if airborne else motion.length(),dt,motion.normalized())
 
 func on_road(world: Vector3) -> bool:

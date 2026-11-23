@@ -44,6 +44,7 @@ const WALK_ICON := preload("res://signals/walk.svg")
 const HAND_ICON := preload("res://signals/hand.svg")
 var last_light_state := -1
 var walkers: Array = []
+var walker_support: Callable
 var cross_taxi: AnimatableBody3D
 var cross_route := Curve3D.new()
 var cross_distance := 0.0
@@ -72,6 +73,10 @@ var side_accel := 0.0
 var shift_wait := 0.0
 var backing := false
 var street_user := Vector3.INF
+const TOWN_CAR := preload("res://town_car.gd")
+var parked_visual: TOWN_CAR
+var cab_visual: TOWN_CAR
+var cross_visual: TOWN_CAR
 const BODY := preload("res://body.tscn")
 
 func _ready() -> void:
@@ -97,8 +102,6 @@ func _ready() -> void:
 	finish_sidewalks()
 	flush_static()
 	make_traffic()
-	if OS.has_feature("web"):
-		batch_walkers()
 
 func part(at: Vector3, size: Vector3, color: Color, kind: String="box", rot: Vector3=Vector3.ZERO) -> void:
 	if not batches.has(kind):
@@ -419,10 +422,9 @@ func pedestrian_head(at: Vector3,yaw: float,across_avenue: bool) -> void:
 	add_child(face)
 	context=FRONT
 
-func car_visual(cab: bool) -> Node3D:
-	var car:=Node3D.new()
-	car.set_script(preload("res://town_car.gd"))
-	car.build(cab)
+func car_visual(cab: bool, traffic := true) -> TOWN_CAR:
+	var car := TOWN_CAR.new()
+	car.build(cab, traffic)
 	return car
 
 func make_traffic() -> void:
@@ -439,15 +441,21 @@ func make_traffic() -> void:
 	collider.shape=hull
 	collider.position.y=.79
 	parked.add_child(collider)
-	parked.add_child(car_visual(false))
+	parked_visual = car_visual(false, false)
+	parked.add_child(parked_visual)
 	var cab_body := AnimatableBody3D.new()
 	cab_body.sync_to_physics = false
 	cab_body.collision_layer = 2
 	cab_body.collision_mask = 0
 	taxi = cab_body
 	add_child(taxi)
-	taxi.add_child(collider.duplicate())
-	taxi.add_child(car_visual(true))
+	var cab_collider := collider.duplicate() as CollisionShape3D
+	var cab_hull := hull.duplicate() as BoxShape3D
+	cab_hull.size = Vector3(1.87, 1.46, 5.05)
+	cab_collider.shape = cab_hull
+	taxi.add_child(cab_collider)
+	cab_visual = car_visual(true)
+	taxi.add_child(cab_visual)
 	# Southbound Fifth, westbound in the north half of 34th, north on Sixth,
 	# then east on 36th. Trim each corner and sample a quadratic turning arc.
 	var corners:=[Vector3(74.5,0,-206),Vector3(74.5,0,-49.6),Vector3(-222.6,0,-48.3),Vector3(-224.1,0,-205.0)]
@@ -480,8 +488,11 @@ func make_traffic() -> void:
 	cross_taxi.collision_layer=2
 	cross_taxi.collision_mask=0
 	add_child(cross_taxi)
-	cross_taxi.add_child(collider.duplicate())
-	cross_taxi.add_child(car_visual(false))
+	var sedan_collider := CollisionShape3D.new()
+	sedan_collider.shape = preload("res://winter/sedan_hull.tres")
+	cross_taxi.add_child(sedan_collider)
+	cross_visual = car_visual(false)
+	cross_taxi.add_child(cross_visual)
 	# Return on the next block, rather than popping back into view.
 	var loop := [Vector3(750,0,40),Vector3(-225,0,40),Vector3(-225,0,-42),Vector3(750,0,-42)]
 	for i in loop.size():
@@ -506,12 +517,9 @@ func make_traffic() -> void:
 
 func add_walker(a: Vector3,b: Vector3,i: int,group: int) -> void:
 	var n:=BODY.instantiate() as Node3D
+	n.variant = (i + floori(i / 4.0)) % n.MODELS.size()
 	add_child(n)
-	var coats:=[Color("#913c37"),Color("#365c60"),Color("#37404c"),Color("#bea572"),Color("#50705b")]
-	var coat:StandardMaterial3D=n.get_node("Jacket").mesh.material.duplicate()
-	coat.albedo_color=coats[i%coats.size()]
-	for item in ["Jacket","Hem","RightSleeve","LeftSleeve"]:
-		n.get_node(item).material_override=coat
+	n.animator.seek(fmod(i * .71, n.animator.current_animation_length), true)
 	n.scale*=.93+(i%4)*.033
 	if i%4>=2:
 		var temp:=a
@@ -519,43 +527,14 @@ func add_walker(a: Vector3,b: Vector3,i: int,group: int) -> void:
 		b=temp
 	n.position=a.lerp(b,float(i%5)/5.0) if group==2 else a
 	n.rotation.y=atan2(a.x-b.x,a.z-b.z)
-	walkers.append({"node":n,"start":a,"end":b,"group":group,"moving":group==2,"pace":1.39+(i%3)*.13,"phase":float(i),"delay":fmod(i*.62,2.0),"limbs":[n.get_node("LeftLeg"),n.get_node("RightLeg"),n.get_node("LeftSleeve"),n.get_node("RightSleeve")]})
+	walkers.append({"node":n,"last_support":Vector3.INF,"start":a,"end":b,"group":group,"moving":group==2,"pace":1.39+(i%3)*.13,"delay":fmod(i*.62,2.0)})
 
-# Draw matching body parts together. The existing limbs still supply animation poses.
-func batch_walkers() -> void:
-	var crowd := Node3D.new()
-	crowd.name = "Crowd"
-	add_child(crowd)
-	var groups := {}
-	for walker in walkers:
-		walker.node.hide()
-		walker.draw_parts = []
-		for part_node: MeshInstance3D in walker.node.get_children():
-			var mesh := part_node.mesh
-			if not groups.has(mesh):
-				groups[mesh] = []
-			groups[mesh].append([walker, part_node])
-	var clothes := StandardMaterial3D.new()
-	clothes.vertex_color_use_as_albedo = true
-	clothes.roughness = 0.91
-	for mesh: Mesh in groups:
-		var parts: Array = groups[mesh]
-		var instances := MultiMesh.new()
-		instances.transform_format = MultiMesh.TRANSFORM_3D
-		instances.use_colors = true
-		instances.mesh = mesh
-		instances.instance_count = parts.size()
-		var view := MultiMeshInstance3D.new()
-		view.multimesh = instances
-		view.material_override = clothes
-		crowd.add_child(view)
-		for i in parts.size():
-			var walker: Dictionary = parts[i][0]
-			var limb: MeshInstance3D = parts[i][1]
-			var material := limb.get_active_material(0) as StandardMaterial3D
-			instances.set_instance_color(i, material.albedo_color)
-			instances.set_instance_transform(i, walker.node.transform * limb.transform)
-			walker.draw_parts.append([instances, i, limb])
+func ground_walker(w: Dictionary) -> void:
+	var actor: Node3D = w.node
+	if walker_support.is_valid() and actor.position.distance_squared_to(w.last_support) > .015:
+		var ground: float = walker_support.call(actor.global_position)
+		actor.model.global_position.y = ground
+		w.last_support = actor.position
 
 func vehicle_signal(avenue: bool) -> int:
 	if avenue:
@@ -603,21 +582,17 @@ func update_walkers(dt: float) -> void:
 				var relative:=n.position+d.normalized()*1.4-parked.position
 				var ahead:=relative.dot(travel)
 				if ahead>2.7 and ahead<minf(22,absf(driver_speed)*1.6+2.5) and absf(relative.dot(parked.basis.x))<1.65:
+					n.set_pace(0.)
 					continue
+			n.set_pace(w.pace)
 			n.rotation.y=atan2(-d.x,-d.z)
 			n.position=n.position.move_toward(goal,float(w.pace)*dt)
-			w.phase+=dt*6.0
-			var swing:=sin(float(w.phase))*.32
-			for i in 4:
-				w.limbs[i].rotation.x=swing if i in [0,3] else -swing
+			ground_walker(w)
 			if n.position==goal:
 				w.end=w.start
 				w.start=goal
 				w.moving=w.group==2
-				for limb in w.limbs: limb.rotation.x=0
-			if w.has("draw_parts"):
-				for draw in w.draw_parts:
-					draw[0].set_instance_transform(draw[1], n.transform * draw[2].transform)
+				if not w.moving: n.set_pace(0.)
 
 func crossing_busy() -> bool:
 	for w in walkers:
@@ -647,6 +622,7 @@ func update_taxi(dt: float) -> void:
 	cab_speed=move_toward(cab_speed,target,(2.4 if target>cab_speed else 5.0)*dt)
 	var advance:=cab_speed*dt
 	if brake_at!=INF: advance=minf(advance,maxf(0,brake_at-distance))
+	cab_visual.roll(advance)
 	distance=fposmod(distance+advance,route.get_baked_length())
 	var p:=route.sample_baked(distance)
 	var next:=route.sample_baked(fposmod(distance+.45,route.get_baked_length()))
@@ -673,7 +649,9 @@ func update_cross_taxi(dt: float) -> void:
 	var target:=minf(7.3,sqrt(6.5*gap))
 	cross_speed=move_toward(cross_speed,target,(2.2 if target>cross_speed else 4.8)*dt)
 	var length:=cross_route.get_baked_length()
-	cross_distance=fposmod(cross_distance+minf(cross_speed*dt,gap),length)
+	var advance := minf(cross_speed*dt,gap)
+	cross_visual.roll(advance)
+	cross_distance=fposmod(cross_distance+advance,length)
 	var pos:=cross_route.sample_baked(cross_distance)
 	var nose:=cross_route.sample_baked(fposmod(cross_distance+.45,length))
 	cross_taxi.position=pos+Vector3.UP*(.025+GRADE.height(to_global(pos)))

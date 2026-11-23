@@ -64,7 +64,7 @@ func advance(at: Vector3, distance: float, dt: float, heading:=Vector2.ZERO) -> 
 		# the Retina-sized framebuffer to a texture whenever a sprint starts.
 		if winter and winter.street_material:
 			winter.street_material.set_shader_parameter("sprint_softness", smear * 0.55)
-	else:
+	elif not camera.compositor:
 		blur.visible = smear > 0.02
 		if blur.visible:
 			blur.material.set_shader_parameter("amount", smear)

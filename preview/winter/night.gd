@@ -3,7 +3,6 @@ extends Node3D
 const GRADE := preload("res://survey/grade.gd")
 
 const ASSET := "res://winter/assets/"
-const CAR := preload("res://winter/assets/sedan.glb")
 const LENS_SHADER := preload("res://winter/sedan_lens.gdshader")
 const SIGNAL_HALF_PERIOD := 0.38
 const TIRE_RADIUS := .345
@@ -131,6 +130,32 @@ func dress_street() -> void:
 	day_environment.tonemap_white = 4.5
 	day_environment.fog_light_color = Color("#b1becb")
 	day_environment.fog_density = .00032
+	if high_quality:
+		for lighting: Environment in [day_environment, night_environment]:
+			lighting.sdfgi_enabled = true
+			lighting.sdfgi_cascades = 2
+			lighting.sdfgi_min_cell_size = .24
+			lighting.sdfgi_use_occlusion = true
+			lighting.sdfgi_energy = .82
+			lighting.sdfgi_bounce_feedback = .32
+		night_environment.sdfgi_read_sky_light = false
+		day_environment.glow_enabled = true
+		day_environment.glow_intensity = .14
+		day_environment.glow_hdr_threshold = 2.
+		var meter := CameraAttributesPractical.new()
+		meter.auto_exposure_enabled = true
+		meter.auto_exposure_min_sensitivity = 65.
+		meter.auto_exposure_max_sensitivity = 440.
+		meter.auto_exposure_scale = .19
+		meter.auto_exposure_speed = 1.4
+		city.camera.attributes = meter
+		city.get_viewport().use_taa = true
+		city.shutter = load("res://render/shutter.gd").new()
+		var compositor := Compositor.new()
+		compositor.compositor_effects = [city.shutter]
+		city.camera.compositor = compositor
+		city.set_motion_level(city.motion_setting)
+		moon.light_bake_mode = Light3D.BAKE_DYNAMIC
 	street_material = ShaderMaterial.new()
 	var survey := street_material
 	survey.shader = preload("res://winter/avenue.gdshader")
@@ -155,6 +180,8 @@ func dress_street() -> void:
 	hot_glass.emission_energy_multiplier = 5
 	hot_glass.albedo_color = Color("#ffd39a")
 	furnish()
+	block.walker_support = walking_height
+	for pedestrian in block.walkers: block.ground_walker(pedestrian)
 	dress_sedan()
 	# Capture the actual lit shopfronts and skyline in the parked car's paint.
 	if not OS.has_feature("web"):
@@ -188,16 +215,10 @@ func dress_street() -> void:
 		add_controls()
 
 func dress_sedan() -> void:
-	var old: Node3D = block.parked.get_child(1)
-	old.hide()
-	var model := CAR.instantiate() as Node3D
-	block.parked.add_child(model)
-	# Original mesh uses +X for its nose and is offset from its authoring origin.
-	model.rotation.y = PI / 2
-	model.scale = Vector3.ONE * (4.72 / 17.52)
-	model.position = -(model.basis * Vector3(-5.265, 0, 9.93))
+	var model: Node3D = block.parked_visual.model
 	chassis = model
 	chassis_rest = model.transform
+	block.parked_visual.driver.reparent(chassis, true)
 	var car: CharacterBody3D = block.parked
 	road_ride_height = car.position.y
 	var shell := car.get_child(0) as CollisionShape3D
