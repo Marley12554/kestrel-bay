@@ -16,6 +16,7 @@ h1{font-size:clamp(18px,2.2vw,27px);margin:0;letter-spacing:-.04em;font-weight:6
 @media(pointer:coarse){body[data-mode="drive"]:not(.clean) #turn-controls{display:flex;gap:4px;position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(29px,env(safe-area-inset-bottom))}}
 @media(pointer:coarse){body[data-mode="walk"]:not(.clean) #sprint{display:block;position:fixed;left:max(12px,env(safe-area-inset-left));bottom:calc(max(29px,env(safe-area-inset-bottom)) + 96px);font-size:15px;padding:0 12px}#sprint[aria-pressed="true"]{background:#31685c;border-color:#a7e4cd}}
 @media(pointer:coarse){body[data-mode="walk"]:not(.clean) #jump{display:block;position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(29px,env(safe-area-inset-bottom));padding:0 12px}}
+body.settings > :is(header,footer,.panel,button,#pad,#rise,#turn-controls){visibility:hidden}
 </style></head><body data-mode="walk">
 <canvas id="canvas" tabindex="0" aria-label="Midtown Manhattan street preview"></canvas>
 <header class="panel place"><h1>Fifth Avenue</h1><small>West 33rd–34th Streets</small></header>
@@ -26,7 +27,7 @@ h1{font-size:clamp(18px,2.2vw,27px);margin:0;letter-spacing:-.04em;font-weight:6
 <button type="button" id="jump">Jump</button>
 <div id="turn-controls" aria-label="Turn signals"><button data-signal="-1" aria-label="Left turn signal">⇦</button><button data-signal="1" aria-label="Right turn signal">⇨</button></div>
 <div id="rise"><button data-axis="Y" data-dir="1" aria-label="Ascend">＋</button><button data-axis="Y" data-dir="-1" aria-label="Descend">−</button></div>
-<footer><a href="../">Kestrel Bay</a> · <button type="button" class="clean-hint" id="daylight">Day / night</button> · <button type="button" class="clean-hint" id="motion">Camera motion</button> · <button class="clean-hint" id="hide-ui">Hide HUD</button> · <a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
+<footer><a href="../">Kestrel Bay</a> · <button type="button" class="clean-hint" id="graphics">Graphics</button> · <button type="button" class="clean-hint" id="daylight">Day / night</button> · <button type="button" class="clean-hint" id="motion">Camera motion</button> · <button class="clean-hint" id="hide-ui">Hide HUD</button> · <a href="https://www.asg.ed.tum.de/gis/projekte/new-york-city-3d/" target="_blank" rel="noopener">TUM · NYC Open Data</a></footer>
 <div id="loading" role="status"><span id="message">Loading Midtown Manhattan…</span><progress id="loadbar"></progress></div>
 <script src="$GODOT_URL"></script>
 <script>
@@ -37,6 +38,14 @@ window.midtownToggleBody=false;
 window.midtownInteract=false;window.midtownJump=false;window.midtownToggleDaylight=false;
 document.getElementById("daylight").addEventListener("click",()=>{window.midtownToggleDaylight=true;canvas.focus()});
 document.getElementById("jump").addEventListener("click",()=>{window.midtownJump=true;canvas.focus()});
+window.midtownSettingsRequested=false;
+window.midtownSettingsOpen=false;
+window.midtownSetSettingsOpen=open=>{
+  window.midtownSettingsOpen=open;
+  document.body.classList.toggle('settings',open);
+  if(open && document.pointerLockElement)document.exitPointerLock();
+};
+document.getElementById('graphics').addEventListener('click',()=>{window.midtownSettingsRequested=true;canvas.focus()});
 window.midtownSignal=0;
 for(const button of document.querySelectorAll('[data-signal]')){
   button.addEventListener('click',()=>{window.midtownSignal=Number(button.dataset.signal);canvas.focus()});
@@ -106,11 +115,13 @@ speed.addEventListener('blur',()=>{window.midtownInControls=false});
 speed.addEventListener('pointerup',()=>canvas.focus());
 window.midtownHudHidden=false;
 canvas.addEventListener('pointerdown',event=>{
-  if(event.pointerType!=='mouse'||event.button!==0||document.pointerLockElement===canvas)return;
+  if(window.midtownSettingsOpen||event.pointerType!=='mouse'||event.button!==0||document.pointerLockElement===canvas)return;
   canvas.focus();
   canvas.requestPointerLock?.()?.catch?.(()=>{});
 });
+let intentionalUnlock=false;
 function releaseMouse(){
+  intentionalUnlock=document.pointerLockElement===canvas;
   if(document.pointerLockElement===canvas)document.exitPointerLock();
 }
 document.addEventListener('keydown',event=>{
@@ -120,6 +131,8 @@ document.addEventListener('keydown',event=>{
   }
 },true);
 document.addEventListener('pointerlockchange',()=>{
+  if(window.midtownLocked&&!document.pointerLockElement&&!intentionalUnlock&&!window.midtownSettingsOpen&&document.hasFocus())window.midtownSettingsRequested=true;
+  intentionalUnlock=false;
   window.midtownLocked=document.pointerLockElement===canvas;
   updateHelp();
 });

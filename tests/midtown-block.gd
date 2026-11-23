@@ -19,14 +19,37 @@ func run() -> void:
 	scene.set_physics_process(false)
 	var block = scene.block
 	block.set_physics_process(false)
+	var menu = scene.get_node("GraphicsMenu")
+	var initial_quality: int = menu.quality
+	movement_key(KEY_ESCAPE,true)
+	movement_key(KEY_ESCAPE,false)
+	check(paused and menu.visible and menu.slider.has_focus(),"Escape pauses with keyboard focus on graphics")
+	menu.set_quality(0,false)
+	var low_pixels: float = scene.get_viewport().scaling_3d_scale
+	menu.set_quality(2,false)
+	check(scene.get_viewport().scaling_3d_scale>=low_pixels and block.crowd_range>100., "graphics slider changes scene quality while paused")
+	menu.set_quality(initial_quality,false)
+	movement_key(KEY_ESCAPE,true)
+	movement_key(KEY_ESCAPE,false)
+	check(not paused and not menu.visible,"Escape resumes the street")
 	var eye: Transform3D = scene.camera.transform
+	var body_meshes = scene.body.model.find_children("*", "MeshInstance3D", true, false)
+	var only_shadow := func(mesh): return mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	check(not body_meshes.is_empty() and body_meshes.all(only_shadow), "first-person camera starts with all player meshes shadow-only")
 	scene.toggle_body()
 	check(scene.freecam and scene.body.visible, "freecam leaves the figure on the sidewalk")
+	check(body_meshes.all(func(mesh): return mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON), "freecam renders the complete player model")
 	scene.fly(Vector3.FORWARD, 1.0)
 	scene.toggle_body()
 	check(scene.camera.transform.is_equal_approx(eye), "return to the same viewpoint")
+	check(body_meshes.all(only_shadow), "returning to first person hides the player meshes")
 	scene.interact()
 	check(scene.driving and not scene.body.visible and block.parked_visual.driver.visible, "driver takes the seat at spawn")
+	var seated_rig: Skeleton3D = block.parked_visual.driver.skeleton
+	for side in ["_l", "_r"]:
+		var toe := seated_rig.get_bone_global_pose(seated_rig.find_bone("ball" + side)).origin
+		var in_cabin: Vector3 = block.parked.to_local(seated_rig.to_global(toe))
+		check(in_cabin.y > .18 and in_cabin.z < -.55, "driver shoe clears the floor in the pedal well " + side)
 	# Drive a closed loop with the ordinary steering and collision controller.
 	var car = block.parked
 	var start: Vector3 = car.position
@@ -43,6 +66,7 @@ func run() -> void:
 	block.driver_speed=0
 	scene.interact()
 	check(not scene.driving and scene.body.visible and not block.parked_visual.driver.visible,"exit a stopped car on foot")
+	check(body_meshes.all(only_shadow), "exiting the car restores only the walking shadow")
 	# Time a crossing at the normal on-foot speed, between the two curbs.
 	var walker: CharacterBody3D = scene.walker
 	walker.position = block.to_global(Vector3(90.5,.15,-56.6))
@@ -108,6 +132,16 @@ func run() -> void:
 	check(yielded,"taxi yields to pedestrians")
 	check(turned,"taxi exits turn in the westbound lane")
 	check(crossed,"pedestrian completes crossing")
+	var travelled := PackedFloat32Array()
+	travelled.resize(block.walkers.size())
+	for frame in 4800:
+		var before := PackedVector3Array()
+		for person in block.walkers: before.append(person.node.position)
+		block._physics_process(.05)
+		for i in block.walkers.size():
+			travelled[i] += before[i].distance_to(block.walkers[i].node.position)
+	for metres in travelled:
+		check(metres>120., "each pedestrian keeps progressing through four minutes of crossing traffic")
 	scene.queue_free()
 	await process_frame
 	await winter_stride_checks()
@@ -135,6 +169,26 @@ func winter_stride_checks() -> void:
 			"imported pedestrian stands on the snow or paving at the crossing")
 	local_actor.set_pace(1.3)
 	check(local_actor.animator.current_animation == local_actor.walk_clip, "walking plays the character's gait")
+	# These rigs have independent foot roots. A rotation-only gait leaves shoes
+	# behind when the shin swings, even though the skeleton itself looks valid.
+	for person in scene.block.walkers.slice(0,4):
+		var actor: Node3D = person.node
+		var rig: Skeleton3D = actor.skeleton
+		var anim: AnimationPlayer = actor.animator
+		var clip := anim.get_animation(actor.walk_clip)
+		anim.active = true
+		anim.play(actor.walk_clip,0.)
+		var foot := rig.find_bone("foot_l")
+		var shin := rig.find_bone("calf_l")
+		var offset := rig.get_bone_global_rest(shin).affine_inverse()*rig.get_bone_global_rest(foot).origin
+		var shoulder := rig.find_bone("upperarm_l")
+		var poses: Array[Quaternion] = []
+		for phase: float in [.05,.30,.55,.80]:
+			anim.seek(clip.length*phase,true)
+			var ankle := rig.get_bone_global_pose(foot).origin
+			check(ankle.distance_to(rig.get_bone_global_pose(shin)*offset)<.01,"shoe follows the shin through each stride")
+			poses.append(rig.get_bone_pose_rotation(shoulder))
+		check(poses[0].angle_to(poses[2])>.06 or poses[1].angle_to(poses[3])>.06,"arm swings through the stride")
 	local_actor.set_pace(0.)
 	check(local_actor.animator.current_animation == "Idle_Standing", "waiting at a crossing returns to idle")
 	check(scene.block.cab_visual.wheels.size() == 4 and scene.block.cross_visual.wheels.size() == 4, "both imported traffic cars have four rolling wheels")
@@ -720,8 +774,38 @@ func winter_stride_checks() -> void:
 	block.reset_steering()
 	block.drift_angle = 0.
 	curb_suspension_checks(scene, winter)
+	empire_storefront_contact_checks(scene)
 	await bumper_contact_checks(scene)
 	scene.queue_free()
+
+func empire_storefront_contact_checks(scene) -> void:
+	var block = scene.block
+	var car: CharacterBody3D = block.parked
+	var bay := Transform3D(Basis.IDENTITY, Vector3(65.04, 0., 28.73))
+	var frontage: Transform3D = block.global_transform * bay
+	# The photographed granite jamb is between the loading bay and the shop.
+	var pier_x := -19.38
+	var nose := car.get_node("Nose").shape as ConvexPolygonShape3D
+	for angle: float in [-35., 0., 35.]:
+		var heading := Basis(Vector3.UP, deg_to_rad(angle))
+		var tip := heading * nose.points[0]
+		for point in nose.points:
+			var rotated := heading * point
+			if rotated.z < tip.z: tip = rotated
+		var forward := heading * Vector3.FORWARD
+		var stop := Vector3(pier_x - tip.x, .19, .81 - tip.z)
+		var from := frontage * Transform3D(heading, stop - forward * 2.)
+		var hit := KinematicCollision3D.new()
+		var blocked := car.test_move(from, frontage.basis * forward * 3., hit)
+		check(blocked and absf(hit.get_travel().length() - 2.) < .035,
+				"Tesla bumper meets the visible Empire storefront jamb at %d degrees" % angle)
+	var space = scene.get_world_3d().direct_space_state
+	for sample in [[-20.30, 1., .245], [-17., .35, .68], [-17., 1., .43]]:
+		var start := Vector3(sample[0], sample[1], 2.)
+		var ray := PhysicsRayQueryParameters3D.create(frontage * start, frontage * (start + Vector3.FORWARD * 3.), 1)
+		var hit: Dictionary = space.intersect_ray(ray)
+		check(not hit.is_empty() and absf((frontage.affine_inverse() * Vector3(hit.position)).z - sample[2]) < .015,
+				"service pier, projecting sill and recessed display retain their own collision depths at %s" % [start])
 
 func bumper_contact_checks(scene) -> void:
 	var car: CharacterBody3D = scene.block.parked
@@ -741,6 +825,49 @@ func bumper_contact_checks(scene) -> void:
 		var bumper_gap: float = car.global_position.z - box.size.z*.5 - sample[1]
 		check(hit != null and hit.get_collider() == wall and absf(bumper_gap)<.04,
 			"visible body meets a wall within 1.6 inches at %d degrees" % sample[0])
+	# Exercise the production shapes against each other. A sedan against a
+	# wall misses the expensive convex-pair path that caused the contact freeze.
+	var block = scene.block
+	var sedan: AnimatableBody3D = block.cross_taxi
+	scene.get_node("Winter").set_physics_process(false) # Isolate horizontal collisions above the map.
+	var center := Vector3(80.,1000.,0.)
+	for shape in sedan.get_children():
+		if shape is CollisionShape3D and shape.shape is ConvexPolygonShape3D:
+			check(shape.shape.points.size()<=24, "traffic contact uses small, local convex pieces")
+	for angle: float in [0.,90.,180.]:
+		sedan.global_transform = Transform3D(Basis(Vector3.UP,deg_to_rad(angle)),center)
+		car.global_transform = Transform3D(Basis.IDENTITY,center+Vector3.BACK*5.5)
+		# Let the teleported traffic body consume its movement for one full step.
+		await physics_frame
+		await physics_frame
+		block.reset_steering()
+		block.backing = false
+		block.tires_airborne = false
+		block.driver_speed = 10.
+		var at_rest := Vector3.ZERO
+		for tick in 50:
+			block.drive(1./60.,1.,0.)
+			if tick==25: at_rest = car.global_position
+		var distance := car.global_position.z-center.z
+		var extent := .95 if angle==90. else 2.36
+		check(absf(distance-(2.36+extent))<.04 and car.global_position.distance_to(at_rest)<.02,
+			"Tesla holds contact at %d degrees (gap %.3f m, creep %.3f m)" % [angle,distance-2.36-extent,car.global_position.distance_to(at_rest)])
+		for tick in 65: block.drive(1./60.,-1.,0.)
+		check(car.global_position.z-center.z>distance+.25,"driver can reverse out of sustained contact")
+	# Approach the parked player's car using the normal traffic route.
+	block.cross_distance = block.cross_route.get_closest_offset(Vector3(55.,0.,40.))
+	block.cycle = 25.
+	block.cross_speed = 6.
+	block.update_cross_taxi(0.)
+	car.position = sedan.position-sedan.basis.z*12.
+	car.basis = sedan.basis
+	for tick in 240: block.update_cross_taxi(1./60.)
+	var separation := car.position.distance_to(sedan.position)
+	check(separation>=4.71 and separation<5.1 and block.cross_speed<.01,
+		"traffic stops bumper-to-bumper without driving into the player")
+	car.position.x -= 40.
+	block.update_cross_taxi(1./60.)
+	check(block.cross_speed>0., "traffic resumes once its lane clears")
 	wall.queue_free()
 
 func curb_suspension_checks(scene, winter) -> void:

@@ -22,7 +22,6 @@ var door:=StaticBody3D.new()
 var open_angle:=1.63
 var cup:Node3D
 var grip:=Node3D.new()
-var showing_grip := false
 var server:Node3D
 var serving_arm := preload("res://people/serve.gd").new()
 var chime:=AudioStreamPlayer3D.new()
@@ -442,9 +441,6 @@ func _physics_process(dt:float) -> void:
 	elif order==Order.CARRIED:
 		serving_arm.reach=move_toward(serving_arm.reach,0.,dt*2.)
 		cup.visible=not city.driving and not city.freecam
-		if showing_grip != cup.visible:
-			showing_grip = cup.visible
-			city.body.shadow_only(showing_grip)
 	var action:="" if city.driving or city.freecam else action_at(to_local(city.walker.global_position))
 	cue.visible=city.hud_visible and (not city.web or not bool(city.web.midtownHudHidden)) and action!=""
 	if cue.visible: cue.text=action if order==Order.BREWING and action.begins_with("Brewing") else "E   "+action

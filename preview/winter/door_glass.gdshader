@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled, shadows_disabled;
+render_mode cull_disabled;
 
 // Quad UVs span each moving wing. The fixed screens have no door marking.
 void fragment() {

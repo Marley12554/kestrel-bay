@@ -57,6 +57,14 @@ func _ready() -> void:
 		view.extra_cull_margin=8.0 # Includes the surveyed elevation of snow at the edge of the old block.
 		add_child(view)
 
+func set_quality(level: int) -> void:
+	var density: int = [7,15,31][level]
+	coarse.subdivide_width = density
+	coarse.subdivide_depth = density
+	var near_density: int = [63,119,239][level]
+	detailed.subdivide_width = near_density
+	detailed.subdivide_depth = near_density
+
 func tile_transform(key: Vector3i) -> Transform3D:
 	return Transform3D(Basis.IDENTITY,Vector3((key.x+.5)*TILE,SUPPORT_Y[key.y],(key.z+.5)*TILE))
 

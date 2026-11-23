@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled, shadows_disabled;
+render_mode cull_disabled;
 
 // The exterior reads in reflection at a shallow angle. A cooler transmitted
 // tint and two small rows of frosted safety dots also identify a closed pane

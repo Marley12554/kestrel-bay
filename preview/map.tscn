@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://flight.gd" id="1"]
 [ext_resource type="PackedScene" path="res://meshes/midtown.scn" id="2"]
@@ -15,6 +15,8 @@
 [ext_resource type="PackedScene" path="res://survey/herald.tscn" id="9"]
 
 [ext_resource type="Shape3D" path="res://survey/pavement.res" id="10"]
+
+[ext_resource type="PackedScene" path="res://graphics_menu.tscn" id="11"]
 
 [sub_resource type="ShaderMaterial" id="Blur"]
 shader = ExtResource("8")
@@ -60,6 +62,7 @@ shadow_enabled = true
 directional_shadow_max_distance = 1400.0
 
 [node name="Terrain" type="MeshInstance3D" parent="."]
+cast_shadow = 0
 position = Vector3(0, -0.52, 0)
 mesh = SubResource("GroundMesh")
 
@@ -131,3 +134,5 @@ theme_override_font_sizes/font_size = 17
 text = "+"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="GraphicsMenu" parent="." instance=ExtResource("11")]

@@ -6,3 +6,5 @@ The player, first-person hand, barista and pedestrians use Innerscene’s CC0 ad
 - [Harper walking](https://www.innerscene.com/tools/library/3d-parts/relaxed-walk-harper-3d-person-animated-b504cbac) and [standing](https://www.innerscene.com/tools/library/3d-parts/idle-standing-harper-3d-person-animated-ba9bc23f)
 
 The yellow cab uses tevy’s CC0 [Yellow Taxi Cab](https://tevy.dev/models/yellow-taxi), version 1. Its mesh compression was decoded for Godot.
+
+Street walking uses normal, slow and brisk strides from [Carnegie Mellon University's Motion Capture Database, subject 07, trials 01, 04 and 12](https://mocap.cs.cmu.edu/search.php?subjectnumber=7). The database was created with funding from NSF EIA-0196217. The marker sampling and rig retargeting scripts are in `scripts/people`.

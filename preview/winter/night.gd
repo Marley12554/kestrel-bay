@@ -46,6 +46,8 @@ var night_environment: Environment
 var day_environment: Environment
 var night_shadow_range: float
 var street_probe: ReflectionProbe
+var shaded_lamps: Array[Light3D] = []
+var probes: Array[Node] = []
 var outdoor_lights: Array[Light3D] = []
 const SNOW_DEPTH := preload("res://winter/snow_depth.png")
 var depth_samples: Image
@@ -71,15 +73,11 @@ func dress_street() -> void:
 	day_environment = city.get_node("Environment").environment.duplicate()
 	day_environment.background_mode = Environment.BG_SKY
 	day_environment.sky = Sky.new()
-	var clear_sky := ProceduralSkyMaterial.new()
-	clear_sky.sky_top_color = Color("#507db3")
-	clear_sky.sky_horizon_color = Color("#aec6df")
-	clear_sky.sun_angle_max = 3.5
-	clear_sky.ground_horizon_color = Color("#999ba2")
-	clear_sky.ground_bottom_color = Color("#525052")
+	var clear_sky := ShaderMaterial.new()
+	clear_sky.shader = preload("res://winter/daylight.gdshader")
 	day_environment.sky.sky_material = clear_sky
 	day_environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	day_environment.ambient_light_energy = .48
+	day_environment.ambient_light_energy = .36
 	day_environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	var env: Environment = day_environment.duplicate()
 	var sky := Sky.new()
@@ -130,6 +128,9 @@ func dress_street() -> void:
 	day_environment.tonemap_white = 4.5
 	day_environment.fog_light_color = Color("#b1becb")
 	day_environment.fog_density = .00032
+	# The sky already includes horizon haze. Full-distance fog here hides
+	# both the blue gradient and the solar disk behind a solid fog color.
+	day_environment.fog_sky_affect = 0.0
 	if high_quality:
 		for lighting: Environment in [day_environment, night_environment]:
 			lighting.sdfgi_enabled = true
@@ -211,6 +212,10 @@ func dress_street() -> void:
 	city.yaw = city.camera.rotation.y
 	city.pitch = city.camera.rotation.x
 	snowfall()
+	for lamp: Light3D in city.find_children("*","Light3D",true,false):
+		if not lamp is DirectionalLight3D and lamp.shadow_enabled:
+			shaded_lamps.append(lamp)
+	probes = city.find_children("*","ReflectionProbe",true,false)
 	if not OS.has_feature("web"):
 		add_controls()
 
@@ -221,9 +226,6 @@ func dress_sedan() -> void:
 	block.parked_visual.driver.reparent(chassis, true)
 	var car: CharacterBody3D = block.parked
 	road_ride_height = car.position.y
-	var shell := car.get_child(0) as CollisionShape3D
-	shell.position = Vector3.ZERO
-	shell.shape = preload("res://winter/sedan_hull.tres")
 	var tire := CylinderShape3D.new()
 	tire.radius = TIRE_RADIUS
 	tire.height = .23
@@ -260,16 +262,6 @@ func dress_sedan() -> void:
 			var source := panel.mesh.surface_get_material(surface) as StandardMaterial3D
 			if not source: continue
 			match source.resource_name.to_lower():
-				"geohoodsub00021mtl", "geodoorl2sub11mtl":
-					var coat := source.duplicate() as StandardMaterial3D
-					coat.albedo_texture = null
-					coat.albedo_color = Color("#e1e3e1")
-					coat.metallic = .20
-					coat.roughness = .28
-					coat.clearcoat_enabled = true
-					coat.clearcoat = .84
-					coat.clearcoat_roughness = .18
-					panel.set_surface_override_material(surface, coat)
 				"ln12mtl":
 					brake_lenses = source.duplicate() as StandardMaterial3D
 					brake_lenses.emission_enabled = true
@@ -561,18 +553,48 @@ func add_controls() -> void:
 	hint.position=Vector2(18,get_viewport().get_visible_rect().size.y-39)
 	hint.add_theme_font_size_override("font_size",14)
 	hint.add_theme_constant_override("outline_size",4)
-	hint.text="T  Day / night     J  Herald Sq     WASD  Move / drive     ← / →  Signal     Space  Jump     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Interact / exit     F  Freecam     B  Camera motion     H  Hide"
+	hint.text="Esc  Graphics     T  Day / night     J  Herald Sq     WASD  Move / drive     ← / →  Signal     Space  Jump     Shift  Sprint / handbrake     V  Release mouse / click to capture     E  Interact / exit     F  Freecam     B  Camera motion     H  Hide"
 	get_viewport().size_changed.connect(func(): hint.position.y=get_viewport().get_visible_rect().size.y-39)
+
+func apply_quality(level: int) -> void:
+	if not day_environment: return
+	var advanced := RenderingServer.get_current_rendering_method()=="forward_plus"
+	if advanced:
+		for env: Environment in [day_environment,night_environment]:
+			env.ssao_enabled = level>=1
+			env.ssr_enabled = level==2
+			env.sdfgi_enabled = level==2
+		city.get_viewport().use_taa = level==2
+		city.set_motion_level(city.motion_setting)
+	night_environment.glow_enabled = level>0 and not OS.has_feature("web")
+	day_environment.glow_enabled = advanced and level>0
+	for lamp in shaded_lamps: lamp.shadow_enabled = level==2
+	for probe: ReflectionProbe in probes: probe.visible = level>0
+	pack.set_quality(level)
+	sun_quality(level)
+
+func sun_quality(level: int) -> void:
+	var sun: DirectionalLight3D = city.get_node("Afternoon")
+	sun.shadow_enabled = level>0 or daylight
+	var soft_sun := level == 2 and RenderingServer.get_current_rendering_method() == "forward_plus"
+	sun.light_angular_distance = .53 if daylight and soft_sun else 0.
+	sun.directional_shadow_mode = [DirectionalLight3D.SHADOW_ORTHOGONAL,
+		DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS, DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS][level]
+	sun.directional_shadow_max_distance = [36.,80.,210.][level] if daylight else minf(night_shadow_range,[30.,50.,85.][level])
+	sun.directional_shadow_split_1 = .18 if level == 1 else .055
+	sun.directional_shadow_split_2 = .18
+	sun.directional_shadow_split_3 = .47
+	sun.shadow_bias = .045
+	sun.shadow_normal_bias = .65
 
 func toggle_daylight() -> void:
 	daylight = not daylight
 	city.get_node("Environment").environment = day_environment if daylight else night_environment
 	var sun: DirectionalLight3D = city.get_node("Afternoon")
-	sun.rotation_degrees = Vector3(-39,-33,0) if daylight else Vector3(-58,-68,0)
+	sun.rotation_degrees = Vector3(-28,-36,0) if daylight else Vector3(-58,-68,0)
 	sun.light_color = Color("#fff2da") if daylight else Color("#a7bee4")
 	sun.light_energy = 1.65 if daylight else .17
-	sun.light_angular_distance = .5 if daylight and day_environment.ssr_enabled else 0.
-	sun.directional_shadow_max_distance = 290. if daylight else night_shadow_range
+	sun_quality(city.get_node("GraphicsMenu").quality)
 	for lamp in outdoor_lights:
 		lamp.visible = not daylight
 	hot_glass.emission_enabled = not daylight
@@ -832,4 +854,10 @@ func _physics_process(dt: float) -> void:
 		street_probe.global_position = block.parked.global_position+Vector3.UP*5.
 	update_sedan_lights(dt)
 	update_sedan_suspension(dt)
+	var car: Node3D = block.parked
+	var right := car.global_basis.x
+	RenderingServer.global_shader_parameter_set(&"sedan_ground_origin", car.global_position)
+	RenderingServer.global_shader_parameter_set(&"sedan_ground_right", Vector2(right.x, right.z))
+	var feet: Vector3 = Vector3(0., -10000., 0.) if city.driving else city.walker.global_position
+	RenderingServer.global_shader_parameter_set(&"walker_ground_origin", feet)
 	update_tire_spray()

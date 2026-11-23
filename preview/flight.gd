@@ -53,6 +53,7 @@ const MIN_HEIGHT := 1.7
 const MAX_HEIGHT := 1800.0
 
 func _ready() -> void:
+	body.shadow_only(true)
 	camera_probe.radius = CAMERA_CLEARANCE
 	block.parked.add_child(drive_audio)
 	$Overlay.add_child(gear_readout)
@@ -89,8 +90,11 @@ func _reset_clock() -> void:
 
 func _resize() -> void:
 	var pixels := get_window().size
-	var budget := 900000.0 if OS.has_feature("web_ios") or OS.has_feature("web_android") else 2100000.0
-	get_viewport().scaling_3d_scale = minf(1.0, sqrt(budget / maxf(1.0, float(pixels.x) * pixels.y)))
+	var quality: int = $GraphicsMenu.quality
+	var budget: float = [420000.,920000.,2100000.][quality]
+	if OS.has_feature("web_ios") or OS.has_feature("web_android"):
+		budget = minf(budget,900000.)
+	get_viewport().scaling_3d_scale = minf(1.,sqrt(budget / maxf(1., float(pixels.x)*pixels.y)))
 
 func _release() -> void:
 	_reset_clock()
@@ -111,7 +115,7 @@ func look(delta: Vector2) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if warmup_frame >= 0: return
-	if not web and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_V, KEY_ESCAPE]:
+	if not web and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_V:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif not web and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_B:
 		set_motion_level((motion_setting + 2) % 3)
@@ -165,7 +169,7 @@ func set_motion_level(level: int) -> void:
 	motion_setting = clampi(level, 0, 2)
 	stride.strength = [0.0, 0.45, 1.0][motion_setting]
 	if shutter:
-		shutter.enabled = motion_setting > 0
+		shutter.enabled = motion_setting > 0 and $GraphicsMenu.quality==2
 		shutter.strength = .48 * stride.strength
 
 func mouse_captured() -> bool:
@@ -193,6 +197,7 @@ func toggle_body() -> void:
 		camera.position = body.position + offset
 		camera.position.y = minf(camera.position.y, MAX_HEIGHT)
 		camera.look_at(body.position + Vector3.UP * 1.0)
+	body.shadow_only(not freecam)
 	yaw = camera.rotation.y
 	pitch = camera.rotation.x
 	_reset_clock()
@@ -351,6 +356,7 @@ func interact() -> void:
 		if not clear: return
 		walker.global_position = exit_at
 		driving = false
+		if shutter: shutter.set_vehicle_focus(false, Transform3D.IDENTITY)
 		block.parked_visual.driver.hide()
 		body.show()
 		brake_pressed = false
@@ -464,6 +470,7 @@ func on_road(world: Vector3) -> bool:
 
 func chase_view(dt: float, car_yaw_change: float = 0.0) -> void:
 	var car: CharacterBody3D=block.parked
+	if shutter: shutter.set_vehicle_focus(true, car.global_transform)
 	var speed: float=absf(block.driver_speed)
 	var holding_view := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or look_finger >= 0
 	if holding_view:

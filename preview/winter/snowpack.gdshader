@@ -1,5 +1,6 @@
 shader_type spatial;
 render_mode cull_disabled, depth_prepass_alpha;
+#include "res://winter/ground_contact.gdshaderinc"
 
 uniform sampler2D pack_depth : filter_linear, repeat_disable;
 uniform sampler2D pressure : hint_default_black, filter_linear, repeat_disable;
@@ -38,6 +39,7 @@ void vertex(){
 	vec2 offset=world.xz-vec2(-208.099,573.891);
 	ground=vec2(dot(offset,east),dot(offset,vec2(-east.y,east.x)));
 	VERTEX.y+=support_height(world.xz,support_plane)-support_plane+depth_at(ground,UV);
+	contact_world=(MODEL_MATRIX*vec4(VERTEX,1.)).xyz;
 }
 void fragment(){
 	float depth=depth_at(ground,UV);
@@ -60,7 +62,9 @@ void fragment(){
 	float crystal=dot(texture(powder_map,ground*3.7).rgb,vec3(.333));
 	float snow=smoothstep(.0015,.033,depth+(crystal-.52)*.012);
 	vec3 snow_color=mix(powder,vec3(.78,.82,.86),.35)*mix(vec3(.94,.97,1.),vec3(.53,.64,.72),firmness);
-	ALBEDO=snow_color;
+	float contact=ground_occlusion();
+	AO=1.0-contact;
+	ALBEDO=snow_color*(1.0-0.30*contact);
 	ALPHA=snow;
 	ROUGHNESS=mix(.34,mix(.89,.60,firmness),snow);
 }

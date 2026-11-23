@@ -1,6 +1,7 @@
 shader_type spatial;
 render_mode cull_disabled;
 #include "res://frontage_mask.gdshaderinc"
+#include "res://winter/ground_contact.gdshaderinc"
 uniform sampler2D snow_depth : filter_linear, repeat_enable;
 uniform sampler2D asphalt : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D asphalt_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -21,6 +22,7 @@ float noise(vec2 p) {
 	return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+1.0),f.x),f.y);
 }
 void vertex() {
+	contact_world=(MODEL_MATRIX*vec4(VERTEX,1.)).xyz;
 	vec3 p=(MODEL_MATRIX*vec4(VERTEX,1)).xyz-vec3(-208.099,0,573.891);
 	world_xz=p.xz+vec2(-208.099,573.891);
 	street=vec3(dot(p.xz,vec2(.873,.488)),p.y,dot(p.xz,vec2(-.488,.873)));
@@ -63,6 +65,9 @@ void fragment() {
 		} else {
 			vec3 surface=pavement?direction:vec3(0.,1.,0.);
 			NORMAL=normalize(mat3(VIEW_MATRIX)*(surface+(wx*bump.x+wz*bump.y)*.35));
+			float contact=ground_occlusion();
+			AO=1.0-contact;
+			ALBEDO*=1.0-0.30*contact;
 		}
 	} else if(empire_shaft(p,direction)) {
 		float glass,lit;
@@ -97,7 +102,12 @@ void fragment() {
 		vec3 glass=mix(vec3(.026,.045,.059),vec3(.075,.10,.11),floor_glow);
 		glass=mix(glass,vec3(.16,.155,.139),shade*.79);
 		ALBEDO=mix(wall,glass*mix(.37,1.,rail),pane)*(1.-.30*lip);
-		NORMAL=normalize(NORMAL+mat3(VIEW_MATRIX)*(horizontal*grit.x+vec3(0.,grit.y,0.))*.21*(1.-pane));
+		// Tilt the four sides of the recessed opening toward its center so
+		// the sill catches daylight and the lintel faces down into shadow.
+		vec3 along_bay = abs(dot(direction.xz,vec2(.873,.488)))>.7 ? vec3(-.488,0.,.873) : vec3(.873,0.,.488);
+		vec3 bevel = edge.x/.315 > edge.y/.313 ? along_bay*sign(.5-q.x) : vec3(0.,sign(.5-q.y),0.);
+		vec3 relief = (horizontal*grit.x+vec3(0.,grit.y,0.))*.21*(1.-pane) + bevel*lip*.88;
+		NORMAL=normalize(NORMAL+mat3(VIEW_MATRIX)*relief);
 		AO=1.-lip*.50;
 		METALLIC=.38*pane*rail;
 		SPECULAR=mix(.35,.77,pane);

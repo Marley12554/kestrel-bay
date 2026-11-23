@@ -79,17 +79,21 @@ func office_stack(x: float,width: float,index: int) -> void:
 	for course in [STORES_TOP,24.53,BASE_TOP-.13]:
 		piece("limestone",Vector3(x,course,.43),Vector3(width,.25,.94))
 
+func solid_piece(finish: String, at: Vector3, size: Vector3) -> void:
+	piece(finish, at, size)
+	collider(at, size)
+
 func retail(x: float,width: float,door: bool,pharmacy: bool) -> void:
 	for side in [-1,1]:
-		piece("granite",Vector3(x+side*(width*.5-.12),2.44,.38),Vector3(.24,4.88,.86))
+		solid_piece("granite",Vector3(x+side*(width*.5-.12),2.44,.38),Vector3(.24,4.88,.86))
 	piece("granite",Vector3(x,4.43,.38),Vector3(width,.93,.71))
 	piece("steel",Vector3(x,4.01,.64),Vector3(width,.08,.36))
 	if door:
 		for side in [-1,1]:
 			var sill: float=(width-2.38)*.5
-			piece("granite",Vector3(x+side*(width-sill)*.5,.27,.29),Vector3(sill,.54,.78))
+			solid_piece("granite",Vector3(x+side*(width-sill)*.5,.27,.29),Vector3(sill,.54,.78))
 	else:
-		piece("granite",Vector3(x,.27,.29),Vector3(width,.54,.78))
+		solid_piece("granite",Vector3(x,.27,.29),Vector3(width,.54,.78))
 	piece("reveal",Vector3(x,2.21,-1.45),Vector3(width,4.42,.10))
 	piece("wood",Vector3(x,.58,-.48),Vector3(width,.09,1.83))
 	piece("reveal",Vector3(x,3.92,-.43),Vector3(width,.12,1.91))
@@ -143,8 +147,8 @@ func door_pair(x: float,width: float,z: float) -> void:
 	collider(Vector3(x,1.38,z),Vector3(width,2.76,.11))
 
 func service_bay(x: float,width: float) -> void:
-	piece("limestone",Vector3(x,2.5,.02),Vector3(width,5,.45))
-	piece("granite",Vector3(x,2.05,.40),Vector3(4.05,4.1,.65))
+	solid_piece("limestone",Vector3(x,2.5,.02),Vector3(width,5,.45))
+	solid_piece("granite",Vector3(x,2.05,.40),Vector3(4.05,4.1,.65))
 	for i in 33:
 		piece("steel",Vector3(x,.12+i*.114,.76),Vector3(3.65,.108,.065),Vector3(.09,0,0))
 	collider(Vector3(x,1.9,.75),Vector3(3.7,3.8,.10))

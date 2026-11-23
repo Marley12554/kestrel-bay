@@ -22,17 +22,19 @@ func build(cab: bool, traffic: bool) -> void:
 		for axle in ["Front", "Rear"]:
 			for side in ["Left", "Right"]:
 				wheels.append(model.find_child("Wheel" + axle + side, true, false))
+	var coat := StandardMaterial3D.new()
+	coat.albedo_color = Color("#384957") if traffic else Color("#d8dad9")
+	coat.metallic = .22
+	coat.roughness = .24
+	coat.clearcoat_enabled = true
+	coat.clearcoat = 1.0
+	coat.clearcoat_roughness = .11
 	for panel: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		panel.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
-		if traffic and not cab:
+		if not cab:
 			for surface in panel.mesh.get_surface_count():
 				var mat := panel.mesh.surface_get_material(surface) as StandardMaterial3D
 				if mat and mat.resource_name.to_lower() in ["geohoodsub00021mtl", "geodoorl2sub11mtl"]:
-					var coat := mat.duplicate() as StandardMaterial3D
-					coat.albedo_texture = null
-					coat.albedo_color = Color("#384957")
-					coat.metallic = .48
-					coat.roughness = .25
 					panel.set_surface_override_material(surface, coat)
 
 	driver = preload("res://body.tscn").instantiate()

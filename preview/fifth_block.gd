@@ -428,19 +428,10 @@ func car_visual(cab: bool, traffic := true) -> TOWN_CAR:
 	return car
 
 func make_traffic() -> void:
-	parked=CharacterBody3D.new()
-	parked.motion_mode=CharacterBody3D.MOTION_MODE_FLOATING
-	parked.collision_layer=2
-	parked.collision_mask=3
+	parked = preload("res://winter/sedan_collision.tscn").instantiate()
 	add_child(parked)
 	parked.position=Vector3(88.7,.035,-31.6)
 	parked.rotation.y=PI
-	var collider:=CollisionShape3D.new()
-	var hull:=BoxShape3D.new()
-	hull.size=Vector3(1.9,1.43,4.45)
-	collider.shape=hull
-	collider.position.y=.79
-	parked.add_child(collider)
 	parked_visual = car_visual(false, false)
 	parked.add_child(parked_visual)
 	var cab_body := AnimatableBody3D.new()
@@ -449,8 +440,9 @@ func make_traffic() -> void:
 	cab_body.collision_mask = 0
 	taxi = cab_body
 	add_child(taxi)
-	var cab_collider := collider.duplicate() as CollisionShape3D
-	var cab_hull := hull.duplicate() as BoxShape3D
+	var cab_collider := CollisionShape3D.new()
+	cab_collider.position.y = .79
+	var cab_hull := BoxShape3D.new()
 	cab_hull.size = Vector3(1.87, 1.46, 5.05)
 	cab_collider.shape = cab_hull
 	taxi.add_child(cab_collider)
@@ -471,26 +463,14 @@ func make_traffic() -> void:
 	yield_point=route.get_closest_offset(Vector3(74.5,0,-55.7))
 	distance=cross_stop-13
 	cycle=23.0
-	for i in 10:
-		var group:=i%2
-		var shift:=float(i/2)*.43
-		if group==0:
-			add_walker(Vector3(69.1+shift,0,-58.3-i%3),Vector3(69.1+shift,0,-33+i%3),i,0)
-		else:
-			add_walker(Vector3(68.5-i%3,0,-56.7+shift),Vector3(93.4+i%3,0,-56.7+shift),i,1)
-	for i in 6:
-		if i%2==0:
-			add_walker(Vector3(93.3+i*.15,0,-33),Vector3(93.3+i*.15,0,31),i+10,2)
-		else:
-			add_walker(Vector3(-75,0,-32-i*.27),Vector3(68,0,-32-i*.27),i+10,2)
 	cross_taxi=AnimatableBody3D.new()
 	cross_taxi.sync_to_physics=false
 	cross_taxi.collision_layer=2
 	cross_taxi.collision_mask=0
 	add_child(cross_taxi)
-	var sedan_collider := CollisionShape3D.new()
-	sedan_collider.shape = preload("res://winter/sedan_hull.tres")
-	cross_taxi.add_child(sedan_collider)
+	# Both Model 3s share the same fitted bumper, body and cabin shapes.
+	for shape in parked.get_children():
+		if shape is CollisionShape3D: cross_taxi.add_child(shape.duplicate())
 	cross_visual = car_visual(false)
 	cross_taxi.add_child(cross_visual)
 	# Return on the next block, rather than popping back into view.
@@ -506,28 +486,102 @@ func make_traffic() -> void:
 	south_stop=cross_route.get_closest_offset(Vector3(97.5,0,40))
 	north_return_stop=cross_route.get_closest_offset(Vector3(63.0,0,-42))
 	cross_distance=south_stop-22
-	for i in 4:
-		add_walker(Vector3(68.5,0,31.2+i*.21),Vector3(93.7,0,31.2+i*.21),16+i,1)
-	add_walker(Vector3(92.25,0,29),Vector3(92.25,0,49),20,0)
-	for i in 3:
-		add_walker(Vector3(68.3+i*.32,0,-30),Vector3(68.3+i*.32,0,29),21+i,2)
+	for i in 24:
+		add_walker(i)
 	update_cross_taxi(0)
 	update_lights()
 	update_taxi(0)
 
-func add_walker(a: Vector3,b: Vector3,i: int,group: int) -> void:
-	var n:=BODY.instantiate() as Node3D
+# Each path closes along actual sidewalks and marked crossings. Points A/B and
+# C/D are opposite curbs of 34th and 33rd respectively.
+const WEST_A := Vector2(69.3,-57.3)
+const WEST_B := Vector2(69.3,-32.6)
+const WEST_C := Vector2(69.3,31.6)
+const WEST_D := Vector2(69.3,49.6)
+const EAST_A := Vector2(93.6,-57.3)
+const EAST_B := Vector2(93.6,-32.6)
+const EAST_C := Vector2(93.6,31.6)
+const EAST_D := Vector2(93.6,49.6)
+const FOOT_ROUTES := [
+	[WEST_A,WEST_B,WEST_C,EAST_C,EAST_B,EAST_A],
+	[WEST_B,Vector2(-210,-32.6),Vector2(-210,31.6),WEST_C],
+	[EAST_B,EAST_C,EAST_D,WEST_D,WEST_C,WEST_B],
+]
+var crowd_range := 145.
+var crowd_refresh := 0.
+
+func add_walker(i: int) -> void:
+	var n := BODY.instantiate() as Node3D
 	n.variant = (i + floori(i / 4.0)) % n.MODELS.size()
 	add_child(n)
-	n.animator.seek(fmod(i * .71, n.animator.current_animation_length), true)
-	n.scale*=.93+(i%4)*.033
-	if i%4>=2:
-		var temp:=a
-		a=b
-		b=temp
-	n.position=a.lerp(b,float(i%5)/5.0) if group==2 else a
-	n.rotation.y=atan2(a.x-b.x,a.z-b.z)
-	walkers.append({"node":n,"last_support":Vector3.INF,"start":a,"end":b,"group":group,"moving":group==2,"pace":1.39+(i%3)*.13,"delay":fmod(i*.62,2.0)})
+	n.scale *= .93 + fmod(i*.037, .14)
+	var path: Array = FOOT_ROUTES[i % FOOT_ROUTES.size()]
+	var step := 1 if i % 4 < 2 else -1
+	var segment := posmod(floori(i / 3.) * 5 + i % 3, path.size())
+	var offset := Vector2(fmod(i*.71,1.55)-.65, fmod(i*.43,1.45)-.6)
+	var pace := .98 + fmod(i*.347+.46,.88)
+	n.select_stride(pace, fmod(i*.3819,1.))
+	var w := {"node":n, "path":path, "step":step, "segment":segment, "offset":offset,
+		"last_support":Vector3.INF, "pace":pace, "speed":0., "wait":0.,
+		"delay":fmod(i*.47,1.7), "phase":i*.83, "spacing":1., "pass_right":0.}
+	set_walk_segment(w)
+	var start: Vector3 = w.start
+	var end: Vector3 = w.end
+	n.position = start.lerp(end, fmod(.23+i*.618,1.)) if w.group==2 else start
+	# Distribute new arrivals down the approach sidewalk, away from the kerb.
+	if w.group != 2 and i > 0:
+		var previous: Vector2 = path[posmod(segment-step,path.size())] + offset
+		var from := Vector3(previous.x,0,previous.y)
+		if crossing_group(from,start)==2:
+			n.position = start.move_toward(from, 1.7 + fmod(i*4.77, 25.))
+			w.segment = posmod(segment-step,path.size())
+			set_walk_segment(w)
+	var heading: Vector3 = w.end - n.position
+	n.rotation.y = atan2(-heading.x,-heading.z)
+	walkers.append(w)
+
+func crossing_group(a: Vector3,b: Vector3) -> int:
+	if absf(a.x-b.x)>15. and minf(a.x,b.x)>65.: return 1
+	if absf(a.z-b.z)>15. and absf(a.z-b.z)<29.: return 0
+	return 2
+
+func set_walk_segment(w: Dictionary) -> void:
+	var path: Array = w.path
+	var a: Vector2 = path[w.segment] + w.offset
+	var b: Vector2 = path[posmod(w.segment+w.step,path.size())] + w.offset
+	w.start = Vector3(a.x,0,a.y)
+	w.end = Vector3(b.x,0,b.y)
+	w.group = crossing_group(w.start,w.end)
+	w.moving = w.group == 2
+	w.wait = 0.
+
+func refresh_crowd() -> void:
+	var camera := get_viewport().get_camera_3d()
+	if not camera: return
+	var eye := to_local(camera.global_position)
+	for w in walkers:
+		var n: Node3D = w.node
+		var distance := n.position.distance_to(eye)
+		var display := distance < crowd_range + (3. if n.visible else 0.)
+		n.visible = display
+		n.animator.active = display
+		w.spacing = 1.
+		w.pass_right = 0.
+		if not display: continue
+		var forward: Vector3 = (w.end-n.position).normalized()
+		var near_corner := n.position.distance_squared_to(w.end)<1.44
+		for other in walkers:
+			if other.node == n: continue
+			var delta: Vector3 = other.node.position-n.position
+			var ahead := forward.dot(delta)
+			if ahead>.03 and ahead<1.45 and absf(delta.dot(Vector3(-forward.z,0,forward.x)))<.45:
+				var other_heading: Vector3 = other.node.position.direction_to(other.end)
+				# Only queue behind someone actually following this lane. People
+				# arriving from crossing paths must be able to clear the corner.
+				if forward.dot(other_heading)<.75 or not other.moving:
+					w.pass_right = 1.-ahead/1.45
+				elif not near_corner:
+					w.spacing = minf(w.spacing, clampf((ahead-.38)/.9, .16, 1.))
 
 func ground_walker(w: Dictionary) -> void:
 	var actor: Node3D = w.node
@@ -567,32 +621,42 @@ func update_lights() -> void:
 		mat.albedo_color=Color.TRANSPARENT if aspect==PedSignal.DARK else Color.WHITE
 
 func update_walkers(dt: float) -> void:
+	crowd_refresh -= dt
+	if crowd_refresh <= 0.:
+		crowd_refresh = .25
+		refresh_crowd()
 	for w in walkers:
-		var n:Node3D=w.node
+		var n:Node3D = w.node
+		var goal:Vector3 = w.end
+		var direction := n.position.direction_to(goal)
+		var heading := atan2(-direction.x,-direction.z)
 		if not w.moving:
-			var launch:float=23 if w.group==1 else 0
-			if cycle>=launch+w.delay and cycle<launch+w.delay+2.0:
-				w.moving=true
+			if walk_sign(w.group==1):
+				w.wait += dt
+				w.moving = w.wait >= w.delay
+			else:
+				w.wait = 0.
+				heading += .37*sin(cycle*.52 + w.phase)
+		var allowed: bool = w.moving
+		if allowed and driven and absf(driver_speed)>1.:
+			var travel: Vector3 = -parked.basis.z*signf(driver_speed)
+			var relative := n.position+direction*1.4-parked.position
+			var ahead := relative.dot(travel)
+			if ahead>2.7 and ahead<minf(22,absf(driver_speed)*1.6+2.5) and absf(relative.dot(parked.basis.x))<1.65:
+				allowed = false
+		var target_speed: float = w.pace*w.spacing if allowed else 0.
+		w.speed = move_toward(w.speed,target_speed,dt*(2.1 if allowed else 4.))
+		n.rotation.y = rotate_toward(n.rotation.y,heading,dt*(3.6 if allowed else .75))
+		if n.visible: n.set_pace(w.speed)
 		if w.moving:
-			var goal:Vector3=w.end
-			var d:=goal-n.position
-			# Stay at the kerb if the sedan will reach the same spot first.
-			if driven and absf(driver_speed)>1.0:
-				var travel: Vector3=-parked.basis.z*signf(driver_speed)
-				var relative:=n.position+d.normalized()*1.4-parked.position
-				var ahead:=relative.dot(travel)
-				if ahead>2.7 and ahead<minf(22,absf(driver_speed)*1.6+2.5) and absf(relative.dot(parked.basis.x))<1.65:
-					n.set_pace(0.)
-					continue
-			n.set_pace(w.pace)
-			n.rotation.y=atan2(-d.x,-d.z)
-			n.position=n.position.move_toward(goal,float(w.pace)*dt)
-			ground_walker(w)
-			if n.position==goal:
-				w.end=w.start
-				w.start=goal
-				w.moving=w.group==2
-				if not w.moving: n.set_pace(0.)
+			n.position = n.position.move_toward(goal,w.speed*dt)
+			if w.pass_right>0. and n.position.distance_squared_to(goal)>1.:
+				n.position += direction.cross(Vector3.UP)*float(w.pass_right)*dt
+			if n.visible: ground_walker(w)
+			if n.position.is_equal_approx(goal):
+				w.segment = posmod(w.segment+w.step,w.path.size())
+				set_walk_segment(w)
+				if not w.moving: w.speed = 0.
 
 func crossing_busy() -> bool:
 	for w in walkers:
@@ -600,6 +664,20 @@ func crossing_busy() -> bool:
 		if p.x>=68 and p.x<=73 and p.z>=-55.5 and p.z<=-45:
 			return true
 	return false
+
+# Project the player's car onto the traffic lane. A center-to-center stop
+# distance cuts through a bumper when both cars are nose-to-tail.
+func gap_to_sedan(traffic: Node3D, half_length: float, half_width: float) -> float:
+	var delta := parked.position - traffic.position
+	if delta.length_squared() > 24.*24. or absf(delta.y)>1.5: return INF
+	var front := -traffic.basis.z
+	var ahead := delta.dot(front)
+	if ahead<=0.: return INF
+	var facing := absf(front.dot(parked.basis.z))
+	var across := absf(front.dot(parked.basis.x))
+	var half_span := half_width + .95*facing + 2.36*across
+	if absf(delta.dot(traffic.basis.x)) >= half_span: return INF
+	return maxf(0., ahead - half_length - 2.36*facing - .95*across - .12)
 
 func update_taxi(dt: float) -> void:
 	var target:=8.0
@@ -612,15 +690,15 @@ func update_taxi(dt: float) -> void:
 		target=minf(target,sqrt(5.6*maxf(0,brake_at-distance)))
 	if absf(distance-yield_point)<12:
 		target=minf(target,4)
-	var local_user:=street_user
-	if driven: local_user=parked.position
-	if local_user.is_finite():
-		var delta:=local_user-taxi.position
+	var car_gap := gap_to_sedan(taxi,2.525,.935)
+	target = minf(target,sqrt(10.*car_gap))
+	if not driven and street_user.is_finite():
+		var delta:=street_user-taxi.position
 		var fwd:Vector3=-taxi.basis.z
 		if delta.dot(fwd)>0 and delta.dot(fwd)<9 and absf(delta.dot(taxi.basis.x))<1.85:
 			target=minf(target,maxf(0,(delta.dot(fwd)-3.6)*.9))
 	cab_speed=move_toward(cab_speed,target,(2.4 if target>cab_speed else 5.0)*dt)
-	var advance:=cab_speed*dt
+	var advance:=minf(cab_speed*dt,car_gap)
 	if brake_at!=INF: advance=minf(advance,maxf(0,brake_at-distance))
 	cab_visual.roll(advance)
 	distance=fposmod(distance+advance,route.get_baked_length())
@@ -630,13 +708,14 @@ func update_taxi(dt: float) -> void:
 	taxi.rotation.y=atan2(p.x-next.x,p.z-next.z)
 
 func update_cross_taxi(dt: float) -> void:
-	var gap := INF
+	var gap := gap_to_sedan(cross_taxi,2.36,.95)
 	if vehicle_signal(false)!=2:
 		for stop_offset: float in [south_stop,north_return_stop]:
 			var until_stop:=fposmod(stop_offset-cross_distance,cross_route.get_baked_length())
 			if until_stop<24: gap=minf(gap,until_stop)
 	var front := -cross_taxi.basis.z
-	var obstacles: Array[Vector3]=[parked.position,street_user]
+	var obstacles: Array[Vector3]=[]
+	if not driven: obstacles.append(street_user)
 	for w in walkers:
 		if absf(w.node.position.z-40)<4:
 			obstacles.append(w.node.position)
@@ -743,7 +822,7 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 	else:
 		yaw_velocity = target_yaw_rate
 	parked.rotation.y += yaw_velocity*dt
-	if parked.test_move(parked.global_transform,Vector3.UP*.002):
+	if parked.rotation.y != previous_yaw and parked.test_move(parked.global_transform,Vector3.UP*.002):
 		parked.rotation.y = previous_yaw
 		yaw_velocity = 0.
 	var body_turn := angle_difference(previous_yaw, parked.rotation.y)
@@ -762,11 +841,18 @@ func drive(dt: float, throttle: float, turn: float, allow_shift: bool = true, ha
 	side_accel = driver_speed * angle_difference(travel_yaw,previous_yaw+body_turn+drift_angle)/dt
 	var heading := (-parked.global_basis.z).rotated(Vector3.UP, drift_angle)
 	var travel := heading*driver_speed*dt
-	var hit:=parked.move_and_collide(travel)
+	var hit := parked.move_and_collide(travel) if not travel.is_zero_approx() else null
 	if hit:
-		var remainder:=hit.get_remainder().slide(hit.get_normal())
-		parked.move_and_collide(remainder)
-		var impact := clampf(absf(heading.dot(hit.get_normal())), 0.0, 1.0)
+		# The drivetrain acts in the road plane. Pitch on a rounded bumper
+		# must not turn a straight-on impact into a vertical suspension move.
+		var normal := hit.get_normal()
+		if hit.get_collider() == cross_taxi or hit.get_collider() == taxi:
+			var horizontal := normal.slide(Vector3.UP)
+			if not horizontal.is_zero_approx(): normal = horizontal.normalized()
+		var remainder := hit.get_remainder().slide(normal)
+		if not remainder.is_zero_approx():
+			parked.move_and_collide(remainder)
+		var impact := clampf(absf(heading.dot(normal)), 0.0, 1.0)
 		driver_speed *= 1.0 - impact
 		drift_angle *= 1.0 - impact
 		yaw_velocity *= 1.0 - impact

@@ -8,9 +8,19 @@ var pipeline: RID
 var sampler: RID
 var previous_projection := Projection()
 var previous_frame := -2
+var focusing_vehicle := false
+var vehicle_pose := Transform3D.IDENTITY
+
+func set_vehicle_focus(active: bool, pose: Transform3D) -> void:
+	RenderingServer.call_on_render_thread(func():
+		focusing_vehicle = active
+		vehicle_pose = pose
+	)
 
 func _init() -> void:
-	effect_callback_type = EFFECT_CALLBACK_TYPE_POST_TRANSPARENT
+	# Glass does not carry the velocity of its frame in the opaque buffer.
+	# Composite windows over the exposed street after the shutter pass.
+	effect_callback_type = EFFECT_CALLBACK_TYPE_PRE_TRANSPARENT
 	needs_motion_vectors = true
 	access_resolved_color = true
 	access_resolved_depth = true
@@ -44,6 +54,13 @@ func _render_callback(_stage: int, data: RenderData) -> void:
 			RenderingDevice.TEXTURE_USAGE_STORAGE_BIT, RenderingDevice.TEXTURE_SAMPLES_1, size, views, 1, true, false)
 	var scene := data.get_render_scene_data()
 	var camera_projection := scene.get_cam_projection() * Projection(scene.get_cam_transform().affine_inverse())
+	# Reconstruct a visible pixel in vehicle coordinates. Behind the glass
+	# or beyond the silhouette the sampled depth still belongs to the street.
+	var local_from_clip := Projection()
+	var depth_w := Vector2.ZERO
+	if focusing_vehicle:
+		local_from_clip = Projection(vehicle_pose.affine_inverse() * scene.get_cam_transform()) * scene.get_cam_projection().inverse()
+		depth_w = Vector2(local_from_clip.z.w, local_from_clip.w.w)
 	var reprojection := Projection()
 	var frame := Engine.get_frames_drawn()
 	if frame == previous_frame + 1:
@@ -69,10 +86,13 @@ func _render_callback(_stage: int, data: RenderData) -> void:
 		device.compute_list_bind_compute_pipeline(list, pipeline)
 		for pass_index in 2:
 			device.compute_list_bind_uniform_set(list, blur_set if pass_index == 0 else copy_set, 0)
-			var values := PackedFloat32Array([strength, float(pass_index), 0., 0.])
+			var values := PackedFloat32Array([strength, float(pass_index), depth_w.x, depth_w.y])
 			for col in 4:
 				var v: Vector4 = reprojection[col]
 				values.append_array(PackedFloat32Array([v.x,v.y,v.z,v.w]))
+			for row in 3:
+				for col in 4:
+					values.append(local_from_clip[col][row])
 			var params := values.to_byte_array()
 			device.compute_list_set_push_constant(list, params, params.size())
 			device.compute_list_dispatch(list, ceili(size.x / 8.), ceili(size.y / 8.), 1)

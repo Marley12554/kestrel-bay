@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled,shadows_disabled;
+render_mode cull_disabled;
 varying vec3 pos;
 void vertex(){pos=(MODEL_MATRIX*vec4(VERTEX,1.)).xyz;}
 void fragment(){

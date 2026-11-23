@@ -60,6 +60,7 @@ func run() -> void:
 	key.pressed = true
 	root.push_input(key)
 	check(winter.daylight and city.get_node("Environment").environment != evening_env,"T selects the daylight sky")
+	check(is_zero_approx(winter.day_environment.fog_sky_affect), "street haze preserves the daylight sky and sun disk")
 	check(city.walker.position == original and city.camera.global_transform == original_view,"lighting toggle preserves position and view")
 	root.push_input(key)
 	check(not winter.daylight and city.get_node("Environment").environment == evening_env,"T restores the same evening sky")
