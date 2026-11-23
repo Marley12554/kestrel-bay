@@ -2,7 +2,7 @@ extends CanvasLayer
 
 const NAMES := ["Performance", "Balanced", "High"]
 const CONFIG := "user://graphics.cfg"
-var quality := 1
+var quality := 0
 var restore_capture := false
 var saved := ConfigFile.new()
 @onready var slider: HSlider = %Quality
@@ -11,7 +11,6 @@ var saved := ConfigFile.new()
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	hide()
-	quality = 1 if RenderingServer.get_current_rendering_method()=="forward_plus" else 0
 	if saved.load(CONFIG)==OK:
 		quality = clampi(int(saved.get_value("video","quality",quality)),0,2)
 	slider.value_changed.connect(func(value:float): set_quality(roundi(value)))
