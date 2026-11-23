@@ -53,6 +53,9 @@ func _ready() -> void:
 			batches[key]=[batch,index]
 		var view:=MultiMeshInstance3D.new()
 		view.multimesh=batch
+		# The road supplies the ground silhouette. Snow receives street shadows
+		# without drawing its displaced grid again for every shadow map.
+		view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		view.material_override=materials[keys[0].y]
 		view.extra_cull_margin=8.0 # Includes the surveyed elevation of snow at the edge of the old block.
 		add_child(view)
@@ -174,9 +177,11 @@ func flush_pressure(dirty: Dictionary) -> void:
 func show_track(key: Vector3i) -> void:
 	var view:=MeshInstance3D.new()
 	view.mesh=detailed
+	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	view.transform=tile_transform(key)
 	view.extra_cull_margin=8.0 # Includes the surveyed elevation of snow at the edge of the old block.
 	var m:=materials[key.y].duplicate() as ShaderMaterial
+	m.set_shader_parameter("has_tracks", true)
 	m.set_shader_parameter("pressure",ImageTexture.create_from_image(tracks[key]))
 	view.material_override=m
 	# Move just this batch instance below the street. The separate mesh
