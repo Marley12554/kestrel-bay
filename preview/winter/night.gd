@@ -83,13 +83,14 @@ func dress_street() -> void:
 	day_environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	var env: Environment = day_environment.duplicate()
 	var sky := Sky.new()
-	var panorama := PanoramaSkyMaterial.new()
+	var night_sky := ShaderMaterial.new()
+	night_sky.shader = preload("res://winter/moonlit_sky.gdshader")
 	var lighting_dir := "res://winter/web_lighting/" if OS.has_feature("web") else ASSET
-	panorama.panorama = load(lighting_dir + "urban_street_04_hdri.exr")
-	sky.sky_material = panorama
+	night_sky.set_shader_parameter("street_panorama", load(lighting_dir + "urban_street_04_hdri.exr"))
+	night_sky.set_shader_parameter("lunar_albedo", preload("res://winter/assets/lroc_color_poles_1k.jpg"))
+	sky.sky_material = night_sky
 	env.sky = sky
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#273347")
+	env.background_mode = Environment.BG_SKY
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("#99a8c2")
 	env.ambient_light_energy = .25
