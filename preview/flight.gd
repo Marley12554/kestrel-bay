@@ -53,7 +53,6 @@ const MIN_HEIGHT := 1.7
 const MAX_HEIGHT := 1800.0
 
 func _ready() -> void:
-	body.shadow_only(true)
 	camera_probe.radius = CAMERA_CLEARANCE
 	block.parked.add_child(drive_audio)
 	$Overlay.add_child(gear_readout)
@@ -197,7 +196,7 @@ func toggle_body() -> void:
 		camera.position = body.position + offset
 		camera.position.y = minf(camera.position.y, MAX_HEIGHT)
 		camera.look_at(body.position + Vector3.UP * 1.0)
-	body.shadow_only(not freecam)
+	body.visible = freecam
 	yaw = camera.rotation.y
 	pitch = camera.rotation.x
 	_reset_clock()
@@ -358,7 +357,6 @@ func interact() -> void:
 		driving = false
 		if shutter: shutter.set_vehicle_focus(false, Transform3D.IDENTITY)
 		block.parked_visual.driver.hide()
-		body.show()
 		brake_pressed = false
 		turn_signal_direction = 0
 		drive_audio.park()
@@ -374,7 +372,6 @@ func interact() -> void:
 	elif walker.position.distance_to(block.parked.global_position)<5.8:
 		driving=true
 		block.parked_visual.driver.show()
-		body.hide()
 		previous_steer_key=0
 		steer_key_seconds=0.0
 		orbit_yaw=block.parked.global_rotation.y

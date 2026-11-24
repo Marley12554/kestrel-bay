@@ -40,6 +40,7 @@ func build(cab: bool, traffic: bool) -> void:
 	driver = preload("res://body.tscn").instantiate()
 	driver.variant = 3 if cab else 0
 	driver.position = Vector3(-.39, -.10, -.29)
+	driver.casts_shadows = traffic
 	driver.visible = traffic
 	add_child(driver)
 	if is_inside_tree(): driver.sit()

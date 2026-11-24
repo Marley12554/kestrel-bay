@@ -71,6 +71,8 @@ mesh = SubResource("GroundMesh")
 [node name="HeraldSquare" parent="." instance=ExtResource("9")]
 
 [node name="Body" parent="." instance=ExtResource("3")]
+visible = false
+casts_shadows = false
 
 [node name="Block" type="Node3D" parent="."]
 script = ExtResource("4")

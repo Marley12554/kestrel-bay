@@ -30,7 +30,3 @@ sedan_ground_right={
 "type": "vec2",
 "value": Vector2(1, 0)
 }
-walker_ground_origin={
-"type": "vec3",
-"value": Vector3(0, -10000, 0)
-}

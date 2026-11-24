@@ -4,6 +4,7 @@ const MODELS := [preload("res://people/sam.glb"), preload("res://people/harper.g
 		preload("res://people/jordan.glb"), preload("res://people/maya.glb")]
 const GAITS := [preload("res://people/sam-walks.res"), preload("res://people/harper-walks.res"),
 		preload("res://people/jordan-walks.res"), preload("res://people/maya-walks.res")]
+@export var casts_shadows := true
 @export_range(0, 3) var variant := 0
 var model: Node3D
 var animator: AnimationPlayer
@@ -21,6 +22,8 @@ func _ready() -> void:
 	animator.add_animation_library(&"street", GAITS[variant])
 	select_stride(1.36, 0.)
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		if not casts_shadows:
+			mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mesh.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 		mesh.visibility_range_end = 145.
 	for clip in [&"Idle_Standing", walk_clip]:
@@ -65,7 +68,3 @@ func sit() -> void:
 		# the shoe in its original position below the floor pan.
 		shoe.origin = shin.origin + pedal_direction.normalized() * ankle.length()
 		skeleton.set_bone_global_pose(foot, shoe)
-
-func shadow_only(on: bool) -> void:
-	for mesh: MeshInstance3D in find_children("*", "MeshInstance3D", true, false):
-		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON

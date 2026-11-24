@@ -419,6 +419,8 @@ func interact() -> bool:
 			pour.play()
 		"Take coffee":
 			order=Order.CARRIED
+			for mesh: GeometryInstance3D in cup.find_children("*", "GeometryInstance3D", true, false):
+				mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			grip.show()
 			cup.reparent(city.camera,false)
 			cup.position=Vector3(.18,-.19,-.47)

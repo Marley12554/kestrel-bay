@@ -34,17 +34,22 @@ func run() -> void:
 	check(not paused and not menu.visible,"Escape resumes the street")
 	var eye: Transform3D = scene.camera.transform
 	var body_meshes = scene.body.model.find_children("*", "MeshInstance3D", true, false)
-	var only_shadow := func(mesh): return mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-	check(not body_meshes.is_empty() and body_meshes.all(only_shadow), "first-person camera starts with all player meshes shadow-only")
+	var shadow_off := func(mesh): return mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	check(not scene.body.visible and not body_meshes.is_empty() and body_meshes.all(shadow_off), "first-person player is hidden and casts no shadow")
 	scene.toggle_body()
 	check(scene.freecam and scene.body.visible, "freecam leaves the figure on the sidewalk")
-	check(body_meshes.all(func(mesh): return mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON), "freecam renders the complete player model")
+	check(body_meshes.all(shadow_off), "freecam player casts no shadow")
 	scene.fly(Vector3.FORWARD, 1.0)
 	scene.toggle_body()
 	check(scene.camera.transform.is_equal_approx(eye), "return to the same viewpoint")
-	check(body_meshes.all(only_shadow), "returning to first person hides the player meshes")
+	check(not scene.body.visible, "returning to first person hides the player meshes")
 	scene.interact()
 	check(scene.driving and not scene.body.visible and block.parked_visual.driver.visible, "driver takes the seat at spawn")
+	var driver_meshes = block.parked_visual.driver.model.find_children("*", "MeshInstance3D", true, false)
+	check(not driver_meshes.is_empty() and driver_meshes.all(shadow_off), "seated player casts no shadow")
+	var casts := func(mesh): return mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	check(block.walkers[0].node.model.find_children("*", "MeshInstance3D", true, false).any(casts), "pedestrians still cast shadows")
+	check(block.parked_visual.model.find_children("*", "MeshInstance3D", true, false).any(casts), "sedan still casts a shadow")
 	var seated_rig: Skeleton3D = block.parked_visual.driver.skeleton
 	for side in ["_l", "_r"]:
 		var toe := seated_rig.get_bone_global_pose(seated_rig.find_bone("ball" + side)).origin
@@ -65,8 +70,8 @@ func run() -> void:
 	check(car.position.distance_to(start)<7, "complete the circuit")
 	block.driver_speed=0
 	scene.interact()
-	check(not scene.driving and scene.body.visible and not block.parked_visual.driver.visible,"exit a stopped car on foot")
-	check(body_meshes.all(only_shadow), "exiting the car restores only the walking shadow")
+	check(not scene.driving and not scene.body.visible and not block.parked_visual.driver.visible,"exit a stopped car on foot")
+	check(body_meshes.all(shadow_off), "exiting the car keeps player shadows disabled")
 	# Time a crossing at the normal on-foot speed, between the two curbs.
 	var walker: CharacterBody3D = scene.walker
 	walker.position = block.to_global(Vector3(90.5,.15,-56.6))
@@ -1128,6 +1133,7 @@ func reserve_visit(city) -> void:
 	check(shop.order==shop.Order.READY and shop.cup.visible and shop.cup.get_parent()==shop,"barista presents one brewed cup")
 	city.interact()
 	check(shop.order==shop.Order.CARRIED and shop.cup.get_parent()==city.camera,"pick up the cup with the same interaction key")
+	check(shop.cup.find_children("*", "GeometryInstance3D", true, false).all(func(mesh): return mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF), "first-person hand and held cup cast no shadow")
 	for local_target in [Vector3(6.5,.16,-5.75),Vector3(x,.16,-5.75),Vector3(x,.16,1.8)]:
 		await walk_to_shop_point(city,shop,local_target)
 	check(not shop.inside(shop.to_local(walker.global_position)) and shop.cup.visible,"carry the same coffee back out onto Fifth")

@@ -865,6 +865,4 @@ func _physics_process(dt: float) -> void:
 	var right := car.global_basis.x
 	RenderingServer.global_shader_parameter_set(&"sedan_ground_origin", car.global_position)
 	RenderingServer.global_shader_parameter_set(&"sedan_ground_right", Vector2(right.x, right.z))
-	var feet: Vector3 = Vector3(0., -10000., 0.) if city.driving else city.walker.global_position
-	RenderingServer.global_shader_parameter_set(&"walker_ground_origin", feet)
 	update_tire_spray()
