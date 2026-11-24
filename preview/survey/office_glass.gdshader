@@ -24,8 +24,8 @@ void fragment() {
 	float light_strip = ceiling * smoothstep(.018,.038,rear.x) * (1.-smoothstep(.05,.10,abs(rear.x-.48)));
 	float edge = smoothstep(.0,.045,min(min(UV.x,1.-UV.x),min(UV.y,1.-UV.y)));
 	ALBEDO = pane_tint.rgb * (.34+.40*room+.12*rear_wall) * mix(.70,1.,edge);
-	ROUGHNESS = .19;
-	METALLIC = .32;
-	SPECULAR = .76;
+	ROUGHNESS = .30;
+	METALLIC = 0.;
+	SPECULAR = .48;
 	EMISSION = room_light * (room + vec3(light_strip)*.8) * edge;
 }

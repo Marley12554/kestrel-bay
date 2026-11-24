@@ -16,10 +16,11 @@ func _ready() -> void:
 	var mesh: MeshInstance3D = find_children("*","MeshInstance3D",true,false)[0]
 	for i in mesh.mesh.get_surface_count():
 		var stock := mesh.mesh.surface_get_material(i)
-		if stock.resource_name in ["BuffBrick","IndianaStone"]:
+		if stock.resource_name in ["BuffBrick","OfficePanel","IndianaStone"]:
 			var material := ShaderMaterial.new()
 			material.shader = STONE
-			material.set_shader_parameter("brick",stock.resource_name=="BuffBrick")
+			material.set_shader_parameter("brick",stock.resource_name!="IndianaStone")
+			material.set_shader_parameter("bond", preload("res://survey/buff-running-bond.png"))
 			material.set_shader_parameter("grain",preload("res://winter/frontage/white_sandstone_blocks_02_diffuse.jpg"))
 			material.set_shader_parameter("relief",preload("res://winter/frontage/white_sandstone_blocks_02_nor_gl.jpg"))
 			mesh.set_surface_override_material(i,material)
@@ -30,14 +31,37 @@ func _ready() -> void:
 			var glow: Color = stock.emission if stock.emission_enabled else Color.BLACK
 			pane.set_shader_parameter("room_light",Vector3(glow.r,glow.g,glow.b))
 			mesh.set_surface_override_material(i,pane)
+		if stock.resource_name == "Granite":
+			var granite := stock.duplicate() as StandardMaterial3D
+			granite.albedo_color = Color("#c6c1b7")
+			granite.uv1_triplanar = true
+			granite.uv1_scale = Vector3.ONE * .8
+			granite.albedo_texture = preload("res://winter/frontage/granite_tile_03_diffuse.jpg")
+			granite.normal_enabled = true
+			granite.normal_texture = preload("res://winter/frontage/granite_tile_03_nor_gl.jpg")
+			granite.normal_scale = .35
+			granite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+			mesh.set_surface_override_material(i,granite)
 		if stock.resource_name=="DisplayGlass":
 			var window := StandardMaterial3D.new()
 			window.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			window.albedo_color = Color(.34,.47,.50,.27)
 			window.roughness = .16
-			window.metallic = .29
+			window.metallic = 0.
 			window.cull_mode = BaseMaterial3D.CULL_DISABLED
 			mesh.set_surface_override_material(i,window)
+	for fixture: Array in data.bank_lamps:
+		var lamp := SpotLight3D.new()
+		lamp.position = point(fixture[0])
+		add_child(lamp)
+		lamp.look_at(to_global(point(fixture[1])))
+		lamp.light_color = Color("#ffe2b9")
+		lamp.light_energy = 3.0
+		lamp.spot_range = 5.4
+		lamp.spot_angle = 59.
+		lamp.distance_fade_enabled = true
+		lamp.distance_fade_begin = 19.
+		lamp.distance_fade_length = 12.
 	for door: Dictionary in data.doors:
 		install_door(door)
 	var wall_faces := PackedVector3Array()

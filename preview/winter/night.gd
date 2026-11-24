@@ -113,6 +113,7 @@ func dress_street() -> void:
 	var moon: DirectionalLight3D = city.get_node("Afternoon")
 	moon.light_color = Color("#a7bee4")
 	moon.light_energy = .17
+	moon.light_specular = .06
 	moon.rotation_degrees = Vector3(-58,-68,0)
 	moon.directional_shadow_max_distance = 85
 	if OS.has_feature("web"):
@@ -601,6 +602,7 @@ func toggle_daylight() -> void:
 	sun.rotation_degrees = Vector3(-28,-36,0) if daylight else Vector3(-58,-68,0)
 	sun.light_color = Color("#fff2da") if daylight else Color("#a7bee4")
 	sun.light_energy = 1.65 if daylight else .17
+	sun.light_specular = .5 if daylight else .06
 	sun_quality(city.get_node("GraphicsMenu").quality)
 	for lamp in outdoor_lights:
 		lamp.visible = not daylight

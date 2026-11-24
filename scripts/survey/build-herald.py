@@ -36,6 +36,8 @@ FINISH = {
     "Canopy": ("e8ac2a", 0.80, 0),
     "ShopGlass": ("4d6465", 0.22, 0.45),
     "Bronze": ("8d7450", 0.36, 0.68),
+    "BankPlaster": ("d9d1be", 0.89, 0),
+    "Cabinet": ("846749", 0.6, 0),
     "BankRed": ("ba251f", 0.42, 0.13),
     "Granite": ("5d605c", 0.46, 0.1),
     "DoorGlass": ("425a61", 0.21, 0.43),
@@ -162,6 +164,10 @@ class Elevation:
             self.mesh.face(
                 key, [self.pt(x, y, front), self.pt(u, v, front), self.pt(u, v, back), self.pt(x, y, back)]
             )
+
+    def slab(self, l, r, b, t, front, back, key):
+        self.rect(l, r, b, t, front, key)
+        self.reveal(l, r, b, t, front, back, key)
 
     def trim(self, l, r, b, t, d, key):
         self.rect(l, r, b, t, d, key)
@@ -407,7 +413,43 @@ def vestibule(f, a, b, h, fascia, pavement, walls, doors):
     )
 
 
-def shops(f, l, r, use, grade, labels, walls, doors, annotate):
+def bank_interior(f, a, b, h, fascia, glass, lamps):
+    back = -3.65
+    f.reveal(a, b, h, fascia, glass, back, "BankPlaster")
+    f.rect(a, b, h, fascia, back, "BankPlaster")
+    f.mesh.face("Granite", [f.pt(a, h+.014, glass), f.pt(b, h+.014, glass),
+                            f.pt(b, h+.014, back), f.pt(a, h+.014, back)])
+    f.slab(a, b, h, h+.13, back+.022, back, "Granite")
+    # A flush service door and run of wainscot give the rear wall a human scale.
+    f.slab(a, b, h+.13, h+.91, back+.038, back, "Cabinet")
+    f.slab(a, b, h+.91, h+.95, back+.055, back, "Bronze")
+    if b-a > 3.0:
+        jamb = b-1.45
+        f.slab(jamb, jamb+1.07, h, h+2.17, back+.085, back, "Bronze")
+        f.slab(jamb+.045, jamb+1.025, h+.02, h+2.12, back+.10, back+.085, "Cabinet")
+        f.slab(jamb+.12, jamb+.29, h+1.00, h+1.03, back+.16, back+.10, "Bronze")
+    stations = max(1, round((b-a)/4.0))
+    width = (b-a) / stations
+    for j in range(stations):
+        x = a + (j+.5) * width
+        half = min(.95, width*.35)
+        # Boxed joinery, a recessed toe kick and a stone top with an overhang.
+        f.slab(x-half+.08, x+half-.08, h, h+.13, -1.96, -2.61, "DarkSash")
+        f.slab(x-half, x+half, h+.13, h+.97, -1.85, -2.66, "Cabinet")
+        f.slab(x-half-.035, x+half+.035, h+.97, h+1.025, -1.80, -2.70, "Granite")
+        f.slab(x-.035, x+.035, h+1.025, h+1.17, -2.31, -2.42, "Bronze")
+        f.slab(x-.24, x+.24, h+1.16, h+1.46, -2.29, -2.35, "DarkSash")
+        lamps.append([f.pt(x, fascia-.10, -1.59), f.pt(x, h+1.10, back)])
+        # A ceiling recess and its luminous diffuser occupy different planes.
+        f.slab(x-half, x+half, fascia-.075, fascia-.012, -1.46, -1.72, "DarkSash")
+        f.mesh.face("Light", [f.pt(x-half+.04, fascia-.077, -1.49),
+                              f.pt(x+half-.04, fascia-.077, -1.49),
+                              f.pt(x+half-.04, fascia-.077, -1.69),
+                              f.pt(x-half+.04, fascia-.077, -1.69)])
+    f.slab(a, b, h+.43, h+.52, glass+.075, glass-.06, "Granite")
+
+
+def shops(f, l, r, use, grade, labels, walls, doors, lamps, annotate):
     # Keep the head level. Each sill and threshold meets the grade just
     # outside its jamb, including either end of the sloping storefront.
     def pavement(u):
@@ -458,41 +500,28 @@ def shops(f, l, r, use, grade, labels, walls, doors, annotate):
         panels = max(1, round(span / 1.85))
         rail = h + 0.52
         f.rect(a, b, bottom, rail, -recess, "Granite")
-        depth = -3.25 if use == "bank" else -2.35
-        f.reveal(a, b, rail, fascia, -recess, depth, "Soffit")
-        f.rect(a, b, rail, fascia, depth, "Lining")
         f.rect(a, b, rail, fascia, -recess, "DisplayGlass")
-        for k in range(panels):
-            x = a + (b - a) * (k + 0.5) / panels
-            f.rect(x - 0.24, x + 0.24, fascia - 0.18, fascia - 0.13, depth + 0.12, "Light")
-            if use == "bank":
-                panel_w = (b - a) / panels
-                f.rect(
-                    x - panel_w * 0.45,
-                    x + panel_w * 0.45,
-                    rail + 0.04,
-                    fascia - 0.55,
-                    depth + 0.03,
-                    "ShopGlass",
-                )
-                f.rect(
-                    x - panel_w * 0.39, x + panel_w * 0.39, rail + 0.24, rail + 0.68, depth + 0.64, "Lining"
-                )
-                f.rect(
-                    x - panel_w * 0.4,
-                    x + panel_w * 0.4,
-                    rail + 0.68,
-                    rail + 0.74,
-                    depth + 0.70,
-                    "IndianaStone",
-                )
-            if (k % 3) == 1:
-                f.rect(x - 0.42, x + 0.42, rail + 0.62, rail + 1.52, depth + 0.14, "Granite")
-                f.rect(x - 0.34, x + 0.34, rail + 0.72, rail + 1.42, depth + 0.15, "CoolWindow")
+        if use == "bank":
+            bank_interior(f, a, b, h, fascia, -recess, lamps)
+            # Narrow folded joints between lengths of painted sign casing.
+            casings = max(1, round(span / 2.8))
+            for j in range(1, casings):
+                x = l + span*j/casings
+                f.rect(x-.008, x+.008, fascia+.02, 20.31, .094, "Bronze")
+        else:
+            depth = -2.35
+            f.reveal(a, b, rail, fascia, -recess, depth, "Soffit")
+            f.rect(a, b, rail, fascia, depth, "Lining")
+            for k in range(panels):
+                x = a + (b - a) * (k + 0.5) / panels
+                f.rect(x - 0.24, x + 0.24, fascia - 0.18, fascia - 0.13, depth + 0.12, "Light")
+                if k % 3 == 1:
+                    f.rect(x - 0.42, x + 0.42, rail + 0.62, rail + 1.52, depth + 0.14, "Granite")
+                    f.rect(x - 0.34, x + 0.34, rail + 0.72, rail + 1.42, depth + 0.15, "CoolWindow")
         for k in range(1, panels):
             x = a + (b - a) * k / panels
-            f.rect(x - 0.045, x + 0.045, rail, fascia, -recess + 0.06, "DarkSash")
-        f.rect(a, b, fascia - 0.67, fascia - 0.60, -recess + 0.065, "Bronze")
+            f.slab(x-.036, x+.036, rail, fascia, -recess+.065, -recess-.07, "DarkSash")
+        f.slab(a, b, fascia-.67, fascia-.60, -recess+.07, -recess-.08, "Bronze")
     # The collision line follows the recessed glazing/door, including jambs.
     path = [f.pt(l, h), f.pt(a, h), f.pt(a, h, -recess), f.pt(b, h, -recess), f.pt(b, h), f.pt(r, h)]
     if use != "lobby":
@@ -629,14 +658,14 @@ def build():
     controls = np.concatenate([v[0][:, :2] for o in objects.values() for v in o["GroundSurface"]])
     pts = {k: controls[np.linalg.norm(controls - v, axis=1).argmin()] for k, v in REF["points"].items()}
     count = top_and_roofs(objects, mesh, pts)
-    labels, walls, doors = [], [], []
+    labels, walls, doors, lamps = [], [], [], []
     rows = [(row, Elevation(pts[row["from"]], pts[row["to"]], mesh)) for row in REF["podium"]]
     totals = {s: sum(f.length for r, f in rows if r["street"] == s) for s in REF["ground_frontages"]}
     used = defaultdict(float)
     for row, f in rows:
         street = row["street"]
         if not row["bays"]:
-            shops(f, 0, f.length, "return", grade, labels, walls, doors, False)
+            shops(f, 0, f.length, "return", grade, labels, walls, doors, lamps, False)
             f.rect(0, f.length, 20.45, CAP, 0, "IndianaStone")
             continue
         studios(f, row["bays"])
@@ -649,7 +678,7 @@ def build():
                 tenant = "Playa Bowls"
             # Each continuous signed tenant gets one label on each elevation.
             midpoint = (left + right) * 0.5 * total - start
-            shops(f, l, r, tenant, grade, labels, walls, doors, r - l > 2.4 and 0 <= midpoint < f.length)
+            shops(f, l, r, tenant, grade, labels, walls, doors, lamps, r - l > 2.4 and 0 <= midpoint < f.length)
         used[street] += f.length
     plaza_kiosk(mesh, grade, walls, labels)
     mesh.save(OUTPUT / "1350-broadway.glb")
@@ -666,6 +695,7 @@ def build():
         labels=labels,
         street_walls=walls,
         doors=doors,
+        bank_lamps=lamps,
     )
     (OUTPUT / "1350-street.json").write_text(json.dumps(rounded(info), separators=(",", ":")) + "\n")
     print(
