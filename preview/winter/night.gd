@@ -44,6 +44,8 @@ var hint: Label
 var daylight := false
 var night_environment: Environment
 var day_environment: Environment
+const NIGHT_METER_CEILING := 140.0
+const DAY_METER_CEILING := 440.0
 var night_shadow_range: float
 var street_probe: ReflectionProbe
 var shaded_lamps: Array[Light3D] = []
@@ -145,10 +147,12 @@ func dress_street() -> void:
 		day_environment.glow_hdr_threshold = 2.
 		var meter := CameraAttributesPractical.new()
 		meter.auto_exposure_enabled = true
-		meter.auto_exposure_min_sensitivity = 65.
-		meter.auto_exposure_max_sensitivity = 440.
+		# Limit the evening meter's range so a passing pool of light cannot
+		# darken the whole block. Full sun needs the wider daylight range.
+		meter.auto_exposure_min_sensitivity = 75.
+		meter.auto_exposure_max_sensitivity = NIGHT_METER_CEILING
 		meter.auto_exposure_scale = .19
-		meter.auto_exposure_speed = 1.4
+		meter.auto_exposure_speed = .42
 		city.camera.attributes = meter
 		city.get_viewport().use_taa = true
 		city.shutter = load("res://render/shutter.gd").new()
@@ -589,6 +593,9 @@ func sun_quality(level: int) -> void:
 
 func toggle_daylight() -> void:
 	daylight = not daylight
+	var meter := city.camera.attributes as CameraAttributesPractical
+	if meter:
+		meter.auto_exposure_max_sensitivity = DAY_METER_CEILING if daylight else NIGHT_METER_CEILING
 	city.get_node("Environment").environment = day_environment if daylight else night_environment
 	var sun: DirectionalLight3D = city.get_node("Afternoon")
 	sun.rotation_degrees = Vector3(-28,-36,0) if daylight else Vector3(-58,-68,0)
