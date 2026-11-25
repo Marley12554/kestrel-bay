@@ -70,6 +70,9 @@ struct FInputCheck {
 
         switch (Frame++) {
         case 0:
+            Require(P->PointerReleased && PC->bShowMouseCursor, TEXT("launch captured the cursor"));
+            Key(EKeys::LeftMouseButton,true);
+            Key(EKeys::LeftMouseButton,false);
             InitialScale = P->LookSensitivity;
             UE_LOG(LogTemp, Display, TEXT("Avenue controls: quality=%d sensitivity=%.4f"), P->Quality, InitialScale);
             Require(P->GetCharacterMovement()->IsMovingOnGround(), TEXT("spawn is not grounded"));
@@ -151,6 +154,9 @@ struct FInputCheck {
             break;
         }
         case 10:
+            Require(P->PointerReleased && PC->bShowMouseCursor, TEXT("closing settings captured the cursor"));
+            Key(EKeys::LeftMouseButton,true);
+            Key(EKeys::LeftMouseButton,false);
             P->SetLookSensitivity(InitialScale);
             Require(FVector::Dist2D(Here,LastPosition)<.1 && P->GetVelocity().Size2D()<.1,
                 TEXT("movement resumed without a fresh key press"));

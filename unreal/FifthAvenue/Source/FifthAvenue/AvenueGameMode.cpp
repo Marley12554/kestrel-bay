@@ -533,10 +533,6 @@ void AAvenueWalker::EndPlay(const EEndPlayReason::Type Reason) {
     if (SettingsPanel) {
         if (auto* Viewport=GetWorld()->GetGameViewport()) Viewport->RemoveViewportWidgetContent(SettingsPanel.ToSharedRef());
         SettingsPanel.Reset();
-        if (auto* PC=Cast<APlayerController>(Controller)) {
-            PC->bShowMouseCursor=false;
-            PC->SetInputMode(FInputModeGameOnly());
-        }
     }
     Super::EndPlay(Reason);
 }
@@ -837,6 +833,10 @@ void AAvenueWalker::UpdateStride(float Dt) {
     Camera->SetFieldOfView(85+4*LensMix*Strength);
     Camera->PostProcessSettings.MotionBlurAmount=Quality>=2 ? .10f*RunMix*Strength : 0;
 }
+void AAvenueWalker::PawnClientRestart() {
+    Super::PawnClientRestart();
+    ReleasePointer();
+}
 void AAvenueWalker::ReleasePointer() {
     auto* PC=Cast<APlayerController>(Controller);
     if(!PC || MenuOpen) return;
@@ -920,7 +920,10 @@ void AAvenueWalker::ClearGameInput() {
     if (GetCharacterMovement()->IsMovingOnGround()) GetCharacterMovement()->StopMovementImmediately();
 }
 void AAvenueWalker::OnAppActivationChanged(bool Active) {
-    if (!Active) ClearGameInput();
+    if (!Active) {
+        if (MenuOpen) ClearGameInput();
+        else ReleasePointer();
+    }
 }
 void AAvenueWalker::ToggleMenu() {
     auto* PC=Cast<APlayerController>(Controller);
@@ -937,8 +940,7 @@ void AAvenueWalker::ToggleMenu() {
         SettingsPanel->CommitQuality();
         Viewport->RemoveViewportWidgetContent(SettingsPanel.ToSharedRef());
         SettingsPanel.Reset();
-        PointerReleased=false;
-        PC->SetInputMode(FInputModeGameOnly().SetConsumeCaptureMouseDown(false));
+        ReleasePointer();
         GConfig->Flush(false,GGameUserSettingsIni);
     }
 }
@@ -962,6 +964,8 @@ void AAvenueHUD::DrawHUD() {
         : P->Driven ? TEXT("WASD   Drive      Shift   Handbrake      ← / →   Signals      E   Exit at rest      T   Day / night      R   Reset      Esc   Graphics")
         : TEXT("WASD   Move      Space   Jump      Shift   Sprint      E   Interact      T   Day / night      J   Herald Sq      F   Freecam      R   Reset      Esc   Settings");
     DrawText(Controls,FLinearColor::White,22,Canvas->ClipY-32);
+    DrawText(P->PointerReleased ? TEXT("Click in game to look") : TEXT("V   Release mouse"),
+        FLinearColor::White,22,Canvas->ClipY-58);
     if(P->Driven) DrawText(FString::Printf(TEXT("%s   %d mph"),P->Driven->IsReversing()?TEXT("R"):TEXT("D"),FMath::RoundToInt(FMath::Abs(P->Driven->Speed())*.0223694f)),FLinearColor::White,Canvas->ClipX-155,Canvas->ClipY-78,nullptr,1.6f);
 }
 

@@ -93,8 +93,9 @@ public:
     bool IsInFreecam() const { return Freecam; }
     float FlightMph=95.f;
     bool ShowHints=true;
-    bool PointerReleased=false;
+    bool PointerReleased=true;
     void ResetPrototype();
+    virtual void PawnClientRestart() override;
     void SetLookSensitivity(float Value);
     void ChangeQuality(int NewQuality);
     void CycleFrameTarget();
