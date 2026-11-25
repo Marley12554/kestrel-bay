@@ -1,10 +1,12 @@
 # Fifth Avenue for Unreal
 
-The native desktop project opens at the Fifth Avenue sidewalk near East 33rd Street. Press **J** for the approved 1350 Broadway pilot at Herald Square. The additional production block lies immediately north, between Broadway, Sixth Avenue, West 36th and West 37th Streets. The surrounding Midtown survey supplies the existing city context.
+The native desktop project opens at the Fifth Avenue sidewalk near East 33rd Street. Press **J** to visit 1350 Broadway at Herald Square and press it again to return to your previous position and view. The additional production block lies immediately north, between Broadway, Sixth Avenue, West 36th and West 37th Streets. The surrounding Midtown survey supplies the existing city context.
 
-WASD moves or drives. Space jumps, Shift sprints or applies the handbrake, E enters or exits the nearby sedan, operates a swing door or orders coffee at the Reserve counter. Push into a revolving leaf to turn it. The arrow keys toggle the turn signals. T switches between day and night, F toggles flight, and Escape opens the graphics slider. A fresh user profile starts on Low and subsequent launches load the saved choice.
+WASD moves or drives. Space jumps, Shift sprints or applies the handbrake, E enters or exits the nearby sedan, operates a swing door or orders coffee at the Reserve counter. Push into a revolving leaf to turn it. The arrow keys toggle the turn signals. T switches between day and night, F toggles flight, and Escape opens the graphics and mouse sensitivity sliders. A fresh user profile starts on Low and subsequent launches load the saved choice.
 
 ## Build and measure on Mac
+
+Ordinary play uses a 60 FPS cap. The benchmark runs uncapped. Launch the packaged executable with `-AvenueRoadTest` to exercise the Herald Square round trip and drive across the painted intersection. It records storefront, moon and road screenshots in the game’s Saved directory.
 
 The native assets and level are checked in. From the repository root, run `scripts/unreal/package-mac.sh` with Unreal 5.8 installed under `/Users/Shared/Epic Games/UE_5.8`, or set `UE_ROOT`. The script builds matching editor and game modules before cooking and produces `dist/unreal-mac/Mac/FifthAvenue.app`. A compatible Xcode and Metal shader compiler are required. Unreal's desktop game target also contains the shared Windows gameplay source.
 
@@ -19,11 +21,22 @@ The adjacent block uses NYC CityGML buildings 1015241–1015244 on tax block 812
 ## Rebuild the source assets
 
 1. Prepare the CityGML cache using the existing `scripts/survey` workflow. Bake the extended grade with `scripts/survey/grade.py DEM.tif --core 301008 64816 301208 65016 --out dist/unreal-staging/grade.json` and run `scripts/unreal/west36.py` in the same Python environment.
-2. Set `FIFTH_STAGING` to the absolute `dist/unreal-staging` directory. Run Godot with `--path preview --rendering-method gl_compatibility --script /absolute/path/to/scripts/unreal/export_street.gd` to read the instance transforms and colors. Run `export_people.gd` in the same project, then `python3 scripts/unreal/join_people.py "$FIFTH_STAGING"`. Convert the original Ogg footstep recordings to WAV in that directory, retaining their filenames.
-3. Compile the FifthAvenueEditor target. With `FIFTH_ROOT` set to the checkout, run the Unreal Python commandlet successively on `import_assets.py`, `materials.py`, `build_level.py` and `validate_level.py`. The checked-in level can be packaged without regenerating these assets.
+2. Set `FIFTH_STAGING` to the absolute `dist/unreal-staging` directory. Run Godot in a window with an active renderer. The dummy headless renderer discards instance poses. Use `--path preview --rendering-method gl_compatibility --script /absolute/path/to/scripts/unreal/export_street.gd` to read the instance transforms and colors. Run `export_people.gd` in the same project, then `python3 scripts/unreal/join_people.py "$FIFTH_STAGING"`. Convert the original Ogg footstep recordings to WAV in that directory, retaining their filenames.
+3. Run `python3 scripts/unreal/sky_panorama.py` with NumPy and FFmpeg installed to convert the original street panorama. Compile the FifthAvenueEditor target. With `FIFTH_ROOT` set to the checkout, run the Unreal Python commandlet successively on `import_assets.py`, `materials.py`, `build_level.py` and `validate_level.py`. The checked-in level can be packaged without regenerating these assets.
 
 ## Desktop verification scope
 
-The packaged Mac test uses a 1512 × 982 window on the 14-inch M1 Pro. Low requests 72% internal resolution. The timing window starts after startup and counts each frame over 16.67 milliseconds. Fifth Avenue walking and driving tests averaged about 119 FPS on this hardware. The walking effects pass recorded a 125 ms hitch. With all 75,820 triangles preserved on the adjoining block, its twenty-second street sample measured 9.70 ms mean, 25.14 ms at the 99th percentile, and 1,047.35 ms worst. The effects sample measured 8.86 ms mean, 25.39 ms at the 99th percentile, and 48.30 ms worst. There were 31 and 59 frames over budget, respectively. The cause of the one-second stall is unverified. The strict 60 FPS minimum is still open. The effects test uses local lights, traces and tracers. Playable combat and combat AI from the separate Kestrel Bay prototype are outside the measured workload.
+The repaired Mac package ran in a 1512 × 982 window on the 14-inch M1 Pro using Low (72% internal resolution). The uncapped samples below cover twenty seconds each. A frame above 16.67 ms misses the 60 FPS target.
+
+| Route | Mean (ms) | 99th percentile (ms) | Worst (ms) | Frames above 16.67 ms |
+| --- | ---: | ---: | ---: | ---: |
+| Fifth Avenue driving | 8.45 | 10.05 | 85.99 | 9 |
+| Fifth Avenue driving with effects | 8.37 | 9.58 | 18.12 | 1 |
+| West 36th Street | 8.35 | 9.37 | 23.15 | 2 |
+| West 36th Street with effects | 8.41 | 9.47 | 63.16 | 5 |
+
+The car reached 61.5 mph during the driving benchmark. An earlier West 36th effects run recorded a 1.16-second hitch. Its cause is unverified. Real input-to-display latency, fan speed and sustained combat performance have not been measured.
+
+The packaged regression on both Low and Ultra returned the walker to the starting position and view after two J presses, then drove the sedan 280 feet across the painted intersection. The level check traced the terrain under Herald Square at 289 points on a roughly ten-foot grid. Packaged Low captures showed the Reserve interior, colored sculpture and textured moon.
 
 The pilot includes the existing Midtown survey and one additional detailed block. The ordinary fabric shop is fictional. The landmark bank has an exterior recreation. Remaining differences from the Godot desktop preview include traffic-signal behavior and dynamic snow tracks. Windows packaging, Windows hardware performance, and automatic delivery of desktop builds have not been verified.

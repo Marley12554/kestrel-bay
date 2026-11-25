@@ -31,3 +31,43 @@ materials={m.get_name() for m in block.get_materials() if m}
 require({"M_Buff","M_Window","M_RetailGlazing","IndigoCloth"}.issubset(materials),"Street-facing material assignments")
 require(len(by(u.SkyAtmosphere))==1 and any(a.actor_has_tag("Moon") for a in actors),"Day/night sky")
 u.log(f"FIFTH LEVEL VERIFIED: {len(surveys)} survey tiles, {len(people)} street actors, {fixtures} fixture instances")
+
+# Guard the paths that passed an actor-count check while the pilot still lost glass and blocked paint.
+by_label={a.get_actor_label():a for a in actors}
+paint=[a.get_component_by_class(u.HierarchicalInstancedStaticMeshComponent) for a in by(u.AvenueFixtures)
+       if a!=by_label["Authored walls and posts"]]
+require(all(c.get_collision_enabled()==u.CollisionEnabled.NO_COLLISION for c in paint),"Render fixtures block movement")
+walls=by_label["Authored walls and posts"].get_component_by_class(u.HierarchicalInstancedStaticMeshComponent)
+require(walls.get_instance_count()>150 and walls.get_collision_enabled()!=u.CollisionEnabled.NO_COLLISION,"Source barriers missing")
+require(by_label["Surveyed ground beneath pavement"].static_mesh_component.static_mesh.get_num_triangles(0)>250000,"Terrain lost survey resolution")
+require("M_Enamel" in [m.get_name() for m in by_label["AvenueStreet"].static_mesh_component.get_materials() if m],"Missing enamel vertex colors")
+swing=next(a for a in by(u.AvenueDoor) if not a.get_editor_property("revolving"))
+leaf=swing.get_component_by_class(u.StaticMeshComponent)
+require(len(leaf.get_materials())>=3,"Door glass and hardware collapsed to one material")
+hull=next(c.static_mesh for c in car.get_components_by_class(u.StaticMeshComponent) if c.get_name()=="Sedan")
+require(not hull.get_editor_property("nanite_settings").enabled,"Lossy fallback on the Tesla hull")
+require(any(a.actor_has_tag("NightLamp") and isinstance(a,u.SpotLight) for a in actors),"Street lamp cones missing")
+u.log("FIFTH AUTHORED MATERIALS AND COLLISION VERIFIED")
+
+# A headless Godot dummy renderer once returned identity for every MultiMesh transform.
+# Confirm the persisted Unreal floor spans the actual room and check instance diversity.
+floor_components=[c for c in paint if c.get_material(0) and c.get_material(0).get_name()=="M_ReserveTerrazzo"]
+require(any(max(c.get_instance_transform(0,True).scale3d.to_tuple())>20 for c in floor_components),"Reserve floor lost its room dimensions")
+positions=set()
+for c in paint:
+    for i in range(c.get_instance_count()):
+        positions.add(tuple(round(v,1) for v in c.get_instance_transform(i,True).translation.to_tuple()))
+require(len(positions)>25000,"Street pieces collapsed onto their parent origins")
+u.log(f"FIFTH PLACEMENT VERIFIED: {len(positions)} distinct fixture locations")
+
+# Probe the cooked source of the continuous ground independently of roofs, markings
+# and storefront colliders which could otherwise hide a missing triangle.
+ground=by_label["Surveyed ground beneath pavement"]
+ignored=[a for a in actors if a!=ground]
+for ix in range(-8,9):
+    for iy in range(-8,9):
+        x,y=-39100+300*ix,34100+300*iy
+        hit=u.SystemLibrary.line_trace_single(world,u.Vector(x,y,3000),u.Vector(x,y,-2000),
+            u.TraceTypeQuery.TRACE_TYPE_QUERY1,True,ignored,u.DrawDebugTrace.NONE,False)
+        require(hit is not None and hit.to_tuple()[0],f"Herald Square ground missing at {x}, {y}")
+u.log("FIFTH GROUND VERIFIED: 289 collision probes at Herald Square")

@@ -3,6 +3,7 @@ extends SceneTree
 var batches := {}
 var palette := {}
 var points := {}
+var fixture_finishes := {}
 var prototypes := {}
 var instances := {}
 var doors: Array = []
@@ -13,8 +14,13 @@ func _initialize() -> void:
 	call_deferred("capture")
 
 func capture() -> void:
+	if DisplayServer.get_name()=="headless":
+		push_error("Street export requires a render device. The headless dummy renderer discards MultiMesh instance transforms.")
+		quit(1)
+		return
 	out = OS.get_environment("FIFTH_STAGING")
 	DirAccess.make_dir_recursive_absolute(out)
+	export_grade()
 	var scene = load("res://winter/night.tscn").instantiate()
 	root.add_child(scene)
 	await process_frame
@@ -33,6 +39,31 @@ func capture() -> void:
 	if block.reserve and block.reserve.get("door"):
 		moving.append([block.reserve.door,"Swing"])
 	for item in moving: excluded.append(item[0])
+	var fixed_shapes := []
+	for parent in [block, scene.get_node("HeraldSquare")]:
+		for col in parent.find_children("*","CollisionShape3D",true,false):
+			if col.disabled or not col.get_parent() is StaticBody3D: continue
+			var mobile := false
+			for part in excluded:
+				if part == col.get_parent() or part.is_ancestor_of(col): mobile = true
+			if mobile: continue
+			var form: Shape3D = col.shape
+			var surface: Mesh
+			if form is BoxShape3D:
+				fixed_shapes.append(matrix(col.global_transform*Transform3D(Basis.from_scale(form.size),Vector3.ZERO)))
+			elif form is ConcavePolygonShape3D:
+				var st := SurfaceTool.new()
+				st.begin(Mesh.PRIMITIVE_TRIANGLES)
+				for vertex in form.get_faces(): st.add_vertex(vertex)
+				surface = st.commit()
+			elif form is CylinderShape3D:
+				var tube := CylinderMesh.new()
+				tube.top_radius=form.radius
+				tube.bottom_radius=form.radius
+				tube.height=form.height
+				surface=tube
+			if surface: append(surface,0,col.global_transform,null,Color.WHITE)
+	save_mesh("StreetCollision")
 	collect(block, Transform3D.IDENTITY, excluded)
 	save_mesh("AvenueStreet")
 	for pair in [["Sedan",block.parked_visual], ["YellowCab",block.cab_visual]]:
@@ -70,9 +101,9 @@ func capture() -> void:
 	collect(shop.cup,shop.cup.global_transform.affine_inverse(),[],false)
 	save_mesh("CoffeeHand")
 	var lamps := []
-	for light in winter.find_children("*","Light3D",true,false):
-		if light is OmniLight3D or light is SpotLight3D:
-			lamps.append([vec(light.global_position),[light.light_color.r,light.light_color.g,light.light_color.b],light.light_energy,light.omni_range if light is OmniLight3D else light.spot_range])
+	for light in scene.find_children("*","Light3D",true,false):
+		if (light is OmniLight3D or light is SpotLight3D) and light.is_visible_in_tree():
+			lamps.append([vec(light.global_position),[light.light_color.r,light.light_color.g,light.light_color.b],light.light_energy,light.omni_range if light is OmniLight3D else light.spot_range,vec(-light.global_basis.z),light.spot_angle if light is SpotLight3D else 0.])
 	var counter=shop.to_global(shop.COUNTER+Vector3(.34,1.23,-.14))
 	var barista=shop.server.global_position
 
@@ -90,13 +121,28 @@ func capture() -> void:
 			append(mesh,i,Transform3D.IDENTITY,mesh.surface_get_material(i),Color.WHITE)
 		save_mesh(prototypes[mesh])
 		obj.free()
+	var finish_kinds := {}
+	var swatch := BoxMesh.new()
+	for finish in fixture_finishes:
+		if finish is ShaderMaterial and finish.shader.resource_path.ends_with("/finish.gdshader"):
+			finish_kinds[fixture_finishes[finish]]="Marble" if finish.get_shader_parameter("marble") else "Terrazzo"
+		append(swatch,0,Transform3D.IDENTITY,finish,Color.WHITE)
+	save_mesh("FixtureFinishes")
+	var unique_poses := {}
+	for rows in instances.values():
+		for row in rows: unique_poses[str(row[0])]=true
+	if unique_poses.size()<28000:
+		push_error("Missing street instance poses: "+str(unique_poses.size())+" unique transforms")
+		quit(1)
+		return
+	print("Verified ",unique_poses.size()," distinct fixture transforms")
 	var roads := []
 	for curve in [block.route,block.cross_route]:
 		var path := []
 		for v in curve.get_baked_points(): path.append(vec(block.to_global(v)))
 		roads.append(path)
 	var f = FileAccess.open(out+"/placement.json",FileAccess.WRITE)
-	f.store_string(JSON.stringify({"car":vec(block.parked.global_position),"car_forward":vec(-block.parked.global_basis.z),"player":vec(scene.get_node("Walker").global_position) if scene.has_node("Walker") else vec(block.parked.global_position+Vector3(4,0,0)), "labels":points,"instances":instances,"doors":doors,"walkers":routes,"traffic":roads,"wheel_centers":wheel_centers,"lamps":lamps,"counter":vec(counter),"barista":vec(barista)}))
+	f.store_string(JSON.stringify({"finish_kinds":finish_kinds,"fixed_shapes":fixed_shapes,"car":vec(block.parked.global_position),"car_forward":vec(-block.parked.global_basis.z),"player":vec(scene.get_node("Walker").global_position) if scene.has_node("Walker") else vec(block.parked.global_position+Vector3(4,0,0)), "labels":points,"instances":instances,"doors":doors,"walkers":routes,"traffic":roads,"wheel_centers":wheel_centers,"lamps":lamps,"counter":vec(counter),"barista":vec(barista)}))
 	f.close()
 	print("FIFTH EXPORT COMPLETE")
 	quit()
@@ -124,20 +170,19 @@ func collect(node: Node, origin: Transform3D, excluded: Array, instance_parts: b
 				if absf(pose.basis.determinant())<.0000001: continue
 				var color := m.get_instance_color(j) if m.use_colors else Color.WHITE
 				var override_mat = node.material_override
-				if override_mat is StandardMaterial3D:
+				var finish_name := ""
+				if override_mat and not m.use_colors:
+					if not fixture_finishes.has(override_mat):
+						fixture_finishes[override_mat]="Finish%03d" % fixture_finishes.size()
+					finish_name=fixture_finishes[override_mat]
+				elif override_mat is StandardMaterial3D:
 					color *= override_mat.albedo_color
-				elif override_mat is ShaderMaterial:
-					for param in ["base_color","pane_tint","stone_color","tint"]:
-						var value = override_mat.get_shader_parameter(param)
-						if value is Color:
-							color *= value
-							break
-				instances[label].append([matrix(pose),[color.r,color.g,color.b],m.use_colors or override_mat!=null])
+				instances[label].append([matrix(pose),[color.r,color.g,color.b],m.use_colors,finish_name])
 			return
 		for j in m.instance_count:
 			var tint := m.get_instance_color(j) if m.use_colors else Color.WHITE
 			for i in m.mesh.get_surface_count():
-				append(m.mesh,i,origin*node.global_transform*m.get_instance_transform(j),m.mesh.surface_get_material(i),tint)
+				append(m.mesh,i,origin*node.global_transform*m.get_instance_transform(j),node.material_override if node.material_override else m.mesh.surface_get_material(i),tint)
 	elif node is Label3D:
 		points[str(node.get_path())] = [node.text, vec(node.global_position),vec(node.global_basis.z.normalized()),node.font_size*node.pixel_size]
 	elif node is Sprite3D and node.texture:
@@ -145,6 +190,13 @@ func collect(node: Node, origin: Transform3D, excluded: Array, instance_parts: b
 		quad.size = node.texture.get_size()*node.pixel_size
 		var mat := StandardMaterial3D.new()
 		mat.albedo_texture = node.texture
+		mat.albedo_color = node.modulate
+		if node.region_enabled:
+			var region: Rect2 = node.region_rect
+			var dimensions := Vector2(node.texture.get_size())
+			quad.size=region.size*node.pixel_size
+			mat.uv1_offset=Vector3(region.position.x/dimensions.x,region.position.y/dimensions.y,0)
+			mat.uv1_scale=Vector3(region.size.x/dimensions.x,region.size.y/dimensions.y,1)
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 		append(quad,0,origin*node.global_transform,mat,Color.WHITE)
 	for child in node.get_children(): collect(child,origin,excluded,instance_parts)
@@ -167,6 +219,13 @@ func append(mesh: Mesh, idx: int, pose: Transform3D, material: Material, tint: C
 						replacement.albedo_color = value
 			palette[key]=replacement
 		mat=palette[key]
+	if material is ShaderMaterial and ("glazing" in material.shader.resource_path or "entrance_glass" in material.shader.resource_path):
+		mat.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.cull_mode=BaseMaterial3D.CULL_DISABLED
+		mat.albedo_color=Color(.48,.62,.65,.32)
+		mat.roughness=.14
+	if fixture_finishes.has(material): mat.resource_name=fixture_finishes[material]
+	elif mat.vertex_color_use_as_albedo: mat.resource_name="EnamelVertex"
 	if tint != Color.WHITE:
 		var key := str(mat.get_instance_id())+tint.to_html()
 		if not palette.has(key):
@@ -205,3 +264,36 @@ func save_mesh(label: String) -> void:
 	print("EXPORTED ",label," materials ",batches.size())
 	batches.clear()
 	scene.free()
+
+# Match the exact cell diagonal and vertical datum of the surveyed road surface.
+# The outer ring connects the level's flat surroundings to its zero-height collar.
+func export_grade() -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(out+"/grade.json"))
+	var n := int(data.samples)
+	var scale_px := int(data.curb_pixels_per_metre)
+	var width := (n-1)*scale_px
+	var raw := Marshalls.base64_to_raw(data.navd88_cm).decompress(2*n*n, FileAccess.COMPRESSION_DEFLATE)
+	var curb := Marshalls.base64_to_raw(data.surface_cm).decompress(width*width, FileAccess.COMPRESSION_DEFLATE)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for row in range(-1,n+1):
+		for col in range(-1,n+1):
+			var i := clampi(col,0,n-1)
+			var j := clampi(row,0,n-1)
+			var edge := mini(mini(i,j),n-1-maxi(i,j))
+			var cm := raw.decode_s16(2*(j*n+i))-curb[mini(j*scale_px,width-1)*width+mini(i*scale_px,width-1)]
+			var h := (cm*.01-float(data.datum_navd88_m))*smoothstep(0.,float(data.collar),edge)
+			var x := float(data.origin_en[0]-data.godot_origin_en[0])+i
+			var z := float(data.godot_origin_en[1]-data.origin_en[1])-j
+			if col==-1: x=-1075.
+			if col==n: x=1075.
+			if row==-1: z=1225.
+			if row==n: z=-1225.
+			st.set_normal(Vector3.UP)
+			st.add_vertex(Vector3(x,h-.065,z))
+			if row>=0 and col>=0:
+				var d := (row+1)*(n+2)+col+1
+				var a := d-(n+2)-1
+				for k in [a,d,a+1,a,d-1,d]: st.add_index(k)
+	append(st.commit(),0,Transform3D.IDENTITY,null,Color.WHITE)
+	save_mesh("GradedBase")

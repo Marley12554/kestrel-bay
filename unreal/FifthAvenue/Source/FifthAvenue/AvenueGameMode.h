@@ -30,6 +30,11 @@ private:
     UPROPERTY() TArray<TObjectPtr<UAudioComponent>> AudioLayers;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Wheels;
     UPROPERTY() TArray<FVector> Hubs;
+    void UpdateAudio(float Dt,float SpeedMps,float Slip,float Corner,bool Contact);
+    bool Backing=false, Sliding=false, SignalLit=false;
+    float SignedSpeed=0, ShiftWait=0, SteeringVelocity=0, SlipAngle=0;
+    float ScuffAge=0, ScuffDuration=0, ScuffGain=0;
+    int ScuffVoice=0;
     float Spin=0;
     FVector VelocityXY = FVector::ZeroVector;
     float VerticalSpeed = 0, Steering = 0, YawRate = 0, SignalClock = 0;
@@ -47,17 +52,22 @@ public:
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
     bool MenuOpen = false;
     int Quality = 0;
+    float LookSensitivity=1;
+    void SetLookSensitivity(float Value);
     void ChangeQuality(int NewQuality);
     UPROPERTY() TObjectPtr<AAvenueCar> Driven;
 private:
     UPROPERTY() TObjectPtr<UCameraComponent> Camera;
-    float Forward = 0, Side = 0, StepDistance = 0;
+    float Forward = 0, Side = 0, StepDistance = 0, OrbitHold = 0;
     bool Sprint = false, Night = false;
     void DriveOrInteract();
     void ToggleDay();
     void ToggleMenu();
     void ToggleFlight();
     void LookAtHerald();
+    UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> CitySkin;
+    TOptional<FTransform> HeraldReturn;
+    FRotator ReturnLook=FRotator::ZeroRotator;
     void MoveForward(float Value);
     void MoveRight(float Value);
     void LookYaw(float Value);
@@ -65,6 +75,11 @@ private:
     void StartJump();
     void Step();
     void Benchmark(float Delta);
+    void CheckStreet(float Delta);
+    bool RoadTest=false;
+    int RoadStage=0;
+    float TestTime=0;
+    FVector TestStart=FVector::ZeroVector;
     bool Bench=false, Captured=false, DrivingBench=false, BlockBench=false;
     float BenchPeakSpeed=0;
     double BenchStart=0, LastFrame=0, NextBurst=0;

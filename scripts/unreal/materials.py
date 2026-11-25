@@ -45,37 +45,88 @@ v3=u.CustomMaterialOutputType.CMOT_FLOAT3
 v1=u.CustomMaterialOutputType.CMOT_FLOAT1
 m=material("M_Midtown")
 p=node(m,u.MaterialExpressionWorldPosition)
-n=node(m,u.MaterialExpressionPixelNormalWS)
+n=node(m,u.MaterialExpressionVertexInterpolator)
+mel.connect_material_expressions(node(m,u.MaterialExpressionVertexNormalWS),"",n,"")
 c=node(m,u.MaterialExpressionVertexColor)
 # The same grid transform used by the surveyed scene tracks the oblique avenues.
 glass="""
-float2 avenue=float2(dot(P.xy,float2(.873,.488)),dot(P.xy,float2(-.488,.873)))*.01;
-float along=abs(dot(N.xy,float2(.873,.488)))>.7?avenue.y:avenue.x;
-float2 bay=float2(along/2.66,(P.z*.01-.52)/3.55);
-float2 q=abs(frac(bay)-.5),aa=clamp(fwidth(bay),.001,.22);
-float2 edges=1-smoothstep(float2(.31,.33)-aa,float2(.31,.33)+aa,q);
-float pane=edges.x*edges.y;
-float variation=frac(sin(dot(floor(bay),float2(12.9898,78.233)))*43758.5453);
+float2 offset=P.xy*.01-float2(-208.099,573.891);
+float2 street=float2(dot(offset,float2(.873,.488)),dot(offset,float2(-.488,.873)));
+float along=abs(dot(N.xy,float2(.873,.488)))>.7?street.y:street.x;
+float2 bay=float2(along/2.66,(P.z*.01-.52)/3.55), cell=floor(bay), q=frac(bay);
+float2 edges=abs(q-.5),aa=clamp(fwidth(bay),.001,.22);
+float fade=1-smoothstep(.08,.28,max(aa.x,aa.y));
+float2 aperture=1-smoothstep(float2(.315,.313)-aa,float2(.315,.313)+aa,edges);
+float pane=aperture.x*aperture.y*fade;
+float rail=smoothstep(.012,.037,edges.x)*smoothstep(.012,.033,abs(q.y-.58));
+float variation=frac(sin(fmod(dot(cell+floor(street*.009),float2(57.13,97.37)),6.28318))*4375.13);
+float shade=step(.60,variation)*smoothstep(variation*.79,variation*.79+.045,q.y);
+float reveal=max(edges.x/.315,edges.y/.313);
+float lip=(1-smoothstep(.99,1.13,reveal))*smoothstep(.90,.99,reveal)*fade;
+float2 horizontal=normalize(float2(N.y,-N.x)+.00001);
+float2 wallUV=float2(dot(P.xy*.01,horizontal),P.z*.01)*.49;
 """
-inputs={"P":p,"N":n,"C":c,"Road":texture(m,"asphalt_snow_Diffuse"),"Snow":texture(m,"snow_02_Diffuse"),"Brick":texture(m,"buff-running-bond")}
-code=glass+"""
-if(abs(N.z)>.7){
-    if(P.z>1400) return C*.72;
-    float2 uv=P.xy*.0054;
+snow="""
+float2 uv=street*.54;
+float drift=Texture2DSample(DepthMap,DepthMapSampler,street/64.).r;
+float lat=abs(street.x-81.)<9?street.x:street.y+45.8;
+float wheel=abs(frac((lat+.12*sin(street.y*.07+street.x*.09))/3.85)*3.85-1.925);
+float tracks=1-smoothstep(.14,.53,abs(wheel-.78));
+bool road=C.r<.30;
+float cover=road?smoothstep(.57,.83,drift-tracks*.27):smoothstep(.17,.47,drift);
+float water=(1-smoothstep(.21,.65,drift))*.74+tracks*.23;
+float2 powderUV=uv*.65+float2(.32,-.21)*Texture2DSample(DepthMap,DepthMapSampler,street/18.).r;
+"""
+inputs={"P":p,"N":n,"C":c,"DepthMap":texture(m,"snow_depth")}
+surface=glass+snow+"""
+if(abs(N.z)>.68){
+    if(P.z>1400) return lerp(C,float3(.64,.71,.81),.7);
     float3 grit=Texture2DSample(Road,RoadSampler,uv).rgb;
-    float3 snow=Texture2DSample(Snow,SnowSampler,uv*.65).rgb;
-    float sidewalk=step(.42,C.r);
-    float pattern=Texture2DSample(Road,RoadSampler,uv*.037).r;
-    float coverage=smoothstep(.20,.64,pattern+sidewalk*.19);
-    return lerp(grit*lerp(.21,.53,sidewalk),snow*.68,coverage);
+    float3 powder=Texture2DSample(Snow,SnowSampler,powderUV).rgb;
+    float3 base=road?grit*.26:lerp(grit*.67,float3(.21,.20,.19),.44);
+    float2 seam=abs(frac(street/1.63)-.5);
+    if(!road) base*=1-.6*smoothstep(.486,.5,max(seam.x,seam.y));
+    return lerp(base*(1-.40*water),powder*float3(.91,.94,.99),cover);
 }
-float2 wall=float2(along,P.z*.01);
-float3 grain=Texture2DSample(Brick,BrickSampler,wall/2.6).rgb;
-float3 stone=C*(.82+.32*grain.r);
-return lerp(stone,lerp(float3(.022,.032,.044),float3(.095,.13,.16),variation),pane);
+float3 stone=Texture2DSample(Stone,StoneSampler,wallUV).rgb;
+float joints=smoothstep(.014,.045,abs(frac(P.z*.01/.83)-.5));
+float3 wall=C*(.56+.48*dot(stone,float3(.30,.52,.18)))*(.79+.21*joints);
+float2 inside=q-float2(dot(V.xy,horizontal),V.z)*(.09/max(.22,abs(dot(V,N))));
+float back=smoothstep(.17,.26,inside.x)*(1-smoothstep(.74,.83,inside.x));
+float3 glassColor=lerp(float3(.026,.045,.059),float3(.075,.10,.11),smoothstep(.25,.65,inside.y)*back);
+glassColor=lerp(glassColor,float3(.16,.155,.139),shade*.79);
+return lerp(wall,glassColor*lerp(.37,1.,rail),pane)*(1-.30*lip);
 """
-prop(m,snip(m,code,inputs,v3),mp.MP_BASE_COLOR)
-prop(m,snip(m,glass+"return abs(N.z)>.7?.69:lerp(.83,.27,pane);",{"P":p,"N":n},v1),mp.MP_ROUGHNESS)
+prop(m,snip(m,surface,dict(inputs,Road=texture(m,"asphalt_snow_Diffuse"),Snow=texture(m,"snow_02_Diffuse"),
+                         Stone=texture(m,"white_sandstone_blocks_02_diffuse"),V=node(m,u.MaterialExpressionCameraVectorWS)),v3),mp.MP_BASE_COLOR)
+night=node(m,u.MaterialExpressionScalarParameter)
+night.set_editor_property("parameter_name","NightWindows")
+lit=glass+"""
+float3 lamp=lerp(float3(.62,.36,.16),float3(.45,.53,.57),variation);
+return abs(N.z)<.7?Night*lamp*pane*rail*smoothstep(.56,.75,variation)*(.29+.55*q.y)*(1-.75*shade):0;
+"""
+prop(m,snip(m,lit,{"P":p,"N":n,"Night":night},v3),mp.MP_EMISSIVE_COLOR)
+prop(m,snip(m,glass+snow+"""
+if(abs(N.z)>.68 && P.z<1400) return lerp(lerp(Texture2DSample(Rough,RoughSampler,uv).r*.67+.1,.13,water),.84,cover);
+return lerp(.80,lerp(.14,.26,shade),pane);
+""",dict(inputs,Rough=texture(m,"asphalt_snow_Rough")),v1),mp.MP_ROUGHNESS)
+prop(m,snip(m,glass+"return abs(N.z)<.7?.38*pane*rail:0;",{"P":p,"N":n},v1),mp.MP_METALLIC)
+# Use the geometric normal for projection. The normal output cannot depend on its own result.
+normal=n
+m.set_editor_property("tangent_space_normal",False)
+relief=glass+snow+"""
+if(abs(N.z)>.68) {
+    if(P.z>1400) return N;
+    float2 bump=lerp(Texture2DSample(AsphaltN,AsphaltNSampler,uv).rg,Texture2DSample(SnowN,SnowNSampler,powderUV).rg,cover)*2-1;
+    return normalize(N+.35*(float3(.873,.488,0)*bump.x+float3(-.488,.873,0)*bump.y));
+}
+float2 grit=Texture2DSample(StoneN,StoneNSampler,wallUV).rg*2-1;
+float3 alongBay=abs(dot(N.xy,float2(.873,.488)))>.7?float3(-.488,.873,0):float3(.873,.488,0);
+float3 bevel=edges.x/.315>edges.y/.313?alongBay*sign(.5-q.x):float3(0,0,sign(.5-q.y));
+return normalize(N+float3(horizontal*grit.x,grit.y)*.21*(1-pane)+bevel*lip*.88);
+"""
+prop(m,snip(m,relief,dict(inputs,N=normal,AsphaltN=texture(m,"asphalt_snow_nor_gl"),SnowN=texture(m,"snow_02_nor_gl"),
+                          StoneN=texture(m,"white_sandstone_blocks_02_nor_gl")),v3),mp.MP_NORMAL)
 finish(m)
 for name,stock in [("M_Buff","BuffBrick"),("M_OfficePanel","OfficePanel"),("M_Limestone","IndianaStone")]:
     m=material(name)
@@ -152,22 +203,71 @@ for k in range(3):
     parts.append(expr)
 prop(m,snip(m,"return float3(R,G,B);",dict(zip("RGB",parts)),v3),mp.MP_BASE_COLOR)
 finish(m)
+for finish_name,file_name in (("Marble","marble_01"),("Terrazzo","terrazzo_tiles")):
+    m=material("M_Reserve"+finish_name)
+    m.set_editor_property("used_with_instanced_static_meshes",True)
+    color=node(m,u.MaterialExpressionTextureObject)
+    color.set_editor_property("texture",assets.load_asset("/Game/Manhattan/Authored/FixtureFinishes/Textures/"+file_name+"_diff"))
+    rough=texture(m,file_name+"_rough")
+    inputs={"P":node(m,u.MaterialExpressionWorldPosition),"N":node(m,u.MaterialExpressionPixelNormalWS)}
+    plane="float2 uv=abs(N.z)>.7?P.xy:float2(dot(P.xy,float2(.385,1.361)),P.z); uv*=.0053;"
+    detail="float3 t=Texture2DSample(Stone,StoneSampler,uv).rgb; float l=dot(t,float3(.21,.72,.07));"
+    if finish_name=="Terrazzo": detail+="return lerp(t,l.xxx,.74)*float3(1.65,1.61,1.53)+float3(.075,.067,.06);"
+    else: detail+="float vein=1-smoothstep(.08,.28,abs(sin(9*l+uv.x*4.+uv.y*2.5)));return lerp(float3(.039,.033,.029)*(.6+1.6*l),float3(.30,.25,.218),.62*vein);"
+    prop(m,snip(m,plane+detail,dict(inputs,Stone=color),v3),mp.MP_BASE_COLOR)
+    prop(m,snip(m,plane+"return .20+.24*Texture2DSample(Rough,RoughSampler,uv).r;",dict(inputs,Rough=rough),v1),mp.MP_ROUGHNESS)
+    finish(m)
+m=material("M_Enamel")
+prop(m,node(m,u.MaterialExpressionVertexColor),mp.MP_BASE_COLOR)
+rough=node(m,u.MaterialExpressionConstant)
+rough.set_editor_property("r",.32)
+prop(m,rough,mp.MP_ROUGHNESS)
+finish(m)
 m=material("M_Moon")
 m.set_editor_property("shading_model",u.MaterialShadingModel.MSM_UNLIT)
 sample=node(m,u.MaterialExpressionTextureSample)
 sample.set_editor_property("texture",assets.load_asset(folder+"/lroc_color_poles_1k"))
-prop(m,sample,mp.MP_EMISSIVE_COLOR)
+# Orient the near hemisphere toward the street and keep the maria legible as the eye adapts.
+n=node(m,u.MaterialExpressionPixelNormalWS)
+uv=snip(m,"float3 right=normalize(cross(float3(0,0,1),D)); float3 up=cross(D,right); return float2(.5+atan2(dot(N,right),dot(N,-D))/6.283185,.5-asin(clamp(dot(N,up),-1.,1.))/3.14159);",
+        {"N":n,"D":snip(m,"return normalize(float3(-191.,77.,329.));",{},v3)},u.CustomMaterialOutputType.CMOT_FLOAT2)
+mel.connect_material_expressions(uv,"",sample,"UVs")
+lunar=snip(m,"return 3.1*Rock;",{"Rock":(sample,"RGB")},v3)
+adapt=node(m,u.MaterialExpressionEyeAdaptationInverse)
+if not mel.connect_material_expressions(lunar,"",adapt,mel.get_material_expression_input_names(adapt)[0]): raise RuntimeError("Lunar exposure input")
+prop(m,adapt,mp.MP_EMISSIVE_COLOR)
 finish(m)
 u.log("FIFTH MATERIALS COMPLETE")
 
-for path in assets.list_assets("/Game/Manhattan/Parts",recursive=True):
-    if "/Materials/" not in path:continue
-    stock=assets.load_asset(path)
-    if isinstance(stock,u.Material):
-        stock.set_editor_property("used_with_instanced_static_meshes",True)
-        finish(stock)
-    elif isinstance(stock,u.MaterialInstanceConstant):
-        parent=stock.get_editor_property("parent")
-        if isinstance(parent,u.Material) and parent.get_path_name().startswith("/Game/"):
-            parent.set_editor_property("used_with_instanced_static_meshes",True)
-            finish(parent)
+# The glTF importer uses engine/plugin material parents. Their packaged permutations
+# omit instancing. Preserve the parameter hierarchy in project-owned parents.
+parents={}
+def instance_parent(source):
+    key=source.get_path_name()
+    if key in parents: return parents[key]
+    path=folder+"/Instanced/"+source.get_name()
+    dest=assets.load_asset(path) if assets.does_asset_exist(path) else assets.duplicate_asset(key.split(".")[0],path)
+    if isinstance(dest,u.MaterialInstanceConstant):
+        mel.set_material_instance_parent(dest,instance_parent(source.get_editor_property("parent")))
+        mel.update_material_instance(dest)
+    else:
+        dest.set_editor_property("used_with_instanced_static_meshes",True)
+        mel.recompile_material(dest)
+    assets.save_loaded_asset(dest,False)
+    parents[key]=dest
+    return dest
+
+for tree in ("Parts","Authored/FixtureFinishes"):
+    for path in assets.list_assets("/Game/Manhattan/"+tree,recursive=True):
+        if "/Materials/" not in path:continue
+        stock=assets.load_asset(path)
+        if isinstance(stock,u.Material):
+            if not stock.get_editor_property("used_with_instanced_static_meshes"):
+                stock.set_editor_property("used_with_instanced_static_meshes",True)
+                finish(stock)
+        elif isinstance(stock,u.MaterialInstanceConstant):
+            parent=stock.get_editor_property("parent")
+            if not parent.get_path_name().startswith(folder+"/Instanced/"):
+                mel.set_material_instance_parent(stock,instance_parent(parent))
+                mel.update_material_instance(stock)
+                assets.save_loaded_asset(stock,False)
