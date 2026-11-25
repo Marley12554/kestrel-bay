@@ -125,7 +125,17 @@ class Mesh:
             attributes = {"POSITION": pos, "NORMAL": norm}
             if name in ("Window", "WarmWindow", "CoolWindow", "BrightGlass"):
                 pane_uv = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype="<f4")
-                attributes["TEXCOORD_0"] = add(np.tile(pane_uv, (len(verts), 1)), "VEC2", 5126)
+                pane_coords = []
+                for v in verts:
+                    if len(v) == 4:
+                        pane_coords.append(pane_uv)
+                    else:
+                        # Arches have more than four vertices. Project the pane onto
+                        # its horizontal extent and its height in glTF coordinates.
+                        axis = 0 if np.ptp(v[:, 0]) > np.ptp(v[:, 2]) else 2
+                        coords = v[:, [axis, 1]]
+                        pane_coords.append((coords - coords.min(axis=0)) / np.maximum(np.ptp(coords, axis=0), 1e-6))
+                attributes["TEXCOORD_0"] = add(np.concatenate(pane_coords).astype("<f4"), "VEC2", 5126)
             doc["meshes"][0]["primitives"].append(dict(attributes=attributes, indices=index, material=mat))
         doc["buffers"] = [{"byteLength": len(raw)}]
         meta = json.dumps(doc, separators=(",", ":")).encode()

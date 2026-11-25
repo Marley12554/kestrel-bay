@@ -122,12 +122,12 @@ class Tile:
         rgba = bytes([round(((c/255+.055)/1.055)**2.4*255) for c in color] + [tag])
         self.colors.extend(rgba * len(vertices))
 
-def build():
-    grade = Grade()
+def build(grade=None, output=None, exclude_bins=(), tile_type=Tile):
+    grade = grade if grade is not None else Grade()
     grade.build_triangles()
     grade.covered = []
     grade.occupied = Polygon(np.asarray(PILOT["survey_control"]["ring_epsg2263_us_ft"])*SURVEY_FOOT)
-    tiles = defaultdict(Tile)
+    tiles = defaultdict(tile_type)
     for layer in [*LAYERS, "Buildings"]:
         objects = 0
         for _, obj in ET.iterparse(CACHE / (layer+".xml"), events=("end",)):
@@ -136,7 +136,7 @@ def build():
             building = layer == "Buildings"
             if building:
                 bin_id = obj.findtext(".//stringAttribute[@name='building_identification_number']/value")
-                if bin_id in BINS or bin_id == PILOT["plaza_kiosk"]["bin"]:
+                if bin_id in exclude_bins or bin_id in BINS or bin_id == PILOT["plaza_kiosk"]["bin"]:
                     obj.clear()
                     continue
             coordinate = obj.find(".//lowerCorner") if building else obj.find(".//posList")
@@ -196,7 +196,7 @@ def build():
     meta=json.dumps(doc,separators=(',',':')).encode()
     meta+=b' '*(-len(meta)%4)
     blob+=bytes(-len(blob)%4)
-    out=ROOT/"dist/midtown-source/midtown.glb"
+    out=output or ROOT/"dist/midtown-source/midtown.glb"
     with out.open("wb") as f:
         f.write(struct.pack('<4sIIII',b'glTF',2,28+len(meta)+len(blob),len(meta),0x4e4f534a))
         f.write(meta);f.write(struct.pack('<II',len(blob),0x004e4942));f.write(blob)
