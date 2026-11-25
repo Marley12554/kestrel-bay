@@ -97,6 +97,8 @@ public:
     void ResetPrototype();
     void SetLookSensitivity(float Value);
     void ChangeQuality(int NewQuality);
+    void CycleFrameTarget();
+    int FrameTarget = PLATFORM_WINDOWS ? 180 : 60;
     UPROPERTY() TObjectPtr<AAvenueCar> Driven;
 private:
     UPROPERTY() TObjectPtr<UCameraComponent> Camera;

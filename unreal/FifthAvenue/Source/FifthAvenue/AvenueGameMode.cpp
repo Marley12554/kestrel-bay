@@ -47,6 +47,7 @@
 #include "UObject/ConstructorHelpers.h"
 
 namespace {
+constexpr int FrameTargets[] = {60, 80, 120, 144, 180};
 constexpr float WalkSpeedCm = 214.58f;
 constexpr float SprintSpeedCm = 715.26f;
 constexpr float LookDegreesPerCount = .035f;
@@ -476,6 +477,10 @@ void AAvenueWalker::BeginPlay() {
     if (FSlateApplication::IsInitialized())
         FSlateApplication::Get().OnApplicationActivationStateChanged().AddUObject(this, &AAvenueWalker::OnAppActivationChanged);
     if(!GConfig->GetInt(TEXT("FifthAvenue"),TEXT("Quality"),Quality,GGameUserSettingsIni)) Quality=0;
+    int SavedTarget = 0;
+    if (GConfig->GetInt(TEXT("FifthAvenue"), TEXT("FrameTarget"), SavedTarget, GGameUserSettingsIni)
+        && MakeArrayView(FrameTargets).Contains(SavedTarget))
+        FrameTarget = SavedTarget;
     Bench=FParse::Param(FCommandLine::Get(),TEXT("AvenueBench"));
     RoadTest=FParse::Param(FCommandLine::Get(),TEXT("AvenueRoadTest"));
     TArray<AActor*> Clouds;
@@ -541,6 +546,12 @@ void AAvenueWalker::SetLookSensitivity(float Value) {
     LookSensitivity=NewValue;
     GConfig->SetFloat(TEXT("FifthAvenue"),TEXT("LookSensitivity"),LookSensitivity,GGameUserSettingsIni);
 }
+void AAvenueWalker::CycleFrameTarget() {
+    const int Index = MakeArrayView(FrameTargets).Find(FrameTarget);
+    FrameTarget = FrameTargets[(Index + 1) % UE_ARRAY_COUNT(FrameTargets)];
+    GConfig->SetInt(TEXT("FifthAvenue"), TEXT("FrameTarget"), FrameTarget, GGameUserSettingsIni);
+    ChangeQuality(Quality);
+}
 void AAvenueWalker::ChangeQuality(int NewQuality) {
     Quality=FMath::Clamp(NewQuality,0,3);
     if(Driven) Camera->PostProcessSettings.MotionBlurAmount=Quality>=2 ? .08f*MotionLevel : 0.f;
@@ -554,9 +565,13 @@ void AAvenueWalker::ChangeQuality(int NewQuality) {
         IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicRes.MaxScreenPercentage"))->Set(ScaleCeiling,ECVF_SetByGameSetting);
         S->SetResolutionScaleValueEx(ScaleCeiling);
         S->SetDynamicResolutionEnabled(true);
-        S->SetFrameRateLimit(60);
+        S->SetFrameRateLimit(FrameTarget);
+        IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicRes.FrameTimeBudget"))->Set(1000.f / FrameTarget, ECVF_SetByGameSetting);
         S->ApplyNonResolutionSettings();
         if(Bench) IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"))->Set(0.f,ECVF_SetByCode);
+        UE_LOG(LogTemp, Display, TEXT("Fifth Avenue frame target %d, active cap %.1f FPS, GPU budget %.2f ms"),
+            FrameTarget, IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"))->GetFloat(),
+            IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicRes.FrameTimeBudget"))->GetFloat());
         S->SaveSettings();
         GConfig->SetInt(TEXT("FifthAvenue"),TEXT("Quality"),Quality,GGameUserSettingsIni);
         GConfig->Flush(false,GGameUserSettingsIni);
@@ -1084,13 +1099,20 @@ void AAvenueWalker::Benchmark(float Dt) {
         }
     }
     if(Elapsed>=46 && !StressTimes.IsEmpty() && !BaselineTimes.IsEmpty()) {
-        FString Output=TEXT("scenario,frames,mean_ms,p95_ms,p99_ms,worst_ms,over_16_67_ms\n");
+        FString Output=TEXT("scenario,frames,mean_ms,p95_ms,p99_ms,worst_ms,over_16_67_ms,over_12_50_ms,over_8_33_ms,over_5_56_ms\n");
         auto Report=[&Output](const TCHAR* Name,TArray<double>& Samples) {
             Samples.Sort();
-            double Sum=0; int Late=0;
-            for(double Ms:Samples) { Sum+=Ms; Late+=Ms>1000./60.; }
+            double Sum = 0;
+            int Late60 = 0, Late80 = 0, Late120 = 0, Late180 = 0;
+            for (double Ms : Samples) {
+                Sum += Ms;
+                Late60 += Ms > 1000. / 60.;
+                Late80 += Ms > 1000. / 80.;
+                Late120 += Ms > 1000. / 120.;
+                Late180 += Ms > 1000. / 180.;
+            }
             const int Last=Samples.Num()-1;
-            Output+=FString::Printf(TEXT("%s,%d,%.3f,%.3f,%.3f,%.3f,%d\n"),Name,Samples.Num(),Sum/Samples.Num(),Samples[FMath::CeilToInt(.95*Last)],Samples[FMath::CeilToInt(.99*Last)],Samples.Last(),Late);
+            Output+=FString::Printf(TEXT("%s,%d,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%d\n"),Name,Samples.Num(),Sum/Samples.Num(),Samples[FMath::CeilToInt(.95*Last)],Samples[FMath::CeilToInt(.99*Last)],Samples.Last(),Late60,Late80,Late120,Late180);
         };
         Report(DrivingBench?TEXT("driving"):(BlockBench?TEXT("west36"):TEXT("street")),BaselineTimes);
         Report(DrivingBench?TEXT("driving_effects"):(BlockBench?TEXT("west36_effects"):TEXT("simulated_shootout")),StressTimes);

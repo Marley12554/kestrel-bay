@@ -3,6 +3,7 @@
 #include "InputCoreTypes.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SSlider.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -48,6 +49,17 @@ void SAvenueSettings::Construct(const FArguments& Args)
                         })
                         .OnMouseCaptureEnd_Lambda([this] { DraggingQuality = false; CommitQuality(); })
                     ]
+                ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 12, 0, 0)
+                [
+                    SNew(SButton)
+                    .Text_Lambda([this] {
+                        return Walker.IsValid() ? FText::Format(NSLOCTEXT("FifthAvenue", "FrameLimit", "Frame rate limit   {0} FPS"), Walker->FrameTarget) : FText::GetEmpty();
+                    })
+                    .OnClicked_Lambda([this] {
+                        if (Walker.IsValid()) Walker->CycleFrameTarget();
+                        return FReply::Handled();
+                    })
                 ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 20, 0, 8)
                 [
