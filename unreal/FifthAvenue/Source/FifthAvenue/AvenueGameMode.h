@@ -9,6 +9,7 @@ class UCameraComponent;
 class UAudioComponent;
 class USoundWave;
 class UBoxComponent;
+class SAvenueSettings;
 
 UCLASS()
 class AAvenueCar : public AActor
@@ -46,13 +47,18 @@ class AAvenueWalker : public ACharacter
 {
     GENERATED_BODY()
 public:
-    AAvenueWalker();
+    AAvenueWalker(const FObjectInitializer& ObjectInitializer);
+    virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     virtual void BeginPlay() override;
     virtual void Tick(float Delta) override;
     virtual void SetupPlayerInputComponent(UInputComponent* Input) override;
     bool MenuOpen = false;
     int Quality = 0;
+    static constexpr float MinLookSensitivity = .0625f;
+    static constexpr float MaxLookSensitivity = 4.f;
     float LookSensitivity=1;
+    void ToggleMenu();
+    void QueueWalkInput();
     void SetLookSensitivity(float Value);
     void ChangeQuality(int NewQuality);
     UPROPERTY() TObjectPtr<AAvenueCar> Driven;
@@ -62,7 +68,11 @@ private:
     bool Sprint = false, Night = false;
     void DriveOrInteract();
     void ToggleDay();
-    void ToggleMenu();
+    void ClearGameInput();
+    void OnAppActivationChanged(bool Active);
+    TSharedPtr<SAvenueSettings> SettingsPanel;
+    UPROPERTY() TArray<TObjectPtr<USoundWave>> ConcreteSteps;
+    UPROPERTY() TArray<TObjectPtr<USoundWave>> SnowSteps;
     void ToggleFlight();
     void LookAtHerald();
     UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> CitySkin;
@@ -85,8 +95,8 @@ private:
     double BenchStart=0, LastFrame=0, NextBurst=0;
     TArray<double> BaselineTimes, StressTimes;
     UPROPERTY() TArray<TObjectPtr<class UPointLightComponent>> Flashes;
-    void StartSprint() { Sprint=true; }
-    void EndSprint() { Sprint=false; }
+    void StartSprint();
+    void EndSprint();
     void LeftSignal() { if(Driven) Driven->Signal(true); }
     void RightSignal() { if(Driven) Driven->Signal(false); }
 };

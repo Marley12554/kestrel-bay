@@ -2,11 +2,13 @@
 
 The native desktop project opens at the Fifth Avenue sidewalk near East 33rd Street. Press **J** to visit 1350 Broadway at Herald Square and press it again to return to your previous position and view. The additional production block lies immediately north, between Broadway, Sixth Avenue, West 36th and West 37th Streets. The surrounding Midtown survey supplies the existing city context.
 
-WASD moves or drives. Space jumps, Shift sprints or applies the handbrake, E enters or exits the nearby sedan, operates a swing door or orders coffee at the Reserve counter. Push into a revolving leaf to turn it. The arrow keys toggle the turn signals. T switches between day and night, F toggles flight, and Escape opens the graphics and mouse sensitivity sliders. A fresh user profile starts on Low and subsequent launches load the saved choice.
+WASD moves or drives. Space jumps, Shift sprints or applies the handbrake, E enters or exits the nearby sedan, operates a swing door or orders coffee at the Reserve counter. Push into a revolving leaf to turn it. The arrow keys toggle the turn signals. T switches between day and night, F toggles flight, and Escape opens the graphics and mouse sensitivity sliders. A fresh user profile starts on Low and subsequent launches load the saved choice. Mouse sensitivity applies to walking and driving. At 100%, a horizontal or vertical movement of 100 raw mouse counts rotates the view 3.5°. The slider offers finer adjustment at the slow end and saves on release.
 
 ## Build and measure on Mac
 
-Ordinary play uses a 60 FPS cap. The benchmark runs uncapped. Launch the packaged executable with `-AvenueRoadTest` to exercise the Herald Square round trip and drive across the painted intersection. It records storefront, moon and road screenshots in the game’s Saved directory.
+Ordinary play uses a 60 FPS cap. The benchmark runs uncapped. Launch the packaged executable with `-AvenueRoadTest` to exercise the Herald Square round trip and drive across the painted intersection. It records storefront, moon and road screenshots in the game’s Saved directory. In a Development build, use `-AvenueInputTest` with a separate `-UserDir` to check first-frame walking and reversal, stopping, simultaneous turn and strafe, pitch direction, and dragging the actual settings slider outside its track. It also prints frame times for two full turns on the selected graphics preset.
+
+The 3D renderer targets a 16.67 ms GPU frame budget. Low can vary from 60% to 72% internal resolution and Ultra from 75% to 100%. Platforms without dynamic resolution use the preset's upper limit. Menus render at the viewport resolution.
 
 The native assets and level are checked in. From the repository root, run `scripts/unreal/package-mac.sh` with Unreal 5.8 installed under `/Users/Shared/Epic Games/UE_5.8`, or set `UE_ROOT`. The script builds matching editor and game modules before cooking and produces `dist/unreal-mac/Mac/FifthAvenue.app`. A compatible Xcode and Metal shader compiler are required. Unreal's desktop game target also contains the shared Windows gameplay source.
 

@@ -1,4 +1,11 @@
 #include "AvenueGameMode.h"
+#if !UE_BUILD_SHIPPING
+#include "Tests/AvenueInputTest.h"
+#endif
+#include "AvenueSettings.h"
+#include "AvenueWalkMovement.h"
+#include "Engine/GameViewportClient.h"
+#include "Framework/Application/SlateApplication.h"
 #include "AvenueStreet.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -34,6 +41,9 @@
 #include "Sound/SoundWave.h"
 
 namespace {
+constexpr float WalkSpeedCm = 214.58f;
+constexpr float SprintSpeedCm = 715.26f;
+constexpr float LookDegreesPerCount = .035f;
 USoundWave* Recording(const FString& Name) {
     return LoadObject<USoundWave>(nullptr,*("/Game/Manhattan/Audio/"+Name+"."+Name));
 }
@@ -243,7 +253,8 @@ void AAvenueCar::UpdateAudio(float Dt,float Speed,float Slip,float Corner,bool C
     }
 }
 
-AAvenueWalker::AAvenueWalker() {
+AAvenueWalker::AAvenueWalker(const FObjectInitializer& ObjectInitializer)
+    : Super(ObjectInitializer.SetDefaultSubobjectClass<UAvenueWalkMovement>(ACharacter::CharacterMovementComponentName)) {
     PrimaryActorTick.bCanEverTick=true;
     GetCapsuleComponent()->InitCapsuleSize(30,87);
     Camera=CreateDefaultSubobject<UCameraComponent>("Eyes");
@@ -251,11 +262,13 @@ AAvenueWalker::AAvenueWalker() {
     Camera->SetRelativeLocation(FVector(0,0,75));
     Camera->bUsePawnControlRotation=true;
     Camera->FieldOfView=85;
+    Camera->PostProcessSettings.bOverride_MotionBlurAmount=true;
+    Camera->PostProcessSettings.MotionBlurAmount=0;
     GetMesh()->SetCastShadow(false);
     GetMesh()->SetOwnerNoSee(true);
     bUseControllerRotationYaw=true;
     auto* Movement=GetCharacterMovement();
-    Movement->MaxWalkSpeed=214.58f;
+    Movement->MaxWalkSpeed=WalkSpeedCm;
     Movement->MaxAcceleration=5400;
     Movement->BrakingDecelerationWalking=5000;
     Movement->GroundFriction=12;
@@ -266,13 +279,22 @@ void AAvenueWalker::BeginPlay() {
     Super::BeginPlay();
     auto* Settings=GEngine->GetGameUserSettings();
     GConfig->GetFloat(TEXT("FifthAvenue"),TEXT("LookSensitivity"),LookSensitivity,GGameUserSettingsIni);
-    LookSensitivity=FMath::Clamp(LookSensitivity,.25f,1.5f);
+    LookSensitivity=FMath::Clamp(LookSensitivity,MinLookSensitivity,MaxLookSensitivity);
+    for (int32 Index=0; Index<5; ++Index) {
+        ConcreteSteps.Add(Recording(FString::Printf(TEXT("footstep_concrete_%03d"), Index)));
+        SnowSteps.Add(Recording(FString::Printf(TEXT("footstep_snow_%03d"), Index)));
+    }
+    if (FSlateApplication::IsInitialized())
+        FSlateApplication::Get().OnApplicationActivationStateChanged().AddUObject(this, &AAvenueWalker::OnAppActivationChanged);
     if(!GConfig->GetInt(TEXT("FifthAvenue"),TEXT("Quality"),Quality,GGameUserSettingsIni)) Quality=0;
     Bench=FParse::Param(FCommandLine::Get(),TEXT("AvenueBench"));
     RoadTest=FParse::Param(FCommandLine::Get(),TEXT("AvenueRoadTest"));
     if(Settings) ChangeQuality(Quality);
     Night=Bench;
     ToggleDay();
+#if !UE_BUILD_SHIPPING
+    if (FParse::Param(FCommandLine::Get(), TEXT("AvenueInputTest"))) StartAvenueInputTest(*this);
+#endif
     if(Bench) {
         BenchStart=LastFrame=FPlatformTime::Seconds();
         BlockBench=FParse::Param(FCommandLine::Get(),TEXT("AvenueBlockBench"));
@@ -289,8 +311,21 @@ void AAvenueWalker::BeginPlay() {
         }
     }
 }
+void AAvenueWalker::EndPlay(const EEndPlayReason::Type Reason) {
+    if (FSlateApplication::IsInitialized())
+        FSlateApplication::Get().OnApplicationActivationStateChanged().RemoveAll(this);
+    if (SettingsPanel) {
+        if (auto* Viewport=GetWorld()->GetGameViewport()) Viewport->RemoveViewportWidgetContent(SettingsPanel.ToSharedRef());
+        SettingsPanel.Reset();
+        if (auto* PC=Cast<APlayerController>(Controller)) {
+            PC->bShowMouseCursor=false;
+            PC->SetInputMode(FInputModeGameOnly());
+        }
+    }
+    Super::EndPlay(Reason);
+}
 void AAvenueWalker::SetLookSensitivity(float Value) {
-    const float NewValue=FMath::Clamp(FMath::GridSnap(Value,.05f),.25f,1.5f);
+    const float NewValue=FMath::Clamp(Value,MinLookSensitivity,MaxLookSensitivity);
     if(FMath::IsNearlyEqual(NewValue,LookSensitivity)) return;
     LookSensitivity=NewValue;
     GConfig->SetFloat(TEXT("FifthAvenue"),TEXT("LookSensitivity"),LookSensitivity,GGameUserSettingsIni);
@@ -301,7 +336,11 @@ void AAvenueWalker::ChangeQuality(int NewQuality) {
         S->SetOverallScalabilityLevel(Quality);
         S->SetShadowQuality(FMath::Max(1,Quality));
         S->SetTextureQuality(FMath::Max(2,Quality));
-        S->SetResolutionScaleValueEx(72.f+Quality*(28.f/3.f));
+        const float ScaleCeiling=72.f+Quality*(28.f/3.f);
+        IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicRes.MinScreenPercentage"))->Set(60.f+Quality*5.f,ECVF_SetByGameSetting);
+        IConsoleManager::Get().FindConsoleVariable(TEXT("r.DynamicRes.MaxScreenPercentage"))->Set(ScaleCeiling,ECVF_SetByGameSetting);
+        S->SetResolutionScaleValueEx(ScaleCeiling);
+        S->SetDynamicResolutionEnabled(true);
         S->SetFrameRateLimit(60);
         S->ApplyNonResolutionSettings();
         if(Bench) IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"))->Set(0.f,ECVF_SetByCode);
@@ -328,28 +367,42 @@ void AAvenueWalker::SetupPlayerInputComponent(UInputComponent* I) {
     I->BindKey(EKeys::Left,IE_Pressed,this,&AAvenueWalker::LeftSignal);
     I->BindKey(EKeys::Right,IE_Pressed,this,&AAvenueWalker::RightSignal);
 }
-void AAvenueWalker::MoveForward(float V) {
-    Forward=V;
-    if(!MenuOpen&&!Driven) AddMovementInput(GetCharacterMovement()->IsFlying()?GetControlRotation().Vector():GetActorForwardVector(),V);
+void AAvenueWalker::MoveForward(float V) { Forward=MenuOpen ? 0.f : V; }
+void AAvenueWalker::MoveRight(float V) { Side=MenuOpen ? 0.f : V; }
+void AAvenueWalker::QueueWalkInput() {
+    if (MenuOpen || Driven || !Controller || !IsLocallyControlled()) return;
+    const FRotator View=GetControlRotation();
+    const FRotator Yaw(0,View.Yaw,0);
+    const FVector Ahead=GetCharacterMovement()->IsFlying() ? View.Vector() : Yaw.Vector();
+    AddMovementInput(Ahead,Forward);
+    AddMovementInput(Yaw.RotateVector(FVector::RightVector),Side);
 }
-void AAvenueWalker::MoveRight(float V) { Side=V; if(!MenuOpen&&!Driven) AddMovementInput(GetActorRightVector(),V); }
+void AAvenueWalker::StartSprint() {
+    if (MenuOpen) return;
+    Sprint=true;
+    GetCharacterMovement()->MaxWalkSpeed=SprintSpeedCm;
+}
+void AAvenueWalker::EndSprint() {
+    Sprint=false;
+    GetCharacterMovement()->MaxWalkSpeed=WalkSpeedCm;
+}
 void AAvenueWalker::LookYaw(float V) {
     if(MenuOpen || V==0) return;
     if(Driven) OrbitHold=1.5f;
-    AddControllerYawInput(V*LookSensitivity*FMath::RadiansToDegrees(Driven?.0034f:.0026f));
+    AddControllerYawInput(V*LookSensitivity*LookDegreesPerCount);
 }
 void AAvenueWalker::LookPitch(float V) {
     if(MenuOpen || V==0) return;
     if(Driven) OrbitHold=1.5f;
-    AddControllerPitchInput(V*LookSensitivity*FMath::RadiansToDegrees(Driven?.0025f:.0026f));
+    AddControllerPitchInput(V*LookSensitivity*LookDegreesPerCount);
 }
 void AAvenueWalker::StartJump() { if(!MenuOpen&&!Driven&&GetCharacterMovement()->IsMovingOnGround()) { Step(); Jump(); } }
 void AAvenueWalker::Step() {
     FHitResult Floor;
     FloorAt(GetWorld(),GetActorLocation(),GetActorLocation()-FVector(0,0,130),Floor,this);
     const bool Snow=Floor.GetActor() && Floor.GetActor()->ActorHasTag("Snow");
-    const FString Name=FString::Printf(TEXT("footstep_%s_%03d"),Snow?TEXT("snow"):TEXT("concrete"),FMath::RandRange(0,4));
-    UGameplayStatics::PlaySoundAtLocation(this,Recording(Name),GetActorLocation(),.48f,FMath::FRandRange(.96f,1.04f));
+    const auto& Sounds=Snow ? SnowSteps : ConcreteSteps;
+    UGameplayStatics::PlaySoundAtLocation(this,Sounds[FMath::RandHelper(Sounds.Num())],GetActorLocation(),.48f,FMath::FRandRange(.96f,1.04f));
 }
 void AAvenueWalker::Tick(float Dt) {
     Super::Tick(Dt);
@@ -384,7 +437,6 @@ void AAvenueWalker::Tick(float Dt) {
         const FVector LookAhead=FRotator(0,Orbit.Yaw,0).Vector()*170*FMath::Cos(FMath::DegreesToRadians(Orbit.Pitch));
         Camera->SetWorldRotation((Pivot+LookAhead-Camera->GetComponentLocation()).Rotation());
     } else {
-        GetCharacterMovement()->MaxWalkSpeed=Sprint?715.26f:214.58f;
         if(GetCharacterMovement()->IsMovingOnGround()) StepDistance+=GetVelocity().Size2D()*Dt;
         if(StepDistance>(Sprint?155:99)) { Step(); StepDistance=0; }
     }
@@ -407,6 +459,7 @@ void AAvenueWalker::DriveOrInteract() {
         GetCharacterMovement()->SetMovementMode(MOVE_Walking);
         Camera->SetRelativeLocation(FVector(0,0,75));
         Camera->bUsePawnControlRotation=true;
+        Camera->PostProcessSettings.bOverride_MotionBlurAmount=true;
         return;
     }
     for(TActorIterator<AAvenueDoor> It(GetWorld());It;++It) {
@@ -421,6 +474,7 @@ void AAvenueWalker::DriveOrInteract() {
         GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         GetCharacterMovement()->DisableMovement();
         Camera->bUsePawnControlRotation=false;
+        Camera->PostProcessSettings.bOverride_MotionBlurAmount=false;
         OrbitHold=0;
         Controller->SetControlRotation(FRotator(-17.76f,Driven->GetActorRotation().Yaw,0));
         break;
@@ -475,44 +529,46 @@ void AAvenueWalker::ToggleDay() {
     }
     for(TActorIterator<ASkyLight> It(GetWorld());It;++It) It->GetLightComponent()->SetIntensity(Night?.16f:650.f);
 }
+void AAvenueWalker::ClearGameInput() {
+    Forward=Side=0;
+    EndSprint();
+    StopJumping();
+    if (auto* PC=Cast<APlayerController>(Controller)) PC->FlushPressedKeys();
+    ConsumeMovementInputVector();
+    if (GetCharacterMovement()->IsMovingOnGround()) GetCharacterMovement()->StopMovementImmediately();
+}
+void AAvenueWalker::OnAppActivationChanged(bool Active) {
+    if (!Active) ClearGameInput();
+}
 void AAvenueWalker::ToggleMenu() {
+    auto* PC=Cast<APlayerController>(Controller);
+    auto* Viewport=GetWorld()->GetGameViewport();
+    if (!PC || !Viewport) return;
+    ClearGameInput();
     MenuOpen=!MenuOpen;
-    if(!MenuOpen) GConfig->Flush(false,GGameUserSettingsIni);
-    if(auto* PC=Cast<APlayerController>(Controller)) {
-        PC->bShowMouseCursor=MenuOpen;
-        if(MenuOpen) PC->SetInputMode(FInputModeGameAndUI());
-        else PC->SetInputMode(FInputModeGameOnly());
+    PC->bShowMouseCursor=MenuOpen;
+    if (MenuOpen) {
+        SAssignNew(SettingsPanel, SAvenueSettings).Walker(this);
+        Viewport->AddViewportWidgetContent(SettingsPanel.ToSharedRef(), 10);
+        PC->SetInputMode(FInputModeUIOnly().SetWidgetToFocus(SettingsPanel).SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock));
+    } else {
+        SettingsPanel->CommitQuality();
+        Viewport->RemoveViewportWidgetContent(SettingsPanel.ToSharedRef());
+        SettingsPanel.Reset();
+        PC->SetInputMode(FInputModeGameOnly().SetConsumeCaptureMouseDown(false));
+        GConfig->Flush(false,GGameUserSettingsIni);
     }
 }
 void AAvenueHUD::DrawHUD() {
     Super::DrawHUD();
     auto* P=Cast<AAvenueWalker>(GetOwningPawn());
-    if(!P||!Canvas) return;
-    if(P->MenuOpen) {
-        float X=Canvas->ClipX*.5f-160,Y=Canvas->ClipY*.5f;
-        DrawRect(FLinearColor(.02,.025,.03,.96),X-24,Y-65,368,219);
-        DrawText(TEXT("Graphics quality"),FLinearColor::White,X,Y-45);
-        DrawRect(FLinearColor(.25,.27,.3),X,Y,320,8);
-        DrawRect(FLinearColor(.8,.84,.92),X+P->Quality*104,Y-6,10,20);
-        DrawText(TEXT("Low                   Medium                 High                  Ultra"),FLinearColor::White,X,Y+22);
-        DrawText(FString::Printf(TEXT("Mouse sensitivity   %.0f%%"),100*P->LookSensitivity),FLinearColor::White,X,Y+57);
-        DrawRect(FLinearColor(.25,.27,.3),X,Y+96,320,8);
-        DrawRect(FLinearColor(.8,.84,.92),X+(P->LookSensitivity-.25f)*249.6f,Y+90,10,20);
-        float MX,MY;
-        if(PlayerOwner->IsInputKeyDown(EKeys::LeftMouseButton)&&PlayerOwner->GetMousePosition(MX,MY)&&FMath::Abs(MY-Y)<24&&MX>=X-4&&MX<=X+324) {
-            int Level=FMath::Clamp(FMath::RoundToInt((MX-X)*3/320),0,3);
-            if(Level!=P->Quality) P->ChangeQuality(Level);
-        } else if(PlayerOwner->IsInputKeyDown(EKeys::LeftMouseButton)&&PlayerOwner->GetMousePosition(MX,MY)&&FMath::Abs(MY-Y-100)<20&&MX>=X-4&&MX<=X+324) {
-            P->SetLookSensitivity(.25f+1.25f*(MX-X)/320.f);
-        }
-    } else {
-        if(!P->Driven) for(TActorIterator<AAvenueCoffee> It(GetWorld());It;++It) {
-            if(FVector::DistSquared(It->GetActorLocation(),P->GetActorLocation())<FMath::Square(235.f))
-                DrawText(It->Prompt(),FLinearColor::White,Canvas->ClipX*.43,Canvas->ClipY*.62);
-        }
-        DrawText(TEXT("WASD   Move / drive      E   Interact      T   Day / night      J   Herald Square      Esc   Graphics"),FLinearColor::White,22,Canvas->ClipY-32);
-        if(P->Driven) DrawText(FString::Printf(TEXT("%d mph"),FMath::RoundToInt(FMath::Abs(P->Driven->Speed())*.0223694f)),FLinearColor::White,Canvas->ClipX-130,Canvas->ClipY-78,nullptr,1.6f);
+    if(!P || P->MenuOpen || !Canvas) return;
+    if(!P->Driven) for(TActorIterator<AAvenueCoffee> It(GetWorld());It;++It) {
+        if(FVector::DistSquared(It->GetActorLocation(),P->GetActorLocation())<FMath::Square(235.f))
+            DrawText(It->Prompt(),FLinearColor::White,Canvas->ClipX*.43,Canvas->ClipY*.62);
     }
+    DrawText(TEXT("WASD   Move / drive      E   Interact      T   Day / night      J   Herald Square      Esc   Graphics"),FLinearColor::White,22,Canvas->ClipY-32);
+    if(P->Driven) DrawText(FString::Printf(TEXT("%d mph"),FMath::RoundToInt(FMath::Abs(P->Driven->Speed())*.0223694f)),FLinearColor::White,Canvas->ClipX-130,Canvas->ClipY-78,nullptr,1.6f);
 }
 
 AActor* AAvenueGameMode::PlaceSurveyActor(UWorld* TargetWorld,TSubclassOf<AActor> ActorType,FTransform Placement) {
