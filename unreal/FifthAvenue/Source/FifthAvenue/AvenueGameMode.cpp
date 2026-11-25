@@ -3,12 +3,16 @@
 #include "Tests/AvenueInputTest.h"
 #endif
 #include "AvenueSettings.h"
+#include "AvenueSnow.h"
 #include "AvenueWalkMovement.h"
 #include "Engine/GameViewportClient.h"
 #include "Framework/Application/SlateApplication.h"
 #include "AvenueStreet.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Components/SpotLightComponent.h"
+#include "Components/PoseableMeshComponent.h"
+#include "Components/TextRenderComponent.h"
 #include "Animation/AnimSequence.h"
 #include "Engine/SkeletalMesh.h"
 #include "Misc/FileHelper.h"
@@ -21,6 +25,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/SkyLightComponent.h"
@@ -39,6 +44,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundWave.h"
+#include "UObject/ConstructorHelpers.h"
 
 namespace {
 constexpr float WalkSpeedCm = 214.58f;
@@ -60,7 +66,7 @@ AAvenueGameMode::AAvenueGameMode() {
 AAvenueCar::AAvenueCar() {
     Chassis=CreateDefaultSubobject<UBoxComponent>("Chassis");
     SetRootComponent(Chassis);
-    Chassis->SetBoxExtent(FVector(222,94,44));
+    Chassis->SetBoxExtent(FVector(222,94,35));
     Chassis->SetCollisionProfileName("BlockAllDynamic");
     Exterior=CreateDefaultSubobject<UStaticMeshComponent>("Sedan");
     Exterior->SetupAttachment(Chassis);
@@ -80,6 +86,58 @@ AAvenueCar::AAvenueCar() {
     Driver->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     Driver->SetVisibility(false);
     Driver->SetCastShadow(false);
+    SeatedDriver=CreateDefaultSubobject<UPoseableMeshComponent>("PedalPose");
+    SeatedDriver->SetupAttachment(Driver);
+    SeatedDriver->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    SeatedDriver->SetCastShadow(false);
+    SeatedDriver->SetVisibility(false);
+    for (int SideIndex : {-1, 1}) {
+        auto* Lamp=CreateDefaultSubobject<USpotLightComponent>(SideIndex<0 ? TEXT("LeftLowBeam") : TEXT("RightLowBeam"));
+        Lamp->SetupAttachment(Chassis);
+        Lamp->SetRelativeLocation(FVector(202,SideIndex*76,6));
+        Lamp->SetRelativeRotation(FRotator(-6,0,0));
+        Lamp->SetLightColor(FLinearColor(.82f,.91f,1.f));
+        Lamp->IntensityUnits=ELightUnits::Lumens;
+        Lamp->SetIntensity(1050);
+        Lamp->SetInnerConeAngle(15);
+        Lamp->SetOuterConeAngle(28);
+        Lamp->SetAttenuationRadius(3800);
+        Lamp->SetCastShadows(false);
+        Lamp->SetVisibility(false);
+        Headlights.Add(Lamp);
+    }
+    RearPlate=CreateDefaultSubobject<UTextRenderComponent>("NYCPlate");
+    RearPlate->SetupAttachment(Chassis);
+    RearPlate->SetRelativeLocation(FVector(-229.8,0,8.3));
+    RearPlate->SetRelativeRotation(FRotator(0,180,0));
+    RearPlate->SetText(FText::FromString(TEXT("NYC")));
+    RearPlate->SetHorizontalAlignment(EHTA_Center);
+    RearPlate->SetVerticalAlignment(EVRTA_TextCenter);
+    RearPlate->SetWorldSize(11);
+    RearPlate->SetTextRenderColor(FColor(24,40,57));
+    RearPlate->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Wind=CreateDefaultSubobject<UAudioComponent>("Airflow");
+    Wind->SetupAttachment(Chassis);
+    Wind->bAutoActivate=false;
+    IndicatorClick=CreateDefaultSubobject<UAudioComponent>("IndicatorClick");
+    IndicatorClick->SetupAttachment(Chassis);
+    IndicatorClick->bAutoActivate=false;
+    IndicatorClick->SetRelativeLocation(FVector(55,-36,32));
+    IndicatorClick->bOverrideAttenuation=true;
+    IndicatorClick->AttenuationOverrides.AttenuationShapeExtents.X=450;
+    IndicatorClick->AttenuationOverrides.FalloffDistance=1600;
+    IndicatorClick->SetVolumeMultiplier(.9f);
+    WheelPowder=CreateDefaultSubobject<UInstancedStaticMeshComponent>("TirePowder");
+    WheelPowder->SetupAttachment(Chassis);
+    WheelPowder->SetAbsolute(true,true,true);
+    WheelPowder->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    WheelPowder->SetCanEverAffectNavigation(false);
+    WheelPowder->SetCastShadow(false);
+    WheelPowder->SetNumCustomDataFloats(4);
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> PowderQuad(TEXT("/Engine/BasicShapes/Plane"));
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> PowderMaterial(TEXT("/Game/Manhattan/Surface/M_WheelPowder"));
+    WheelPowder->SetStaticMesh(PowderQuad.Object);
+    WheelPowder->SetMaterial(0,PowderMaterial.Object);
     const TCHAR* Names[]={TEXT("tesla_forward"),TEXT("tesla_reverse"),TEXT("sedan_road"),TEXT("tire_scuff"),TEXT("tire_scuff_alt")};
     for(const TCHAR* Name:Names) {
         auto* Audio=CreateDefaultSubobject<UAudioComponent>(Name);
@@ -90,6 +148,7 @@ AAvenueCar::AAvenueCar() {
 }
 void AAvenueCar::BeginPlay() {
     Super::BeginPlay();
+    ClickSounds={Recording(TEXT("turn_signal_off")),Recording(TEXT("turn_signal"))};
     for(int32 i=0;i<AudioLayers.Num();++i) {
         UAudioComponent* Audio=AudioLayers[i];
         USoundWave* Wave=Recording(i>=3?FString("tire_scuff"):Audio->GetName());
@@ -102,11 +161,13 @@ void AAvenueCar::BeginPlay() {
         Audio->AttenuationOverrides.FalloffDistance=i<2?4150:8950;
         Audio->SetVolumeMultiplier(.00025f);
     }
-    const FString Prefix=TEXT("/Game/Manhattan/Citizens/sam/sam/SkeletalMeshes/sam");
-    Driver->SetSkeletalMeshAsset(LoadObject<USkeletalMesh>(nullptr,*Prefix));
-    Driver->PlayAnimation(LoadObject<UAnimSequence>(nullptr,*(Prefix+"Sit_Stand")),false);
-    Driver->SetPosition(3,false);
-    Driver->SetPlayRate(0);
+    PoseAvenueDriver(*this,*Driver,*SeatedDriver,TEXT("sam"));
+    const FName Slots[]={TEXT("TeslaHeadlamp"),TEXT("Ln12Mtl"),TEXT("TeslaIndicator")};
+    for (FName Slot:Slots) {
+        int32 Index=Exterior->GetMaterialIndex(Slot);
+        LensMaterials.Add(Index==INDEX_NONE ? nullptr : Exterior->CreateDynamicMaterialInstance(Index));
+    }
+    if (auto* Wave=Recording(TEXT("winter_airflow"))) { Wave->bLooping=true; Wind->SetSound(Wave); }
 }
 void AAvenueCar::SetWheel(int Index,UStaticMesh* Mesh,FVector Center) {
     if(!Wheels.IsValidIndex(Index)) return;
@@ -114,110 +175,223 @@ void AAvenueCar::SetWheel(int Index,UStaticMesh* Mesh,FVector Center) {
     Wheels[Index]->SetRelativeLocation(Center);
     Hubs[Index]=Center;
 }
-void AAvenueCar::ShowDriver(bool Visible) { Driver->SetVisibility(Visible); }
+void AAvenueCar::ShowDriver(bool Visible) {
+    Occupied=Visible;
+    SeatedDriver->SetVisibility(Visible);
+    for (auto& Lamp:Headlights) Lamp->SetVisibility(Visible);
+    if (Visible && Wind->Sound) { Wind->SetVolumeMultiplier(.00025f); Wind->Play(); }
+    else Wind->Stop();
+    UpdateLamps(false);
+}
+void AAvenueCar::UpdateLamps(bool Braking) {
+    if (LensMaterials.Num()!=3) return;
+    if (LensMaterials[0]) LensMaterials[0]->SetScalarParameterValue(TEXT("Level"),Occupied ? 3.f : 0.f);
+    if (LensMaterials[1]) LensMaterials[1]->SetScalarParameterValue(TEXT("Level"),Occupied && Braking ? 5.f : .12f);
+    if (LensMaterials[2]) LensMaterials[2]->SetScalarParameterValue(TEXT("SignalSide"),Occupied && SignalLit ? SignalSide : 0);
+}
 void AAvenueCar::Signal(bool Left) {
     const int Requested=Left?-1:1;
     SignalSide=SignalSide==Requested?0:Requested;
-    SignalClock=0;
+    SignalClock=0; SignalLit=false; SignalTurned=false; SignalYaw=GetActorRotation().Yaw;
 }
 void AAvenueCar::Silence() {
     for(UAudioComponent* Audio:AudioLayers) Audio->Stop();
+    IndicatorClick->Stop();
     VelocityXY=FVector::ZeroVector;
     SignalSide=0;
-    SignedSpeed=ShiftWait=SlipAngle=YawRate=Steering=SteeringVelocity=ScuffDuration=ScuffGain=0;
-    Sliding=Backing=SignalLit=false;
+    SignedSpeed=ShiftWait=SlipAngle=YawRate=Steering=SteerHold=PreviousSteer=ScuffDuration=ScuffGain=0;
+    VerticalSpeed=0; HadSupport=false;
+    Backing=SignalLit=SignalTurned=false;
 }
-void AAvenueCar::Drive(float Delta,float Throttle,float InputSteer,bool Handbrake) {
-    const float Dt=FMath::Min(Delta,.05f);
-    if (!Exterior->GetStaticMesh()) {
-        Exterior->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Manhattan/Street/Sedan/StaticMeshes/Sedan.Sedan")));
+void AAvenueCar::Drive(float Delta, float Throttle, float InputSteer, bool Handbrake, UAvenueSnow& Surface, int Quality)
+{
+#if !UE_BUILD_SHIPPING
+    LastDriveBlocker.Reset();
+#endif
+    // Small steps keep tire impulses and curb contact stable through a render hitch.
+    const float Time = FMath::Min(Delta, .12f);
+    const int32 Steps = FMath::Clamp(FMath::CeilToInt(Time * 90.f), 1, 12);
+    for (int32 Step = 0; Step < Steps; ++Step)
+        MoveOnTires(Time / Steps, Throttle, InputSteer, Handbrake);
+    UpdateTireSurface(Surface,Time,Quality);
+    UpdateAudio(Time, VelocityXY.Size2D() * .01f, SlipAngle, SignedSpeed * YawRate, HasTireContact());
+    UpdateLamps(Handbrake || (Backing ? Throttle > 0 : Throttle < 0));
+}
+
+void AAvenueCar::UpdateDriveSpeed(float Dt, float Throttle, bool Handbrake)
+{
+    const float Pace = FMath::Abs(SignedSpeed);
+    bool Braking = (Throttle < 0 && !Backing) || (Throttle > 0 && Backing);
+    if (Braking && Pace < .035f && !Handbrake) {
+        ShiftWait += Dt;
+        if (ShiftWait >= .30f) { Backing = Throttle < 0; ShiftWait = 0; Braking = false; }
+    } else ShiftWait = 0;
+    if (Braking || Handbrake || FMath::IsNearlyZero(Throttle)) {
+        const float Drag = Braking ? FMath::Lerp(10.5f, 17.f, FMath::SmoothStep(12.f, 38.f, Pace))
+            : (Handbrake ? 5.5f : 1.12f + .001f * Pace * Pace);
+        SignedSpeed = FMath::FInterpConstantTo(SignedSpeed, 0.f, Dt, Drag);
+    } else {
+        const float Limit = Throttle > 0 ? 58.1152f : 5.f;
+        const float Force = (Throttle > 0 ? 5.1f : 2.7f) * FMath::Abs(Throttle);
+        SignedSpeed = FMath::FInterpConstantTo(SignedSpeed, FMath::Sign(Throttle) * Limit, Dt,
+            Force * FMath::Max(.1f, 1.f - FMath::Pow(Pace / Limit, 1.6f)));
     }
-    const FVector Up=FVector::UpVector;
-    FHitResult Floor;
-    const FVector Center=GetActorLocation();
-    const bool HasFloor=FloorAt(GetWorld(),Center+Up*30,Center-Up*100,Floor,this);
-    const bool Grounded=HasFloor && Center.Z-Floor.ImpactPoint.Z<76 && VerticalSpeed<220;
-    // Match the Godot drivetrain in metres and radians until the world-space sweep.
-    const float Speed=FMath::Abs(SignedSpeed);
-    const float PreviousYaw=GetActorRotation().Yaw;
-    if(Grounded) {
-        bool Braking=(Throttle<0 && !Backing)||(Throttle>0 && Backing);
-        if(Braking && Speed<.001f && !Handbrake) {
-            ShiftWait+=Dt;
-            if(ShiftWait>=.30f) { Backing=Throttle<0; ShiftWait=0; Braking=false; }
-        } else ShiftWait=0;
-        if(Braking) {
-            const float Brake=FMath::Lerp(10.5f,17.f,FMath::SmoothStep(12.f,38.f,Speed));
-            SignedSpeed=FMath::FInterpConstantTo(SignedSpeed,0,Dt,Brake*FMath::Abs(Throttle));
-        } else if(Handbrake) {
-            const float Pull=3*FMath::Max(0.f,Throttle)*FMath::Abs(InputSteer)*FMath::SmoothStep(2.f,6.f,SignedSpeed);
-            SignedSpeed=FMath::FInterpConstantTo(SignedSpeed,0,Dt,5.5f+2.7f*FMath::Abs(FMath::Sin(SlipAngle))-Pull);
-        } else if(FMath::Abs(Throttle)>.001f) {
-            const float Limit=Throttle>0?58.1152f:5.f;
-            const float Force=(Throttle>0?5.1f:2.7f)*FMath::Abs(Throttle);
-            SignedSpeed=FMath::FInterpConstantTo(SignedSpeed,FMath::Sign(Throttle)*Limit,Dt,Force*FMath::Max(.1f,1-FMath::Pow(Speed/Limit,1.6f)));
-        } else SignedSpeed=FMath::FInterpConstantTo(SignedSpeed,0,Dt,1.12f+.001f*Speed*Speed);
-        const float Pace=FMath::Abs(SignedSpeed);
-        const float Weight=FMath::SmoothStep(4.5f,12.f,Pace);
-        const float Limit=FMath::Min(FMath::Lerp(.51f,1.f,Weight),FMath::Atan(3.3f/(1+Pace/20)*2.875f/FMath::Max(1.f,Pace)));
-        const float Target=InputSteer*Limit, Tau=FMath::Lerp(.058f,.021f,Weight);
-        const float Offset=Steering-Target, Step=(SteeringVelocity+Offset/Tau)*Dt, Decay=FMath::Exp(-Dt/Tau);
-        Steering=FMath::Clamp(Target+(Offset+Step)*Decay,-Limit,Limit);
-        SteeringVelocity=(SteeringVelocity-Step/Tau)*Decay;
-        const float Drift=Handbrake?FMath::SmoothStep(3.5f,8.f,SignedSpeed)*FMath::Abs(InputSteer):0;
-        Sliding|=Drift>0;
-        float Desired=SignedSpeed*FMath::Tan(Steering)/2.875f*(1+.64f*Drift);
-        const float Grip=10.5f*(Handbrake?FMath::Lerp(.4f,.79f,FMath::Abs(Steering)/Limit):1.f)/FMath::Max(3.f,Pace);
-        if(Sliding) {
-            if(Drift>0 && Desired*SlipAngle<0) Desired=FMath::Lerp(Desired,FMath::Sign(Desired)*Grip,FMath::SmoothStep(.48f,.93f,FMath::Abs(SlipAngle)));
-            else if(!Handbrake) Desired+=FMath::Clamp(SlipAngle*.85f,-.75f,.75f);
-            YawRate=FMath::FInterpConstantTo(YawRate,Desired,Dt,5.8f);
-            SlipAngle=FMath::FInterpConstantTo(FMath::UnwindRadians(SlipAngle-YawRate*Dt),0,Dt,Grip);
-            if(Pace<.1f || (Drift==0 && FMath::IsNearlyZero(SlipAngle) && FMath::IsNearlyEqual(Desired,YawRate))) Sliding=false;
-        } else { YawRate=Desired; SlipAngle=0; }
-        if(Pace<.1f) { YawRate=0; SlipAngle=0; }
-        AddActorWorldRotation(FRotator(0,FMath::RadiansToDegrees(YawRate*Dt),0));
-        VelocityXY=GetActorForwardVector().GetSafeNormal2D().RotateAngleAxis(FMath::RadiansToDegrees(SlipAngle),Up)*SignedSpeed*100;
-        VerticalSpeed=FMath::Clamp(-FVector::DotProduct(Floor.ImpactNormal,VelocityXY)/FMath::Max(.25f,Floor.ImpactNormal.Z),-2200,2200);
-    } else { VerticalSpeed-=980*Dt; }
-    FHitResult Block;
-    FVector Travel=VelocityXY*Dt+Up*(VerticalSpeed*Dt);
-    if(Grounded) Travel.Z+=FMath::Clamp(Floor.ImpactPoint.Z+62-Center.Z,-6.f,9.f);
-    AddActorWorldOffset(Travel,true,&Block);
-    if(Block.bBlockingHit) {
-        if(Block.Normal.Z<.5f) {
-            const FVector Slide=FVector::VectorPlaneProject(VelocityXY,Block.Normal.GetSafeNormal2D());
-            FHitResult Next;
-            AddActorWorldOffset(Slide*Dt*(1-Block.Time),true,&Next);
-            SignedSpeed=FVector::DotProduct(Slide,GetActorForwardVector().GetSafeNormal2D())*.01f;
-            VelocityXY=Slide;
-            if(Block.bStartPenetrating) {
-                SetActorRotation(FRotator(0,PreviousYaw,0));
-                AddActorWorldOffset(Block.Normal*(Block.PenetrationDepth+.25f),false);
-            }
+}
+
+void AAvenueCar::ApplyAxleGrip(float Dt, float Axle, float WheelAngle, float Load, float Grip)
+{
+    // Planar rigid body in metres. Contact speed includes the motion of the axle
+    // around the center of mass. Limit lateral impulse by the supported tire load.
+    const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+    const FVector Right(-Forward.Y, Forward.X, 0);
+    const FVector Lateral = Right * FMath::Cos(WheelAngle) - Forward * FMath::Sin(WheelAngle);
+    const float Lever = Axle * FMath::Cos(WheelAngle);
+    constexpr float InertiaPerMass = 1.55f;
+    const float SideSpeed = FVector::DotProduct(VelocityXY * .01f, Lateral) + Lever * YawRate;
+    const float MaxImpulse = Grip * 9.81f * Load * Dt;
+    const float Impulse = FMath::Clamp(-SideSpeed / (1.f + Lever * Lever / InertiaPerMass), -MaxImpulse, MaxImpulse);
+    VelocityXY += Lateral * (Impulse * 100.f);
+    YawRate += Lever * Impulse / InertiaPerMass;
+}
+
+void AAvenueCar::MoveOnTires(float Dt, float Throttle, float InputSteer, bool Handbrake)
+{
+    if (Dt <= SMALL_NUMBER) return;
+    constexpr float Radius = 34.5f, Droop = 12.f, Bump = 10.5f;
+    const FVector Up = FVector::UpVector;
+    const FVector Center = GetActorLocation();
+    const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+    const FVector Right(-Forward.Y, Forward.X, 0);
+    SignedSpeed = FVector::DotProduct(VelocityXY, Forward) * .01f;
+    const float Pace = FMath::Abs(SignedSpeed);
+    if (InputSteer * PreviousSteer <= 0.f) SteerHold = 0;
+    SteerHold += Dt * FMath::Abs(InputSteer);
+    PreviousSteer = InputSteer;
+    const float Highway = FMath::SmoothStep(14.3f, 32.2f, Pace);
+    const float Held = FMath::SmoothStep(.045f, .51f, SteerHold);
+    const float Strength = Handbrake ? 1.f : FMath::Lerp(1.f, FMath::Lerp(.055f, 1.f, Held), Highway);
+    const float Lock = FMath::Min(.57f, FMath::Atan(2.875f * 6.8f / FMath::Max(1.f, Pace * Pace)) + .026f);
+    const float TargetSteer = InputSteer * Strength * Lock;
+    const float Rate = FMath::Abs(TargetSteer) < FMath::Abs(Steering) ? 2.9f : 1.75f;
+    Steering = FMath::FInterpConstantTo(Steering, TargetSteer, Dt, Rate);
+
+    float Height[4], Deflection[4];
+    bool Contact[4];
+    ContactCount = 0;
+    float SupportSum = 0;
+    const FCollisionQueryParams Query(SCENE_QUERY_STAT(AvenueTire), true, this);
+    for (int I = 0; I < 4; ++I) {
+        const FVector Hub = Exterior->GetComponentTransform().TransformPosition(Hubs[I]) + VelocityXY * Dt;
+        FHitResult Hit;
+        const bool Found = GetWorld()->SweepSingleByChannel(Hit, Hub + Up * (Bump + 23), Hub - Up * (Droop + 6),
+            FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(Radius), Query);
+        Contact[I] = Found && !Hit.bStartPenetrating && Hit.ImpactNormal.Z > .42 && Hit.Location.Z >= Hub.Z - Droop;
+        StreetTires[I]=Contact[I] && Hit.GetActor() && Hit.GetActor()->ActorHasTag(TEXT("CitySkin"));
+        Height[I] = Contact[I] ? Hit.Location.Z : Hub.Z - Droop;
+        Deflection[I] = Height[I] - Hub.Z;
+        if (Contact[I]) { ++ContactCount; SupportSum += Deflection[I]; }
+    }
+    float AccelZ = -980.f;
+    if (ContactCount > 0) {
+        const float Support = Center.Z + SupportSum / ContactCount;
+        const float SupportSpeed = HadSupport ? FMath::Clamp((Support - PreviousSupport) / Dt, -1700.f, 1700.f) : 0.f;
+        PreviousSupport = Support;
+        const float Load = ContactCount * .25f;
+        AccelZ = FMath::Clamp(-980.f + Load * (980.f + 155.f * (Support - Center.Z) + 20.f * (SupportSpeed - VerticalSpeed)), -980.f, 3200.f);
+        const float OldSpeed = SignedSpeed;
+        UpdateDriveSpeed(Dt, Throttle, Handbrake);
+        VelocityXY += Forward * ((SignedSpeed - OldSpeed) * 100.f * Load);
+        const float FrontGrip=1.04f*FMath::Lerp(1.f,.57f,(TireCover[0]+TireCover[1])*.5f);
+        const float RearGrip=(Handbrake?.18f:1.04f)*FMath::Lerp(1.f,.57f,(TireCover[2]+TireCover[3])*.5f);
+        ApplyAxleGrip(Dt, 1.481f, Steering, .25f * (int(Contact[0]) + int(Contact[1])), FrontGrip);
+        ApplyAxleGrip(Dt, -1.391f, 0.f, .25f * (int(Contact[2]) + int(Contact[3])), RearGrip);
+        if (Pace < .04f && VelocityXY.Size2D() < 3.f && FMath::Abs(Throttle) < .01f) {
+            VelocityXY = FVector::ZeroVector;
+            YawRate = 0;
         }
-        else VerticalSpeed=FMath::Max(0.f,VerticalSpeed);
     }
-    if(Grounded) {
-        const FRotator Grade=FRotationMatrix::MakeFromXZ(GetActorForwardVector().GetSafeNormal2D(),Floor.ImpactNormal).Rotator();
-        SetActorRotation(FMath::RInterpTo(GetActorRotation(),Grade,Dt,6));
+    HadSupport = ContactCount > 0;
+    if (ContactCount == 0) YawRate *= FMath::Exp(-.28f * Dt);
+    VerticalSpeed += AccelZ * Dt;
+    float Lift = VerticalSpeed * Dt;
+    if (ContactCount) Lift = FMath::Max(Lift, SupportSum / ContactCount - Bump);
+    FVector Travel = VelocityXY * Dt + Up * Lift;
+    FHitResult Hit;
+    const FQuat Before = GetActorQuat();
+    FRotator Orientation = GetActorRotation();
+    Orientation.Yaw += FMath::RadiansToDegrees(YawRate * Dt);
+    if (ContactCount >= 3) {
+        const FVector Axle = Forward * 287.2f + Up * ((Height[0] + Height[1] - Height[2] - Height[3]) * .5f);
+        const FVector Track = Right * 160.f + Up * ((Height[1] + Height[3] - Height[0] - Height[2]) * .5f);
+        const FRotator Grade = FRotationMatrix::MakeFromZX(FVector::CrossProduct(Axle, Track).GetSafeNormal(),
+            FRotator(0, Orientation.Yaw, 0).Vector()).Rotator();
+        const float Blend = 1.f - FMath::Exp(-12.f * Dt);
+        Orientation.Pitch = FMath::Lerp(Orientation.Pitch, Grade.Pitch, Blend);
+        Orientation.Roll = FMath::Lerp(Orientation.Roll, Grade.Roll, Blend);
     }
-    Spin=FMath::Fmod(Spin+FMath::RadiansToDegrees(SignedSpeed*100*Dt/33.5f),360.f);
-    for(int i=0;i<Wheels.Num();++i) {
-        FHitResult Road;
-        const FVector Hub=Exterior->GetComponentTransform().TransformPosition(Hubs[i]);
-        const bool Contact=FloorAt(GetWorld(),Hub+Up*18,Hub-Up*47,Road,this);
-        const float TravelZ=Contact?FMath::Clamp<float>(Road.ImpactPoint.Z+34-Hub.Z,-8,7):-8;
-        Wheels[i]->SetRelativeLocation(Hubs[i]+Up*TravelZ);
-        Wheels[i]->SetRelativeRotation(FRotator(0,i<2?FMath::RadiansToDegrees(Steering):0.f,-Spin));
+    SetActorLocationAndRotation(Center + Travel, Orientation, true, &Hit);
+    if (Hit.bBlockingHit) {
+        if (Hit.bStartPenetrating) {
+            SetActorRotation(Before);
+            AddActorWorldOffset(Hit.Normal * (Hit.PenetrationDepth + .15), true);
+        }
+        if (Hit.Normal.Z < .50) {
+#if !UE_BUILD_SHIPPING
+            LastDriveBlocker=Hit.GetActor();
+#endif
+            const FVector Normal = Hit.Normal.GetSafeNormal2D();
+            VelocityXY -= Normal * FMath::Min(0., FVector::DotProduct(VelocityXY, Normal));
+            YawRate *= .65f;
+        } else if (VerticalSpeed < 0) VerticalSpeed = 0;
+        AddActorWorldOffset(FVector::VectorPlaneProject(Travel * (1.f - Hit.Time), Hit.Normal), true);
     }
-    UpdateAudio(Dt,FMath::Abs(SignedSpeed),SlipAngle,SignedSpeed*YawRate,Grounded);
+    const FVector Heading = GetActorForwardVector().GetSafeNormal2D();
+    SignedSpeed = FVector::DotProduct(VelocityXY, Heading) * .01f;
+    SlipAngle = FMath::Atan2(FVector::CrossProduct(Heading, VelocityXY).Z, FMath::Max(100., FMath::Abs(SignedSpeed) * 100.));
+    Spin = FMath::Fmod(Spin + FMath::RadiansToDegrees(SignedSpeed * 100.f * Dt / Radius), 360.f);
+    for (int I = 0; I < 4; ++I) {
+        const FTransform Pose = Exterior->GetComponentTransform();
+        const FVector Mount = Pose.TransformPosition(Hubs[I]);
+        Wheels[I]->SetWorldLocation(Mount + Up * FMath::Clamp(float(Height[I] - Mount.Z), -Droop, Bump));
+        Wheels[I]->SetRelativeRotation(FRotator(0, I < 2 ? FMath::RadiansToDegrees(Steering) : 0, -Spin));
+    }
 }
+void AAvenueCar::UpdateTireSurface(UAvenueSnow& Surface,float Dt,int Quality) {
+    const float Motion=FMath::SmoothStep(.65f,7.f,FMath::Abs(SignedSpeed));
+    const float PuffsPerSecond=FMath::Lerp(20.f,48.f,Quality/3.f);
+    bool Dirty=false;
+    for(int I=0;I<Wheels.Num();++I) {
+        const FVector Foot=Wheels[I]->GetComponentLocation()-FVector(0,0,34.5);
+        TireCover[I]=StreetTires[I] ? Surface.Coverage(Foot) : 0.f;
+        const float Rate=Motion*FMath::SmoothStep(.015f,.60f,TireCover[I]);
+        if(Rate>.06f) {
+            PowderClock[I]+=Dt*PuffsPerSecond*Rate;
+            while(PowderClock[I]>=1.f) {
+                PowderClock[I]-=1.f;
+                const FVector Spray=(I%2 ? 1.f : -1.f)*GetActorRightVector()*.5f
+                    -GetActorForwardVector()*(.54f*FMath::Sign(SignedSpeed))+FVector::UpVector*.72f;
+                const FVector Velocity=FMath::VRandCone(Spray.GetSafeNormal(),FMath::DegreesToRadians(22.f))*FMath::FRandRange(120.f,300.f);
+                const FVector Jitter=GetActorRightVector()*FMath::FRandRange(-9.f,9.f)+GetActorForwardVector()*FMath::FRandRange(-10.f,10.f);
+                const FTransform Spawn(Foot+Jitter+FVector(0,0,4));
+                if(NextPuff<WheelPowder->GetInstanceCount()) WheelPowder->UpdateInstanceTransform(NextPuff,Spawn,true,false,true);
+                else WheelPowder->AddInstance(Spawn,true);
+                const float Data[]={float(GetWorld()->GetTimeSeconds()),float(Velocity.X),float(Velocity.Y),float(Velocity.Z)};
+                WheelPowder->SetCustomData(NextPuff,MakeArrayView(Data),false);
+                NextPuff=(NextPuff+1)%96;
+                Dirty=true;
+            }
+        } else PowderClock[I]=0;
+        Surface.Tire(I,Foot,StreetTires[I]);
+    }
+    if(Dirty) WheelPowder->MarkRenderInstancesDirty();
+}
+
 void AAvenueCar::UpdateAudio(float Dt,float Speed,float Slip,float Corner,bool Contact) {
     const float Blend=1-FMath::Exp(-8*Dt);
     const float Low=FMath::SmoothStep(0.f,9.f,Speed);
     const float Reverse=FMath::SmoothStep(0.f,5.f,Speed);
-    const float Road=(.15f*FMath::SmoothStep(0.f,3.5f,Speed)+.18f*FMath::SmoothStep(3.5f,27.f,Speed))*(1+.18f*FMath::Min(1.f,FMath::Abs(Corner)/12));
+    const float Snow=(TireCover[2]+TireCover[3])*.5f;
+    const float Road=(.15f*FMath::SmoothStep(0.f,3.5f,Speed)+.18f*FMath::SmoothStep(3.5f,27.f,Speed))*(1+.18f*FMath::Min(1.f,FMath::Abs(Corner)/12))*FMath::Lerp(1.f,.70f,Snow);
     const float Gain[]={Backing?0:2*FMath::Lerp(.027f,.085f,Low)*(1-FMath::SmoothStep(9.f,11.18f,Speed)),Backing?FMath::Lerp(.085f,.36f,Reverse):0,Contact?2.5f*Road:0};
     const float Pitch[]={1,1+.32f*Reverse,.72f+.5f*FMath::Min(1.f,Speed/58)};
     for(int i=0;i<3;++i) {
@@ -228,12 +402,13 @@ void AAvenueCar::UpdateAudio(float Dt,float Speed,float Slip,float Corner,bool C
     }
     float SideSpeed=Contact?Speed*FMath::Abs(FMath::Sin(Slip)):0;
     float Intensity=SideSpeed/(4+SideSpeed);
-    float Target=.96f*Intensity*FMath::SmoothStep(.15f,1.5f,SideSpeed)*FMath::Lerp(.82f,1.f,FMath::Min(1.f,FMath::Abs(Corner)/10));
+    float Target=2.f*FMath::Lerp(.48f,.25f,Snow)*Intensity*FMath::SmoothStep(.15f,1.5f,SideSpeed)*FMath::Lerp(.82f,1.f,FMath::Min(1.f,FMath::Abs(Corner)/10));
     ScuffGain=FMath::Lerp(ScuffGain,Target,1-FMath::Exp(-Dt*(Target>ScuffGain?12:7)));
     if(ScuffGain>.0005f) {
         ScuffAge+=Dt;
         if(ScuffAge>=ScuffDuration) {
             ScuffVoice=1-ScuffVoice; ScuffAge=0; ScuffDuration=FMath::FRandRange(1.7f,3.4f);
+            ScuffPitch[ScuffVoice]=FMath::FRandRange(.965f,1.035f);
             auto* Voice=AudioLayers[3+ScuffVoice].Get();
             if(Voice->Sound) Voice->Play(FMath::FRandRange(0,FMath::Max(0.f,Voice->Sound->GetDuration()-(ScuffDuration+.65f)*1.35f)));
         }
@@ -241,23 +416,32 @@ void AAvenueCar::UpdateAudio(float Dt,float Speed,float Slip,float Corner,bool C
         for(int i=0;i<2;++i) {
             auto* Voice=AudioLayers[3+i].Get();
             const float Weight=i==ScuffVoice?(AudioLayers[4-i]->IsPlaying()?FMath::Sin(Fade):1):FMath::Cos(Fade);
-            Voice->SetPitchMultiplier(.73f+.57f*Intensity);
+            Voice->SetPitchMultiplier((FMath::Lerp(.73f,.51f,Snow)+.57f*Intensity)*ScuffPitch[i]);
+            FVector Speaker=Voice->GetRelativeLocation();
+            Speaker.Y=FMath::Lerp(Speaker.Y,double(65.f*FMath::Clamp(Corner/5.f,-1.f,1.f)),double(Blend));
+            Voice->SetRelativeLocation(Speaker);
             Voice->SetVolumeMultiplier(FMath::Max(.00025f,Weight*ScuffGain));
             if(i!=ScuffVoice && ScuffAge>=.55f) Voice->Stop();
         }
     } else if(ScuffDuration>0) { AudioLayers[3]->Stop(); AudioLayers[4]->Stop(); ScuffDuration=0; }
+    Wind->SetVolumeMultiplier(FMath::Lerp(Wind->VolumeMultiplier,.50f*FMath::SmoothStep(3.f,45.f,Speed),Blend));
+    Wind->SetPitchMultiplier(.82f+.27f*FMath::Min(1.f,Speed/45.f));
+    SignalTurned |= SignalSide && !Backing && SignalSide*FMath::FindDeltaAngleDegrees(SignalYaw,GetActorRotation().Yaw)>28.f;
+    if (SignalTurned && FMath::Abs(Steering)<.035f && FMath::Abs(PreviousSteer)<.1f) {SignalSide=0; SignalTurned=SignalLit=false;}
     if(SignalSide && (SignalClock-=Dt)<=0) {
         SignalLit=!SignalLit;
-        UGameplayStatics::PlaySound2D(this,Recording(SignalLit?"turn_signal":"turn_signal_off"),.56f);
-        SignalClock=.43f;
+        IndicatorClick->SetSound(ClickSounds[SignalLit?1:0]);
+        IndicatorClick->Play();
+        SignalClock=.38f;
     }
 }
 
 AAvenueWalker::AAvenueWalker(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer.SetDefaultSubobjectClass<UAvenueWalkMovement>(ACharacter::CharacterMovementComponentName)) {
     PrimaryActorTick.bCanEverTick=true;
-    GetCapsuleComponent()->InitCapsuleSize(30,87);
+    GetCapsuleComponent()->InitCapsuleSize(27,86);
     Camera=CreateDefaultSubobject<UCameraComponent>("Eyes");
+    Snow=CreateDefaultSubobject<UAvenueSnow>("StreetSnow");
     Camera->SetupAttachment(GetCapsuleComponent());
     Camera->SetRelativeLocation(FVector(0,0,75));
     Camera->bUsePawnControlRotation=true;
@@ -273,13 +457,18 @@ AAvenueWalker::AAvenueWalker(const FObjectInitializer& ObjectInitializer)
     Movement->BrakingDecelerationWalking=5000;
     Movement->GroundFriction=12;
     Movement->AirControl=.62f;
-    Movement->JumpZVelocity=465;
+    Movement->JumpZVelocity=335;
 }
 void AAvenueWalker::BeginPlay() {
     Super::BeginPlay();
+    for(TActorIterator<AAvenueDoor> It(GetWorld());It;++It) if(It->Revolving) EntryDoors.Add(*It);
     auto* Settings=GEngine->GetGameUserSettings();
     GConfig->GetFloat(TEXT("FifthAvenue"),TEXT("LookSensitivity"),LookSensitivity,GGameUserSettingsIni);
     LookSensitivity=FMath::Clamp(LookSensitivity,MinLookSensitivity,MaxLookSensitivity);
+    GConfig->GetInt(TEXT("FifthAvenue"),TEXT("Motion"),MotionLevel,GGameUserSettingsIni);
+    MotionLevel=FMath::Clamp(MotionLevel,0,2);
+    GetMesh()->SetRelativeLocationAndRotation(FVector(0,0,-86),FRotator(0,-90,0));
+    GetMesh()->SetVisibility(false);
     for (int32 Index=0; Index<5; ++Index) {
         ConcreteSteps.Add(Recording(FString::Printf(TEXT("footstep_concrete_%03d"), Index)));
         SnowSteps.Add(Recording(FString::Printf(TEXT("footstep_snow_%03d"), Index)));
@@ -289,11 +478,31 @@ void AAvenueWalker::BeginPlay() {
     if(!GConfig->GetInt(TEXT("FifthAvenue"),TEXT("Quality"),Quality,GGameUserSettingsIni)) Quality=0;
     Bench=FParse::Param(FCommandLine::Get(),TEXT("AvenueBench"));
     RoadTest=FParse::Param(FCommandLine::Get(),TEXT("AvenueRoadTest"));
+    TArray<AActor*> Clouds;
+    UGameplayStatics::GetAllActorsWithTag(this,TEXT("Snowfall"),Clouds);
+    if(!Clouds.IsEmpty()) {
+        SnowCloud=Clouds[0];
+        auto* Mesh=SnowCloud->FindComponentByClass<UHierarchicalInstancedStaticMeshComponent>();
+        if(Mesh) Flakes=Mesh->CreateDynamicMaterialInstance(0);
+    }
     if(Settings) ChangeQuality(Quality);
     Night=Bench;
     ToggleDay();
+    if(TActorIterator<AAvenueCoffee> It{GetWorld()}) Reserve=*It;
+    if(TActorIterator<AAvenueCar> It{GetWorld()}) Parked=*It;
+    Snow->Initialize(CitySkin);
+    auto StartBed=[this](const TCHAR* Name,float Volume) -> UAudioComponent* {
+        if(auto* W=Recording(Name)) {
+            W->bLooping=true;
+            return UGameplayStatics::SpawnSound2D(this,W,Volume);
+        }
+        return nullptr;
+    };
+    OutdoorBed=StartBed(TEXT("winter_city"),.22f);
+    IndoorBed=StartBed(TEXT("reserve_room"),.001f);
 #if !UE_BUILD_SHIPPING
     if (FParse::Param(FCommandLine::Get(), TEXT("AvenueInputTest"))) StartAvenueInputTest(*this);
+    if (FParse::Param(FCommandLine::Get(), TEXT("AvenueBlockTest"))) StartAvenueBlockTest(*this);
 #endif
     if(Bench) {
         BenchStart=LastFrame=FPlatformTime::Seconds();
@@ -312,6 +521,8 @@ void AAvenueWalker::BeginPlay() {
     }
 }
 void AAvenueWalker::EndPlay(const EEndPlayReason::Type Reason) {
+    if(OutdoorBed) OutdoorBed->Stop();
+    if(IndoorBed) IndoorBed->Stop();
     if (FSlateApplication::IsInitialized())
         FSlateApplication::Get().OnApplicationActivationStateChanged().RemoveAll(this);
     if (SettingsPanel) {
@@ -332,6 +543,8 @@ void AAvenueWalker::SetLookSensitivity(float Value) {
 }
 void AAvenueWalker::ChangeQuality(int NewQuality) {
     Quality=FMath::Clamp(NewQuality,0,3);
+    if(Driven) Camera->PostProcessSettings.MotionBlurAmount=Quality>=2 ? .08f*MotionLevel : 0.f;
+    if(Flakes) Flakes->SetScalarParameterValue(TEXT("Density"),.25f+.25f*Quality);
     if(auto* S=GEngine->GetGameUserSettings()) {
         S->SetOverallScalabilityLevel(Quality);
         S->SetShadowQuality(FMath::Max(1,Quality));
@@ -357,8 +570,13 @@ void AAvenueWalker::SetupPlayerInputComponent(UInputComponent* I) {
     I->BindAxis("Pitch",this,&AAvenueWalker::LookPitch);
     I->BindKey(EKeys::E,IE_Pressed,this,&AAvenueWalker::DriveOrInteract);
     I->BindKey(EKeys::T,IE_Pressed,this,&AAvenueWalker::ToggleDay);
+    I->BindKey(EKeys::R,IE_Pressed,this,&AAvenueWalker::ResetPrototype);
     I->BindKey(EKeys::J,IE_Pressed,this,&AAvenueWalker::LookAtHerald);
     I->BindKey(EKeys::F,IE_Pressed,this,&AAvenueWalker::ToggleFlight);
+    I->BindKey(EKeys::H,IE_Pressed,this,&AAvenueWalker::ToggleHints);
+    I->BindKey(EKeys::B,IE_Pressed,this,&AAvenueWalker::CycleMotion);
+    I->BindKey(EKeys::V,IE_Pressed,this,&AAvenueWalker::ReleasePointer);
+    I->BindKey(EKeys::LeftMouseButton,IE_Pressed,this,&AAvenueWalker::CapturePointer);
     I->BindKey(EKeys::Escape,IE_Pressed,this,&AAvenueWalker::ToggleMenu);
     I->BindKey(EKeys::SpaceBar,IE_Pressed,this,&AAvenueWalker::StartJump);
     I->BindKey(EKeys::SpaceBar,IE_Released,this,&ACharacter::StopJumping);
@@ -370,12 +588,19 @@ void AAvenueWalker::SetupPlayerInputComponent(UInputComponent* I) {
 void AAvenueWalker::MoveForward(float V) { Forward=MenuOpen ? 0.f : V; }
 void AAvenueWalker::MoveRight(float V) { Side=MenuOpen ? 0.f : V; }
 void AAvenueWalker::QueueWalkInput() {
-    if (MenuOpen || Driven || !Controller || !IsLocallyControlled()) return;
+    if (MenuOpen || Driven || Freecam || !Controller || !IsLocallyControlled()) return;
     const FRotator View=GetControlRotation();
     const FRotator Yaw(0,View.Yaw,0);
     const FVector Ahead=GetCharacterMovement()->IsFlying() ? View.Vector() : Yaw.Vector();
     AddMovementInput(Ahead,Forward);
     AddMovementInput(Yaw.RotateVector(FVector::RightVector),Side);
+}
+FVector AAvenueWalker::GuideThroughDoor(FVector Velocity, float Dt) {
+    if (Velocity.IsNearlyZero()) return FVector::ZeroVector;
+    for (auto& Door : EntryDoors)
+        if (FVector::DistSquared2D(GetActorLocation(), Door->GetActorLocation()) < 190.f*190.f)
+            return Door->Guide(*this, Velocity, Dt);
+    return Velocity;
 }
 void AAvenueWalker::StartSprint() {
     if (MenuOpen) return;
@@ -387,31 +612,50 @@ void AAvenueWalker::EndSprint() {
     GetCharacterMovement()->MaxWalkSpeed=WalkSpeedCm;
 }
 void AAvenueWalker::LookYaw(float V) {
-    if(MenuOpen || V==0) return;
+    if(MenuOpen || PointerReleased || V==0) return;
     if(Driven) OrbitHold=1.5f;
     AddControllerYawInput(V*LookSensitivity*LookDegreesPerCount);
 }
 void AAvenueWalker::LookPitch(float V) {
-    if(MenuOpen || V==0) return;
+    if(MenuOpen || PointerReleased || V==0) return;
     if(Driven) OrbitHold=1.5f;
     AddControllerPitchInput(V*LookSensitivity*LookDegreesPerCount);
 }
 void AAvenueWalker::StartJump() { if(!MenuOpen&&!Driven&&GetCharacterMovement()->IsMovingOnGround()) { Step(); Jump(); } }
+void AAvenueWalker::Landed(const FHitResult& Hit) {
+    if(GetVelocity().Z< -100 && !Driven && !Freecam) Step();
+    Super::Landed(Hit);
+}
 void AAvenueWalker::Step() {
     FHitResult Floor;
-    FloorAt(GetWorld(),GetActorLocation(),GetActorLocation()-FVector(0,0,130),Floor,this);
-    const bool Snow=Floor.GetActor() && Floor.GetActor()->ActorHasTag("Snow");
-    const auto& Sounds=Snow ? SnowSteps : ConcreteSteps;
-    UGameplayStatics::PlaySoundAtLocation(this,Sounds[FMath::RandHelper(Sounds.Num())],GetActorLocation(),.48f,FMath::FRandRange(.96f,1.04f));
+    if(!FloorAt(GetWorld(),GetActorLocation(),GetActorLocation()-FVector(0,0,150),Floor,this)) return;
+    const FVector Heading=GetVelocity().IsNearlyZero()?GetActorForwardVector():GetVelocity().GetSafeNormal2D();
+    const FVector AcrossFoot(-Heading.Y,Heading.X,0);
+    const bool OnStreet=Floor.GetActor() && Floor.GetActor()->ActorHasTag("CitySkin") && !(Reserve && Reserve->Indoors(Floor.ImpactPoint));
+    const float Cover=OnStreet?Snow->Coverage(Floor.ImpactPoint+AcrossFoot*(LeftFoot?-10.3:10.3)):0.f;
+    LastStep=LastStep<0?FMath::RandHelper(5):(LastStep+FMath::RandRange(1,4))%5;
+    const float Pitch=FMath::FRandRange(.96f,1.04f),Gain=Sprint?.63f:.38f;
+    if(Cover<.995f) UGameplayStatics::PlaySound2D(this,ConcreteSteps[LastStep],Gain*FMath::Sqrt(1-Cover),Pitch);
+    if(Cover>.005f) UGameplayStatics::PlaySound2D(this,SnowSteps[LastStep],Gain*FMath::Sqrt(Cover),Pitch);
+    if(OnStreet) Snow->Footprint(Floor.ImpactPoint,Heading,LeftFoot);
+    LeftFoot=!LeftFoot;
 }
 void AAvenueWalker::Tick(float Dt) {
     Super::Tick(Dt);
     if(RoadTest) CheckStreet(Dt);
     if(Bench) Benchmark(Dt);
     if(MenuOpen) return;
+    if(Freecam) Fly(Dt);
+    const float Inside=Reserve && !Driven && Reserve->Indoors(Camera->GetComponentLocation())?1.f:0.f;
+    RoomMix=FMath::FInterpTo(RoomMix,Inside,Dt,2.5f);
+    if(OutdoorBed) OutdoorBed->SetVolumeMultiplier((Driven?.16f:.22f)*FMath::Lerp(1.f,.20f,RoomMix));
+    if(IndoorBed) IndoorBed->SetVolumeMultiplier(FMath::Lerp(.001f,.20f,RoomMix));
     if(Driven) {
         const float LastYaw=Driven->GetActorRotation().Yaw;
-        Driven->Drive(Dt,Forward,Side,Sprint);
+        const auto* InputPC=Cast<APlayerController>(Controller);
+        const float Pedal=InputPC && InputPC->IsInputKeyDown(EKeys::Down) ? -1.f :
+            InputPC && InputPC->IsInputKeyDown(EKeys::Up) ? 1.f : Forward;
+        Driven->Drive(Dt,Pedal,Side,Sprint,*Snow,Quality);
         const float Pace=FMath::Abs(Driven->Speed())*.01f;
         FRotator Orbit=GetControlRotation();
         auto* PC=Cast<APlayerController>(Controller);
@@ -436,55 +680,170 @@ void AAvenueWalker::Tick(float Dt) {
         Camera->SetWorldLocation(Hit?Wall.Location:Desired);
         const FVector LookAhead=FRotator(0,Orbit.Yaw,0).Vector()*170*FMath::Cos(FMath::DegreesToRadians(Orbit.Pitch));
         Camera->SetWorldRotation((Pivot+LookAhead-Camera->GetComponentLocation()).Rotation());
-    } else {
-        if(GetCharacterMovement()->IsMovingOnGround()) StepDistance+=GetVelocity().Size2D()*Dt;
-        if(StepDistance>(Sprint?155:99)) { Step(); StepDistance=0; }
+    } else if(!Freecam) UpdateStride(Dt);
+    Snow->Update(Freecam?Camera->GetComponentLocation():(Driven?Driven->GetActorLocation():GetActorLocation()),Dt);
+    if(SnowCloud) {
+        const FVector Eye=Camera->GetComponentLocation();
+        const FVector Anchor(FMath::GridSnap(Eye.X,3000.),FMath::GridSnap(Eye.Y,3000.),FMath::GridSnap(Eye.Z,1500.));
+        if(!SnowCloud->GetActorLocation().Equals(Anchor,1)) SnowCloud->SetActorLocation(Anchor);
+    }
+    if(CitySkin && Parked) {
+        const FVector Under=Parked->GetActorLocation()-Parked->GetActorUpVector()*62;
+        const FVector Fwd=Parked->GetActorForwardVector();
+        CitySkin->SetVectorParameterValue(TEXT("CarFoot"),FLinearColor(Under.X,Under.Y,Under.Z));
+        CitySkin->SetVectorParameterValue(TEXT("CarHeading"),FLinearColor(Fwd.X,Fwd.Y,0));
     }
 }
 void AAvenueWalker::DriveOrInteract() {
-    if(MenuOpen) return;
+    if(MenuOpen || Freecam) return;
     if(!Driven) {
         for(TActorIterator<AAvenueCoffee> It(GetWorld());It;++It) {
-            if(!It->Prompt().IsEmpty() && FVector::DistSquared(It->GetActorLocation(),GetActorLocation())<FMath::Square(235.f)) {
+            if(!It->Prompt().IsEmpty() && It->InReach(GetActorLocation()-FVector(0,0,86))) {
                 It->Use(Camera); return;
             }
         }
     }
     if(Driven) {
-        FVector Exit=Driven->GetActorLocation()-Driven->GetActorRightVector()*170+FVector(0,0,75);
-        if(!GetWorld()->FindTeleportSpot(this,Exit,GetActorRotation())) return;
-        SetActorLocation(Exit);
+        if(FMath::Abs(Driven->Speed())>15.f) return;
+        const FVector Location=Driven->GetActorLocation();
+        const FVector Right=Driven->GetActorRightVector().GetSafeNormal2D();
+        const FVector Back=-Driven->GetActorForwardVector().GetSafeNormal2D();
+        const FCollisionQueryParams Query(TEXT("SedanExit"),false,this);
+        bool Clear=false;
+        FVector Exit;
+        for(FVector Offset:{-Right*165,Right*165,Back*297}) {
+            const FVector Beside=Location+Offset;
+            FHitResult Floor;
+            if(!FloorAt(GetWorld(),Beside+FVector(0,0,65),Beside-FVector(0,0,200),Floor,Driven) || Floor.ImpactNormal.Z<.65f) continue;
+            Exit=Floor.ImpactPoint+FVector(0,0,88);
+            if(!GetWorld()->OverlapBlockingTestByChannel(Exit,FQuat::Identity,ECC_Pawn,GetCapsuleComponent()->GetCollisionShape(),Query)) { Clear=true; break; }
+        }
+        if(!Clear) return;
+        SetActorLocation(Exit,false,nullptr,ETeleportType::TeleportPhysics);
+        Controller->SetControlRotation(FRotator(0,Driven->GetActorRotation().Yaw,0));
         Driven->Silence(); Driven->ShowDriver(false); Driven=nullptr;
         GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
         GetCharacterMovement()->SetMovementMode(MOVE_Walking);
         Camera->SetRelativeLocation(FVector(0,0,75));
         Camera->bUsePawnControlRotation=true;
         Camera->PostProcessSettings.bOverride_MotionBlurAmount=true;
+        Camera->PostProcessSettings.MotionBlurAmount=0;
+        if(Reserve) Reserve->ShowHeldCup(true);
         return;
     }
     for(TActorIterator<AAvenueDoor> It(GetWorld());It;++It) {
         if(!It->Revolving && FVector::DistSquared(It->GetActorLocation(),GetActorLocation())<FMath::Square(280.f)) {
-            It->Interact(); return;
+            It->Interact(GetActorLocation()); return;
         }
     }
     for(TActorIterator<AAvenueCar> It(GetWorld());It;++It) {
-        if(FVector::DistSquared(It->GetActorLocation(),GetActorLocation())>FMath::Square(400.f)) continue;
+        if(FVector::DistSquared(It->GetActorLocation(),GetActorLocation())>FMath::Square(580.f)) continue;
         Driven=*It;
         Driven->ShowDriver(true);
         GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         GetCharacterMovement()->DisableMovement();
         Camera->bUsePawnControlRotation=false;
-        Camera->PostProcessSettings.bOverride_MotionBlurAmount=false;
+        Camera->PostProcessSettings.bOverride_MotionBlurAmount=true;
+        Camera->PostProcessSettings.MotionBlurAmount=(MotionLevel>0 && Quality>=2)? .08f*MotionLevel : 0.f;
+        Camera->SetFieldOfView(85);
+        if(Reserve) Reserve->ShowHeldCup(false);
         OrbitHold=0;
         Controller->SetControlRotation(FRotator(-17.76f,Driven->GetActorRotation().Yaw,0));
         break;
     }
 }
 void AAvenueWalker::ToggleFlight() {
-    if(!Driven) GetCharacterMovement()->SetMovementMode(GetCharacterMovement()->IsFlying()?MOVE_Walking:MOVE_Flying);
+    if(MenuOpen || Driven || !Controller) return;
+    ClearGameInput();
+    Freecam=!Freecam;
+    if(Freecam) {
+        BodyLook=GetControlRotation();
+        GetCharacterMovement()->DisableMovement();
+        bUseControllerRotationYaw=false;
+        if(!GetMesh()->GetSkeletalMeshAsset()) {
+            const FString Sam=TEXT("/Game/Manhattan/Citizens/sam/sam/SkeletalMeshes/sam");
+            GetMesh()->SetSkeletalMeshAsset(LoadObject<USkeletalMesh>(nullptr,*Sam));
+            GetMesh()->PlayAnimation(LoadObject<UAnimSequence>(nullptr,*(Sam+"Idle_Standing")),true);
+        }
+        GetMesh()->SetOwnerNoSee(false);
+        GetMesh()->SetVisibility(true);
+        Camera->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+        Camera->SetWorldLocation(GetActorLocation()+GetActorRotation().RotateVector(FVector(-280,150,179)));
+        Controller->SetControlRotation((GetActorLocation()+FVector(0,0,14)-Camera->GetComponentLocation()).Rotation());
+        Camera->SetFieldOfView(85);
+        Camera->PostProcessSettings.MotionBlurAmount=0;
+    } else {
+        GetMesh()->SetOwnerNoSee(true);
+        GetMesh()->SetVisibility(false);
+        Camera->AttachToComponent(GetCapsuleComponent(),FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+        Camera->SetRelativeLocation(FVector(0,0,75));
+        Controller->SetControlRotation(BodyLook);
+        bUseControllerRotationYaw=true;
+        GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+    }
+    if(Reserve) Reserve->ShowHeldCup(!Freecam);
+}
+void AAvenueWalker::Fly(float Dt) {
+    const auto* PC=Cast<APlayerController>(Controller);
+    if(!PC) return;
+    const FRotator View=PC->GetControlRotation();
+    const float Vertical=int(PC->IsInputKeyDown(EKeys::E))-int(PC->IsInputKeyDown(EKeys::Q));
+    const FVector Move=View.Vector()*Forward+FRotationMatrix(View).GetUnitAxis(EAxis::Y)*Side+FVector::UpVector*Vertical;
+    if(Move.IsNearlyZero()) return;
+    FVector Position=Camera->GetComponentLocation()+Move.GetSafeNormal()*FlightMph*44.704f*Dt;
+    Position.X=FMath::Clamp(Position.X,-135000.,135000.);
+    Position.Y=FMath::Clamp(Position.Y,-150000.,150000.);
+    Position.Z=FMath::Clamp(Position.Z,170.,180000.);
+    Camera->SetWorldLocation(Position);
+}
+void AAvenueWalker::CycleMotion() {
+    if(MenuOpen) return;
+    MotionLevel=(MotionLevel+2)%3;
+    GConfig->SetInt(TEXT("FifthAvenue"),TEXT("Motion"),MotionLevel,GGameUserSettingsIni);
+    GConfig->Flush(false,GGameUserSettingsIni);
+    if(Driven) Camera->PostProcessSettings.MotionBlurAmount=Quality>=2 ? .08f*MotionLevel : 0.f;
+}
+void AAvenueWalker::UpdateStride(float Dt) {
+    const float Speed=GetCharacterMovement()->IsMovingOnGround() ? GetVelocity().Size2D() : 0.f;
+    const float Effort=FMath::SmoothStep(WalkSpeedCm,SprintSpeedCm,Speed);
+    const float Stride=FMath::Lerp(98.f,212.f,Effort);
+    const float Distance=Speed*Dt;
+    StepDistance+=Distance;
+    if(StepDistance>=Stride) { Step(); StepDistance=FMath::Fmod(StepDistance,Stride); }
+    WalkPhase=FMath::Fmod(WalkPhase+Distance/Stride,2.f);
+    GaitAmount=FMath::FInterpConstantTo(GaitAmount,FMath::SmoothStep(10.f,WalkSpeedCm,Speed),Dt,8.f);
+    if(GaitAmount==0) WalkPhase=.5f;
+    RunMix=FMath::FInterpConstantTo(RunMix,Effort,Dt,5.f);
+    LensMix=FMath::Max(RunMix,FMath::Lerp(LensMix,RunMix,1-FMath::Exp(-4.8f*Dt)));
+    const float Strength=MotionLevel==2 ? 1.f : .45f*MotionLevel;
+    const float SideBob=FMath::Sin(WalkPhase*PI)*FMath::Lerp(.9f,2.2f,RunMix);
+    const float Vertical=-FMath::Cos(WalkPhase*2*PI)*FMath::Lerp(1.7f,3.4f,RunMix);
+    Camera->SetRelativeLocation(FVector(0,0,75)+FVector(0,SideBob,Vertical)*GaitAmount*Strength);
+    Camera->SetFieldOfView(85+4*LensMix*Strength);
+    Camera->PostProcessSettings.MotionBlurAmount=Quality>=2 ? .10f*RunMix*Strength : 0;
+}
+void AAvenueWalker::ReleasePointer() {
+    auto* PC=Cast<APlayerController>(Controller);
+    if(!PC || MenuOpen) return;
+    ClearGameInput();
+    PointerReleased=true; PC->bShowMouseCursor=true;
+    PC->SetInputMode(FInputModeGameAndUI().SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock).SetHideCursorDuringCapture(false));
+}
+void AAvenueWalker::CapturePointer() {
+    auto* PC=Cast<APlayerController>(Controller);
+    if(!PC || MenuOpen || !PointerReleased) return;
+    PointerReleased=false; PC->bShowMouseCursor=false;
+    PC->SetInputMode(FInputModeGameOnly().SetConsumeCaptureMouseDown(false));
+}
+void AAvenueWalker::ResetPrototype() {
+    if (MenuOpen) return;
+    ClearGameInput();
+    GConfig->Flush(false, GGameUserSettingsIni);
+    const FString Map = UGameplayStatics::GetCurrentLevelName(this, true);
+    UGameplayStatics::OpenLevel(this, FName(*Map));
 }
 void AAvenueWalker::LookAtHerald() {
-    if(Driven) return;
+    if(Driven || Freecam) return;
     if(HeraldReturn.IsSet()) {
         SetActorTransform(HeraldReturn.GetValue(),false,nullptr,ETeleportType::TeleportPhysics);
         Controller->SetControlRotation(ReturnLook);
@@ -504,18 +863,25 @@ void AAvenueWalker::LookAtHerald() {
 void AAvenueWalker::ToggleDay() {
     Night=!Night;
     for(TActorIterator<AStaticMeshActor> It(GetWorld());It;++It) {
+        if(!LampGlass && It->ActorHasTag("LampGlass")) {
+            auto* Component=It->GetStaticMeshComponent();
+            int Slot=Component->GetMaterialIndex(TEXT("StreetLampGlass"));
+            if(Slot!=INDEX_NONE) LampGlass=Component->CreateDynamicMaterialInstance(Slot);
+        }
         if(!It->ActorHasTag("CitySkin")) continue;
         auto* Component=It->GetStaticMeshComponent();
         if(!CitySkin) CitySkin=UMaterialInstanceDynamic::Create(Component->GetMaterial(0),this);
         Component->SetMaterial(0,CitySkin);
     }
     if(CitySkin) CitySkin->SetScalarParameterValue(TEXT("NightWindows"),Night?1.f:0.f);
+    if(LampGlass) LampGlass->SetScalarParameterValue(TEXT("Night"),Night?1.f:0.f);
     TArray<AActor*> Lamps;
     UGameplayStatics::GetAllActorsWithTag(this,TEXT("NightLamp"),Lamps);
-    for(AActor* Lamp:Lamps) Lamp->SetActorHiddenInGame(!Night);
+    for(AActor* Lamp:Lamps)
+        if(auto* Component=Lamp->FindComponentByClass<ULightComponent>()) Component->SetVisibility(Night);
     for(TActorIterator<APostProcessVolume> It(GetWorld());It;++It) {
-        It->Settings.AutoExposureMinBrightness=Night?-.75f:8.f;
-        It->Settings.AutoExposureMaxBrightness=Night?6.f:13.f;
+        It->Settings.AutoExposureMinBrightness=Night?.65f:8.5f;
+        It->Settings.AutoExposureMaxBrightness=Night?3.85f:13.5f;
     }
     TArray<AActor*> Moons;
     UGameplayStatics::GetAllActorsWithTag(this,TEXT("Moon"),Moons);
@@ -525,9 +891,10 @@ void AAvenueWalker::ToggleDay() {
         L->SetAtmosphereSunLight(!Night);
         It->SetActorRotation(Night?FVector(191,-77,-329).Rotation():FRotator(-31,135,0));
         L->SetIntensity(Night?.18f:6500.f);
+        L->SetSpecularScale(Night?.06f:.8f);
         L->SetLightColor(Night?FLinearColor(.40f,.48f,.68f):FLinearColor(1,.90f,.79f));
     }
-    for(TActorIterator<ASkyLight> It(GetWorld());It;++It) It->GetLightComponent()->SetIntensity(Night?.16f:650.f);
+    for(TActorIterator<ASkyLight> It(GetWorld());It;++It) It->GetLightComponent()->SetIntensity(Night?.22f:210.f);
 }
 void AAvenueWalker::ClearGameInput() {
     Forward=Side=0;
@@ -555,6 +922,7 @@ void AAvenueWalker::ToggleMenu() {
         SettingsPanel->CommitQuality();
         Viewport->RemoveViewportWidgetContent(SettingsPanel.ToSharedRef());
         SettingsPanel.Reset();
+        PointerReleased=false;
         PC->SetInputMode(FInputModeGameOnly().SetConsumeCaptureMouseDown(false));
         GConfig->Flush(false,GGameUserSettingsIni);
     }
@@ -562,13 +930,24 @@ void AAvenueWalker::ToggleMenu() {
 void AAvenueHUD::DrawHUD() {
     Super::DrawHUD();
     auto* P=Cast<AAvenueWalker>(GetOwningPawn());
-    if(!P || P->MenuOpen || !Canvas) return;
-    if(!P->Driven) for(TActorIterator<AAvenueCoffee> It(GetWorld());It;++It) {
-        if(FVector::DistSquared(It->GetActorLocation(),P->GetActorLocation())<FMath::Square(235.f))
-            DrawText(It->Prompt(),FLinearColor::White,Canvas->ClipX*.43,Canvas->ClipY*.62);
+    if(!P || P->MenuOpen || !P->ShowHints || !Canvas) return;
+    if(!P->Driven && !P->IsInFreecam()) {
+        if(!P->PointerReleased) {
+            const float X=Canvas->ClipX*.5f,Y=Canvas->ClipY*.5f;
+            DrawRect(FLinearColor(0,0,0,.7f),X-5,Y-1.5f,10,3);
+            DrawRect(FLinearColor(0,0,0,.7f),X-1.5f,Y-5,3,10);
+            DrawRect(FLinearColor::White,X-4,Y-.5f,8,1);
+            DrawRect(FLinearColor::White,X-.5f,Y-4,1,8);
+        }
+        for(TActorIterator<AAvenueCoffee> It(GetWorld());It;++It)
+            if(It->InReach(P->GetActorLocation()-FVector(0,0,86)))
+                DrawText(It->Prompt(),FLinearColor::White,Canvas->ClipX*.50f-42,Canvas->ClipY*.60f);
     }
-    DrawText(TEXT("WASD   Move / drive      E   Interact      T   Day / night      J   Herald Square      Esc   Graphics"),FLinearColor::White,22,Canvas->ClipY-32);
-    if(P->Driven) DrawText(FString::Printf(TEXT("%d mph"),FMath::RoundToInt(FMath::Abs(P->Driven->Speed())*.0223694f)),FLinearColor::White,Canvas->ClipX-130,Canvas->ClipY-78,nullptr,1.6f);
+    const TCHAR* Controls=P->IsInFreecam() ? TEXT("WASD   Fly      E / Q   Up / down      F   Return to body      Esc   Flight speed / graphics")
+        : P->Driven ? TEXT("WASD   Drive      Shift   Handbrake      ← / →   Signals      E   Exit at rest      T   Day / night      R   Reset      Esc   Graphics")
+        : TEXT("WASD   Move      Space   Jump      Shift   Sprint      E   Interact      T   Day / night      J   Herald Sq      F   Freecam      R   Reset      Esc   Settings");
+    DrawText(Controls,FLinearColor::White,22,Canvas->ClipY-32);
+    if(P->Driven) DrawText(FString::Printf(TEXT("%s   %d mph"),P->Driven->IsReversing()?TEXT("R"):TEXT("D"),FMath::RoundToInt(FMath::Abs(P->Driven->Speed())*.0223694f)),FLinearColor::White,Canvas->ClipX-155,Canvas->ClipY-78,nullptr,1.6f);
 }
 
 AActor* AAvenueGameMode::PlaceSurveyActor(UWorld* TargetWorld,TSubclassOf<AActor> ActorType,FTransform Placement) {
@@ -584,7 +963,13 @@ AActor* AAvenueGameMode::PlaceSurveyActor(UWorld* TargetWorld,TSubclassOf<AActor
 void AAvenueWalker::CheckStreet(float Dt) {
     if(!Controller) return;
     TestTime+=FMath::Min(Dt,.05f);
-    if(RoadStage==0 && TestTime<1) return;
+    if(RoadStage==-1) {
+        if(TestTime<2) return;
+        FScreenshotRequest::RequestScreenshot(TEXT("FifthNight.png"),false,false);
+        RoadStage=0;
+        return;
+    }
+    if(RoadStage==0 && TestTime<2.25f) return;
     auto Fail=[this](const TCHAR* Why) {
         UE_LOG(LogTemp,Error,TEXT("Avenue road test failed: %s"),Why);
         RoadTest=false; FPlatformMisc::RequestExitWithStatus(true,1);
@@ -598,6 +983,7 @@ void AAvenueWalker::CheckStreet(float Dt) {
         if(!HeraldReturn.IsSet() || FVector::Dist(Start,GetActorLocation())<10000) { Fail(TEXT("Herald arrival")); return; }
         LookAtHerald();
         if(!Start.Equals(GetActorLocation(),.1f) || !View.Equals(GetControlRotation(),.01f)) { Fail(TEXT("Herald return")); return; }
+        TestTime=1;
         // Look through the authored Reserve swing door, toward the coffee counter.
         SetActorLocation(FVector(-13510,58970,108));
         Controller->SetControlRotation((FVector(-15352,59081,123)-(GetActorLocation()+FVector(0,0,75))).Rotation());

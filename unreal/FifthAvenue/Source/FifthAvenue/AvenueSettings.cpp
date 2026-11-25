@@ -68,9 +68,31 @@ void SAvenueSettings::Construct(const FArguments& Args)
                             return FMath::Loge(Scale / Min) / FMath::Loge(Range);
                         })
                         .OnValueChanged_Lambda([this, Min, Range](float Position) {
-                            if (Walker.IsValid()) Walker->SetLookSensitivity(Min * FMath::Pow(Range, Position));
+                            if (!Walker.IsValid()) return;
+                            const float Scale = Min * FMath::Pow(Range, Position);
+                            // A few physical pixels around unity always select exactly 100%.
+                            Walker->SetLookSensitivity(FMath::Abs(Scale - 1.f) <= .035f ? 1.f : Scale);
                         })
                         .OnMouseCaptureEnd_Lambda([] { GConfig->Flush(false, GGameUserSettingsIni); })
+                    ]
+                ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0, 16, 0, 0)
+                [
+                    SNew(SVerticalBox).Visibility(Walker->IsInFreecam()?EVisibility::Visible:EVisibility::Collapsed)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [
+                        SNew(STextBlock).Text_Lambda([this] {
+                            return FText::FromString(FString::Printf(TEXT("Flight speed   %d mph"),Walker.IsValid()?FMath::RoundToInt(Walker->FlightMph):95));
+                        })
+                    ]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [
+                        SNew(SBox).HeightOverride(32)
+                        [
+                            SNew(SSlider).RequiresControllerLock(false).PreventThrottling(true)
+                            .Value_Lambda([this] { return Walker.IsValid()?FMath::Loge(Walker->FlightMph/2.f)/FMath::Loge(1200.f):.5f; })
+                            .OnValueChanged_Lambda([this](float Position) { if(Walker.IsValid()) Walker->FlightMph=2.f*FMath::Pow(1200.f,Position); })
+                        ]
                     ]
                 ]
             ]

@@ -18,6 +18,7 @@ void UAvenueWalkMovement::CalcVelocity(float DeltaTime, float Friction, bool Flu
         // A planted player can stop or redirect on the next movement step.
         // PhysWalking still sweeps the capsule, follows slopes and handles stairs.
         Velocity = Acceleration.GetSafeNormal2D() * (GetMaxSpeed() * GetAnalogInputModifier());
+        if (auto* Walker=Cast<AAvenueWalker>(CharacterOwner)) Velocity=Walker->GuideThroughDoor(Velocity,DeltaTime);
         return;
     }
     Super::CalcVelocity(DeltaTime, Friction, Fluid, BrakingDeceleration);

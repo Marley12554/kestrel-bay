@@ -1,5 +1,6 @@
 """Unreal Editor commandlet. Set FIFTH_ROOT to the repository checkout."""
 import os
+import shutil
 from pathlib import Path
 import unreal as ue
 
@@ -34,7 +35,47 @@ def surface_maps():
 def authored_street():
     for name in ["FixtureFinishes","GradedBase","StreetCollision","AvenueStreet","WinterStreet",*[f"Door{i}" for i in range(6)]]:
         bring(staging/(name+".glb"),"Authored")
-if os.environ.get("FIFTH_SURFACE_MAPS"):
+
+def block_details():
+    target=root/"unreal/FifthAvenue/Content/StreetData"
+    target.mkdir(exist_ok=True)
+    shutil.copyfile(staging/"FifthGround.bin",target/"FifthGround.bin")
+    road_mask()
+    # The three assemblies have new named slots for the live lamps, signals and cloth.
+    for name, destination in (("AvenueStreet","Authored"),("WinterStreet","Authored"),("SedanHull","Street")):
+        bring(staging/(name+".glb"),destination)
+    for name in ("CrossingWalk","CrossingHand","FifthSnow"):
+        bring(staging/(name+".png"),"Surface")
+    field=assets.load_asset("/Game/Manhattan/Surface/FifthSnow")
+    field.set_editor_property("srgb",False)
+    field.set_editor_property("compression_settings",ue.TextureCompressionSettings.TC_VECTOR_DISPLACEMENTMAP)
+    field.set_editor_property("address_x",ue.TextureAddress.TA_CLAMP)
+    field.set_editor_property("address_y",ue.TextureAddress.TA_CLAMP)
+    assets.save_loaded_asset(field,False)
+    for name in ("winter_city","reserve_room","winter_airflow"):
+        bring(staging/(name+".wav"),"Audio")
+    cab_parts()
+
+def cab_parts():
+    for name in ["CabBody",*[f"CabWheel{i}" for i in range(4)]]:
+        bring(staging/(name+".glb"),"Street")
+
+def road_mask():
+    bring(staging/"FifthRoads.png","Surface")
+    roads=assets.load_asset("/Game/Manhattan/Surface/FifthRoads")
+    roads.set_editor_property("srgb",False)
+    roads.set_editor_property("compression_settings",ue.TextureCompressionSettings.TC_GRAYSCALE)
+    roads.set_editor_property("address_x",ue.TextureAddress.TA_CLAMP)
+    roads.set_editor_property("address_y",ue.TextureAddress.TA_CLAMP)
+    assets.save_loaded_asset(roads,False)
+
+if os.environ.get("FIFTH_CAB_PARTS"):
+    cab_parts()
+elif os.environ.get("FIFTH_ROAD_MASK"):
+    road_mask()
+elif os.environ.get("FIFTH_BLOCK_DETAILS"):
+    block_details()
+elif os.environ.get("FIFTH_SURFACE_MAPS"):
     surface_maps()
 elif os.environ.get("FIFTH_PARITY"):
     authored_street()
@@ -60,6 +101,7 @@ else:
             bring(part,"Parts")
         for name in ["Sedan","YellowCab","HeraldDetails","AvenueStreet","WinterStreet","Coffee","CoffeeHand","SedanHull",*[f"SedanWheel{i}" for i in range(4)]]:
             bring(staging/(name+".glb"), "Street")
+        block_details()
     for name in ["sam","maya","jordan","harper"]:
         bring(staging/(name+".glb"),"Citizens/"+name)
     for path in [*sorted((root/"preview/audio").glob("*.wav")),root/"preview/reserve/brew.wav",root/"preview/reserve/door_chime.wav"]:

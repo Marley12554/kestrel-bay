@@ -9,22 +9,49 @@ var instances := {}
 var doors: Array = []
 var routes: Array = []
 var out: String
+var live_finishes := {}
 
 func _initialize() -> void:
 	call_deferred("capture")
 
 func capture() -> void:
+	out = OS.get_environment("FIFTH_STAGING")
+	DirAccess.make_dir_recursive_absolute(out)
+	if "--snow-data-only" in OS.get_cmdline_user_args():
+		write_ground_samples()
+		quit()
+		return
 	if DisplayServer.get_name()=="headless":
 		push_error("Street export requires a render device. The headless dummy renderer discards MultiMesh instance transforms.")
 		quit(1)
 		return
-	out = OS.get_environment("FIFTH_STAGING")
-	DirAccess.make_dir_recursive_absolute(out)
+	if "--cab-only" in OS.get_cmdline_user_args():
+		var cab := preload("res://town_car.gd").new()
+		cab.build(true,false)
+		root.add_child(cab)
+		write_cab_parts(cab)
+		quit()
+		return
+	write_ground_samples()
 	export_grade()
 	var scene = load("res://winter/night.tscn").instantiate()
 	root.add_child(scene)
 	await process_frame
 	var block = scene.get_node("Block")
+	var winter = scene.get_node("Winter")
+	live_finishes[winter.hot_glass] = "StreetLampGlass"
+	live_finishes[winter.signal_lenses] = "TeslaIndicator"
+	live_finishes[winter.headlight_lenses] = "TeslaHeadlamp"
+	for key: Vector2i in block.signal_materials:
+		live_finishes[block.signal_materials[key]] = "Traffic%d%d" % [key.x,key.y]
+	for across: bool in block.pedestrian_materials:
+		live_finishes[block.pedestrian_materials[across]] = "Pedestrian%d" % int(across)
+	var flag: MeshInstance3D = block.find_child("AvenueFlag",true,false)
+	if flag: live_finishes[flag.get_active_material(0)] = "AvenueFlagCloth"
+	var shop = block.reserve
+	# In Godot the walking controller supplies this floor height analytically.
+	# Unreal walks on collision, so export the same top face under the terrazzo.
+	var floor_pose: Transform3D = shop.global_transform * Transform3D(Basis.from_scale(Vector3(shop.WIDTH,.12,shop.DEPTH+.8)),Vector3(shop.WIDTH*.5,.095,-shop.DEPTH*.5+.40))
 	var excluded: Array = [block.parked, block.cross_taxi, block.taxi]
 	for w in block.walkers:
 		excluded.append(w.node)
@@ -39,7 +66,7 @@ func capture() -> void:
 	if block.reserve and block.reserve.get("door"):
 		moving.append([block.reserve.door,"Swing"])
 	for item in moving: excluded.append(item[0])
-	var fixed_shapes := []
+	var fixed_shapes := [matrix(floor_pose)]
 	for parent in [block, scene.get_node("HeraldSquare")]:
 		for col in parent.find_children("*","CollisionShape3D",true,false):
 			if col.disabled or not col.get_parent() is StaticBody3D: continue
@@ -70,6 +97,7 @@ func capture() -> void:
 		var body: Node3D = pair[1]
 		collect(body.model, body.global_transform.affine_inverse(), [])
 		save_mesh(pair[0])
+	write_cab_parts(block.cab_visual)
 	var wheel_centers := []
 	var sedan=block.parked_visual
 	var sedan_local: Transform3D=sedan.global_transform.affine_inverse()
@@ -87,12 +115,10 @@ func capture() -> void:
 		if child.name != "OfficeAndRetail":
 			collect(child, Transform3D.IDENTITY, excluded)
 	save_mesh("HeraldDetails")
-	var winter=scene.get_node("Winter")
 	# The city-wide snow height field is represented by UE terrain materials.
 	# Capture the hand-placed lamps, displays and street hardware separately.
 	collect(winter,Transform3D.IDENTITY,[winter.pack,winter.sidewalks])
 	save_mesh("WinterStreet")
-	var shop=block.reserve
 	shop.cup.show()
 	shop.grip.hide()
 	collect(shop.cup,shop.cup.global_transform.affine_inverse(),[],false)
@@ -103,9 +129,23 @@ func capture() -> void:
 	var lamps := []
 	for light in scene.find_children("*","Light3D",true,false):
 		if (light is OmniLight3D or light is SpotLight3D) and light.is_visible_in_tree():
-			lamps.append([vec(light.global_position),[light.light_color.r,light.light_color.g,light.light_color.b],light.light_energy,light.omni_range if light is OmniLight3D else light.spot_range,vec(-light.global_basis.z),light.spot_angle if light is SpotLight3D else 0.])
+			lamps.append([vec(light.global_position),[light.light_color.r,light.light_color.g,light.light_color.b],light.light_energy,light.omni_range if light is OmniLight3D else light.spot_range,vec(-light.global_basis.z),light.spot_angle if light is SpotLight3D else 0.,light.shadow_enabled])
 	var counter=shop.to_global(shop.COUNTER+Vector3(.34,1.23,-.14))
 	var barista=shop.server.global_position
+	var block_state := {
+		"shop":matrix(shop.global_transform), "barista_forward":vec(-shop.server.global_basis.z),
+		"brew_start":vec(shop.to_global(shop.COUNTER+Vector3(-.47,1.23,-.14))),
+		"held_pose":matrix(Transform3D(Basis.from_euler(Vector3(-.06,-.22,-.09)),Vector3(.18,-.19,-.47))),
+		"traffic_stops":[[block.cross_stop],[block.south_stop,block.north_return_stop]],
+		"flag_across":vec(flag.global_basis.x.normalized()) if flag else [],
+		"flag_out":vec(flag.global_basis.z.normalized()) if flag else [],
+	}
+	var state_file := FileAccess.open(out+"/block_state.json",FileAccess.WRITE)
+	state_file.store_string(JSON.stringify(block_state))
+	state_file.close()
+	winter.pack.FIELD.save_png(out+"/FifthSnow.png")
+	block.WALK_ICON.get_image().save_png(out+"/CrossingWalk.png")
+	block.HAND_ICON.get_image().save_png(out+"/CrossingHand.png")
 
 	for index in moving.size():
 		var part: Node3D = moving[index][0]
@@ -146,6 +186,41 @@ func capture() -> void:
 	f.close()
 	print("FIFTH EXPORT COMPLETE")
 	quit()
+
+func write_cab_parts(cab) -> void:
+	var origin: Transform3D=cab.global_transform.affine_inverse()
+	collect(cab.model,origin,cab.wheels)
+	save_mesh("CabBody")
+	var hubs := []
+	for i in cab.wheels.size():
+		var wheel: Node3D=cab.wheels[i]
+		var hub: Vector3=origin*wheel.global_position
+		hubs.append(vec(hub))
+		collect(wheel,Transform3D(Basis.IDENTITY,-hub)*origin,[])
+		save_mesh("CabWheel"+str(i))
+	FileAccess.open(out+"/cab_hubs.json",FileAccess.WRITE).store_string(JSON.stringify(hubs))
+
+func write_ground_samples() -> void:
+	# Gameplay uses the very same source samples as the pavement material.
+	var field: Image = (load("res://winter/snowpack.res") as Image).duplicate()
+	field.convert(Image.FORMAT_RGBA8)
+	var rgba := field.get_data()
+	var samples := PackedByteArray()
+	samples.resize(field.get_width()*field.get_height())
+	for i in samples.size():
+		samples[i]=maxi(maxi(rgba[4*i],rgba[4*i+1]),maxi(rgba[4*i+2],rgba[4*i+3]))
+	var drifts: Image=load("res://winter/snow_depth.png").get_image()
+	drifts.convert(Image.FORMAT_L8)
+	var roads: Image=(load("res://meshes/road_mask.res") as BitMap).convert_to_image()
+	roads.convert(Image.FORMAT_L8)
+	roads.save_png(out+"/FifthRoads.png")
+	samples.append_array(drifts.get_data())
+	samples.append_array(roads.get_data())
+	var target:=FileAccess.open(out+"/FifthGround.bin",FileAccess.WRITE)
+	for size in [field.get_size(),drifts.get_size(),roads.get_size()]:
+		target.store_32(size.x)
+		target.store_32(size.y)
+	target.store_buffer(samples.compress(FileAccess.COMPRESSION_DEFLATE))
 
 func vec(v: Vector3) -> Array:
 	return [v.x,v.y,v.z]
@@ -191,14 +266,21 @@ func collect(node: Node, origin: Transform3D, excluded: Array, instance_parts: b
 		var mat := StandardMaterial3D.new()
 		mat.albedo_texture = node.texture
 		mat.albedo_color = node.modulate
+		var face: Mesh=quad
 		if node.region_enabled:
 			var region: Rect2 = node.region_rect
-			var dimensions := Vector2(node.texture.get_size())
 			quad.size=region.size*node.pixel_size
-			mat.uv1_offset=Vector3(region.position.x/dimensions.x,region.position.y/dimensions.y,0)
-			mat.uv1_scale=Vector3(region.size.x/dimensions.x,region.size.y/dimensions.y,1)
+			# Preserve the crop in the mesh UVs. Material UV transforms are lost
+			# on import, and an existing material keeps its original texture.
+			var arrays:=quad.surface_get_arrays(0)
+			var uvs: PackedVector2Array=arrays[Mesh.ARRAY_TEX_UV]
+			for k in uvs.size(): uvs[k]=(region.position+uvs[k]*region.size)/Vector2(node.texture.get_size())
+			arrays[Mesh.ARRAY_TEX_UV]=uvs
+			var cropped:=ArrayMesh.new()
+			cropped.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+			face=cropped
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-		append(quad,0,origin*node.global_transform,mat,Color.WHITE)
+		append(face,0,origin*node.global_transform,mat,Color.WHITE)
 	for child in node.get_children(): collect(child,origin,excluded,instance_parts)
 
 func append(mesh: Mesh, idx: int, pose: Transform3D, material: Material, tint: Color) -> void:
@@ -224,7 +306,8 @@ func append(mesh: Mesh, idx: int, pose: Transform3D, material: Material, tint: C
 		mat.cull_mode=BaseMaterial3D.CULL_DISABLED
 		mat.albedo_color=Color(.48,.62,.65,.32)
 		mat.roughness=.14
-	if fixture_finishes.has(material): mat.resource_name=fixture_finishes[material]
+	if live_finishes.has(material): mat.resource_name=live_finishes[material]
+	elif fixture_finishes.has(material): mat.resource_name=fixture_finishes[material]
 	elif mat.vertex_color_use_as_albedo: mat.resource_name="EnamelVertex"
 	if tint != Color.WHITE:
 		var key := str(mat.get_instance_id())+tint.to_html()

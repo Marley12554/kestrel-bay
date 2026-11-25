@@ -1,4 +1,7 @@
 """Build the street's lit materials using project-authored and recorded surface maps."""
+import json
+import os
+from pathlib import Path
 import unreal as u
 
 mel=u.MaterialEditingLibrary
@@ -41,6 +44,17 @@ def finish(m):
     mel.recompile_material(m)
     assets.save_loaded_asset(m,False)
 
+def param(m,name,default=0.):
+    value=node(m,u.MaterialExpressionScalarParameter)
+    value.set_editor_property("parameter_name",name)
+    value.set_editor_property("default_value",default)
+    return value
+
+def vector_param(m,name):
+    value=node(m,u.MaterialExpressionVectorParameter)
+    value.set_editor_property("parameter_name",name)
+    return value
+
 v3=u.CustomMaterialOutputType.CMOT_FLOAT3
 v1=u.CustomMaterialOutputType.CMOT_FLOAT1
 m=material("M_Midtown")
@@ -72,13 +86,36 @@ float drift=Texture2DSample(DepthMap,DepthMapSampler,street/64.).r;
 float lat=abs(street.x-81.)<9?street.x:street.y+45.8;
 float wheel=abs(frac((lat+.12*sin(street.y*.07+street.x*.09))/3.85)*3.85-1.925);
 float tracks=1-smoothstep(.14,.53,abs(wheel-.78));
-bool road=C.r<.30;
+float2 mapUV=(P.xy*.01+float2(1350,1500))/float2(2700,3000);
+bool mappedRoad=all(mapUV>=0) && all(mapUV<1) && Texture2DSample(RoadMask,RoadMaskSampler,mapUV).r>.5;
+bool road=ClassId<.45 || (ClassId>.85 && (mappedRoad || C.r<.30));
 float cover=road?smoothstep(.57,.83,drift-tracks*.27):smoothstep(.17,.47,drift);
 float water=(1-smoothstep(.21,.65,drift))*.74+tracks*.23;
 float2 powderUV=uv*.65+float2(.32,-.21)*Texture2DSample(DepthMap,DepthMapSampler,street/18.).r;
+float2 snowUV=(street+float2(240,136))/float2(400,208);
+float4 banks=Texture2DSample(Field,FieldSampler,saturate(snowUV));
+float depth=max(0.,(max(max(banks.r,banks.g),max(banks.b,banks.a))*255.-1.)*(.36/254.));
+float packed=0.;
+if (all(snowUV>=0) && all(snowUV<1)) {
+    if (all(street>=Origin.xy) && all(street<Origin.xy+64))
+        packed=min(.94*depth,Texture2DSample(Pressure,PressureSampler,frac(street/64.)).r*.36);
+    cover=smoothstep(.0015,.033,depth-packed);
+}
 """
-inputs={"P":p,"N":n,"C":c,"DepthMap":texture(m,"snow_depth")}
-surface=glass+snow+"""
+pressure=node(m,u.MaterialExpressionTextureObjectParameter)
+pressure.set_editor_property("parameter_name","Pressure")
+pressure.set_editor_property("texture",assets.load_asset("/Engine/EngineResources/Black"))
+track_origin=vector_param(m,"TrackOrigin")
+inputs={"P":p,"N":n,"C":c,"ClassId":(c,"A"),"DepthMap":texture(m,"snow_depth"),"Field":texture(m,"FifthSnow"),"Pressure":pressure,"Origin":track_origin,"RoadMask":texture(m,"FifthRoads")}
+car_contact="""
+float3 gap=P-Car.xyz;
+float2 footprint=abs(float2(dot(gap.xy,Heading.xy),dot(gap.xy,float2(-Heading.y,Heading.x))))*.01;
+float body=1-smoothstep(-.28,.55,length(max(footprint-float2(1.8,.75),0)));
+float tires=1-smoothstep(.2,1.,length((footprint-float2(1.44,.81))/float2(.45,.36)));
+float occlusion=.67*body*(1-smoothstep(14.,96.,abs(gap.z)))+.24*tires*(1-smoothstep(7.,29.,abs(gap.z)));
+"""
+contact_inputs={"P":p,"Car":vector_param(m,"CarFoot"),"Heading":vector_param(m,"CarHeading")}
+surface=glass+snow+car_contact+"""
 if(abs(N.z)>.68){
     if(P.z>1400) return lerp(C,float3(.64,.71,.81),.7);
     float3 grit=Texture2DSample(Road,RoadSampler,uv).rgb;
@@ -86,8 +123,10 @@ if(abs(N.z)>.68){
     float3 base=road?grit*.26:lerp(grit*.67,float3(.21,.20,.19),.44);
     float2 seam=abs(frac(street/1.63)-.5);
     if(!road) base*=1-.6*smoothstep(.486,.5,max(seam.x,seam.y));
-    return lerp(base*(1-.40*water),powder*float3(.91,.94,.99),cover);
+    float firm=smoothstep(.002,.048,packed);
+    return lerp(base*(1-.40*water),powder*lerp(float3(.91,.94,.99),float3(.48,.61,.70),firm),cover)*(1-.30*occlusion);
 }
+if (ClassId>.74 && ClassId<.84) return float3(.15,.155,.16)*(.75+.5*Texture2DSample(Road,RoadSampler,float2(street.x+street.y,P.z*.01)*.82).r);
 float3 stone=Texture2DSample(Stone,StoneSampler,wallUV).rgb;
 float joints=smoothstep(.014,.045,abs(frac(P.z*.01/.83)-.5));
 float3 wall=C*(.56+.48*dot(stone,float3(.30,.52,.18)))*(.79+.21*joints);
@@ -97,7 +136,7 @@ float3 glassColor=lerp(float3(.026,.045,.059),float3(.075,.10,.11),smoothstep(.2
 glassColor=lerp(glassColor,float3(.16,.155,.139),shade*.79);
 return lerp(wall,glassColor*lerp(.37,1.,rail),pane)*(1-.30*lip);
 """
-prop(m,snip(m,surface,dict(inputs,Road=texture(m,"asphalt_snow_Diffuse"),Snow=texture(m,"snow_02_Diffuse"),
+prop(m,snip(m,surface,dict(inputs,**{k:v for k,v in contact_inputs.items() if k!="P"},Road=texture(m,"asphalt_snow_Diffuse"),Snow=texture(m,"snow_02_Diffuse"),
                          Stone=texture(m,"white_sandstone_blocks_02_diffuse"),V=node(m,u.MaterialExpressionCameraVectorWS)),v3),mp.MP_BASE_COLOR)
 night=node(m,u.MaterialExpressionScalarParameter)
 night.set_editor_property("parameter_name","NightWindows")
@@ -106,6 +145,7 @@ float3 lamp=lerp(float3(.62,.36,.16),float3(.45,.53,.57),variation);
 return abs(N.z)<.7?Night*lamp*pane*rail*smoothstep(.56,.75,variation)*(.29+.55*q.y)*(1-.75*shade):0;
 """
 prop(m,snip(m,lit,{"P":p,"N":n,"Night":night},v3),mp.MP_EMISSIVE_COLOR)
+prop(m,snip(m,car_contact+"return 1-occlusion;",contact_inputs,v1),mp.MP_AMBIENT_OCCLUSION)
 prop(m,snip(m,glass+snow+"""
 if(abs(N.z)>.68 && P.z<1400) return lerp(lerp(Texture2DSample(Rough,RoughSampler,uv).r*.67+.1,.13,water),.84,cover);
 return lerp(.80,lerp(.14,.26,shade),pane);
@@ -127,6 +167,141 @@ return normalize(N+float3(horizontal*grit.x,grit.y)*.21*(1-pane)+bevel*lip*.88);
 """
 prop(m,snip(m,relief,dict(inputs,N=normal,AsphaltN=texture(m,"asphalt_snow_nor_gl"),SnowN=texture(m,"snow_02_nor_gl"),
                           StoneN=texture(m,"white_sandstone_blocks_02_nor_gl")),v3),mp.MP_NORMAL)
+finish(m)
+m=material("M_StreetLampGlass")
+lamp_color=snip(m,"return float3(1,.49,.17);",{},v3)
+prop(m,lamp_color,mp.MP_BASE_COLOR)
+prop(m,snip(m,"return float3(18,7.4,2.1)*Night;",{"Night":param(m,"Night",1)},v3),mp.MP_EMISSIVE_COLOR)
+finish(m)
+for paint,tint in (("TeslaPaint",".687,.701,.694"),("TrafficPaint",".040,.067,.095")):
+    m=material("M_"+paint)
+    m.set_editor_property("shading_model",u.MaterialShadingModel.MSM_CLEAR_COAT)
+    prop(m,snip(m,"return float3("+tint+");",{},v3),mp.MP_BASE_COLOR)
+    # The native clear-coat model defaults to full coverage and 0.1 coat roughness.
+    for target,value in ((mp.MP_METALLIC,.22),(mp.MP_ROUGHNESS,.24)):
+        prop(m,snip(m,f"return {value:.2f};",{},v1),target)
+    finish(m)
+m=material("M_FallingSnow")
+m.set_editor_property("used_with_instanced_static_meshes",True)
+m.set_editor_property("blend_mode",u.BlendMode.BLEND_MASKED)
+uv=node(m,u.MaterialExpressionTextureCoordinate)
+pos=node(m,u.MaterialExpressionWorldPosition)
+eye=node(m,u.MaterialExpressionCameraPositionWS)
+rand=node(m,u.MaterialExpressionPerInstanceRandom)
+flake="""
+float3 span=float3(3000,3000,1500), wind=float3(19+9*R,11+7*R,-(105+95*R));
+float3 original=P-Local;
+float3 center=Eye+(frac((original-Eye+Clock*wind)/span+.5)-.5)*span;
+float3 right=normalize(float3(-(Eye-center).y,(Eye-center).x,.001));
+float3 bill=(right*(UV.x-.5)*2.1+float3(0,0,(.5-UV.y)*2.9))*(.38+.77*R);
+return center-P+bill;
+"""
+prop(m,snip(m,flake,{"P":pos,"Local":node(m,u.MaterialExpressionLocalPosition),"Eye":eye,"R":rand,"Clock":node(m,u.MaterialExpressionTime),"UV":uv},v3),mp.MP_WORLD_POSITION_OFFSET)
+prop(m,snip(m,"""
+float3 local=P-float3(-14795.03,59958.58,0);
+float x=dot(local.xy,float2(.487933,-.872881)),z=dot(local.xy,float2(.872881,.487933));
+if(x>0 && x<2325 && z> -1800 && z<22 && P.z<499) return 0.;
+return R<Density && distance(Eye,P)>65 ? 1-smoothstep(.32,1.,length(2*UV-1)) : 0.;
+""",{"P":pos,"Eye":eye,"R":rand,"UV":uv,"Density":param(m,"Density",1)},v1),mp.MP_OPACITY_MASK)
+prop(m,snip(m,"return float3(.68,.73,.79);",{},v3),mp.MP_BASE_COLOR)
+finish(m)
+
+def wheel_powder():
+    m=material("M_WheelPowder")
+    m.set_editor_property("used_with_instanced_static_meshes",True)
+    m.set_editor_property("blend_mode",u.BlendMode.BLEND_TRANSLUCENT)
+    uv=node(m,u.MaterialExpressionTextureCoordinate)
+    args={"P":node(m,u.MaterialExpressionWorldPosition),"Local":node(m,u.MaterialExpressionLocalPosition),
+          "Eye":node(m,u.MaterialExpressionCameraPositionWS),"Rand":node(m,u.MaterialExpressionPerInstanceRandom),
+          "Clock":node(m,u.MaterialExpressionTime),"UV":uv}
+    for i,key in enumerate(("Born","Vx","Vy","Vz")):
+        args[key]=node(m,u.MaterialExpressionPerInstanceCustomData)
+        args[key].set_editor_property("data_index",i)
+    offset="""
+float t=max(0.,Clock-Born), life=saturate(t/.46);
+float3 center=P-Local+float3(Vx,Vy,Vz)*min(t,.46);
+center.z-=340.*min(t,.46)*min(t,.46);
+float3 toEye=normalize(Eye-center);
+float3 right=normalize(float3(-toEye.y,toEye.x,.001));
+float3 up=normalize(cross(toEye,right));
+float size=(.25+.75*Rand)*(1.+.6*life)*(1.-life);
+return center-P+size*(right*(UV.x-.5)*19.+up*(.5-UV.y)*16.);
+"""
+    prop(m,snip(m,offset,args,v3),mp.MP_WORLD_POSITION_OFFSET)
+    prop(m,snip(m,"return .62*pow(saturate(1.-length(UV*2.-1.)),1.65);",{"UV":uv},v1),mp.MP_OPACITY)
+    prop(m,snip(m,"return float3(.61,.71,.84);",{},v3),mp.MP_BASE_COLOR)
+    finish(m)
+
+wheel_powder()
+for name,base,glow in (("TeslaHeadlamp",".62,.70,.76",".84,.93,1"),("Ln12Mtl",".32,.012,.014","1,.016,.008"),("TeslaIndicator",".46,.14,.015","1,.35,.012")):
+    m=material("M_"+name)
+    prop(m,snip(m,"return float3("+base+");",{},v3),mp.MP_BASE_COLOR)
+    args={"Pos":node(m,u.MaterialExpressionLocalPosition)}
+    if name=="TeslaIndicator":
+        args["Side"]=param(m,"SignalSide")
+        factor="(Side!=0 && sign(Pos.x)==Side ? 4.0 : 0.0)"
+    else:
+        args["Level"]=param(m,"Level")
+        # Hull local -Y points at the nose. White trim inside shares this slot.
+        factor="(Pos.y < -100 ? Level : 0.)" if name=="TeslaHeadlamp" else "Level"
+    prop(m,snip(m,"return float3("+glow+")*"+factor+";",args,v3),mp.MP_EMISSIVE_COLOR)
+    prop(m,snip(m,"return .22;",{},v1),mp.MP_ROUGHNESS)
+    finish(m)
+
+colors=("1,.071,.033","1,.46,.085",".089,.69,.32")
+for avenue in (0,1):
+    phase="fmod(Clock,46.)" if avenue else "fmod(Clock+23.,46.)"
+    for aspect in range(3):
+        m=material(f"M_Traffic{avenue}{aspect}")
+        code="float t="+phase+"; return ("+("t>=20.","t>=17. && t<20.","t<17.")[aspect]+") ? float3("+colors[aspect]+") : 0;"
+        bulb=snip(m,code,{"Clock":node(m,u.MaterialExpressionTime)},v3)
+        prop(m,snip(m,"return .025+.88*Bulb;",{"Bulb":bulb},v3),mp.MP_BASE_COLOR)
+        prop(m,snip(m,"return 6*Bulb;",{"Bulb":bulb},v3),mp.MP_EMISSIVE_COLOR)
+        finish(m)
+for across in (0,1):
+    m=material(f"M_Pedestrian{across}")
+    m.set_editor_property("blend_mode",u.BlendMode.BLEND_MASKED)
+    phase="fmod(Clock+23.,46.)" if across else "fmod(Clock,46.)"
+    code="float t="+phase+"; float4 w=Texture2DSample(Walk,WalkSampler,UV),h=Texture2DSample(Hand,HandSampler,UV); return t<9. ? w : (t<20. && frac(t)>=.5 ? 0 : h);"
+    icon=snip(m,code,{"Clock":node(m,u.MaterialExpressionTime),"Walk":texture(m,"CrossingWalk"),"Hand":texture(m,"CrossingHand"),"UV":node(m,u.MaterialExpressionTextureCoordinate)},u.CustomMaterialOutputType.CMOT_FLOAT4)
+    prop(m,snip(m,"return Icon.a;",{"Icon":icon},v1),mp.MP_OPACITY_MASK)
+    prop(m,snip(m,"return Icon.rgb;",{"Icon":icon},v3),mp.MP_BASE_COLOR)
+    prop(m,snip(m,"return 4*Icon.rgb;",{"Icon":icon},v3),mp.MP_EMISSIVE_COLOR)
+    finish(m)
+
+state=json.loads((Path(os.environ["FIFTH_ROOT"])/"dist/unreal-staging/block_state.json").read_text())
+def world_dir(key):
+    x,y,z=state[key]
+    return f"float3({x:.7f},{z:.7f},{y:.7f})"
+m=material("M_AvenueFlagCloth")
+uv=node(m,u.MaterialExpressionTextureCoordinate)
+cloth="""
+float u=UV.x,v=UV.y,r=9.5*u+1.3*v-Clock*1.55;
+float x=1.92*u-.54*u*u+.09*u*sin(r)-3.42*u;
+float y=-1.35*u-1.23*u*u+.07*u*cos(r);
+float z=-.082*v+.24*u+.27*sin(1.57*u)*sin(13*u+1.15*v+.35*sin(Clock*1.25))+.09*u*sin(r);
+return 100*(x*ACROSS+z*OUT+float3(0,0,y));
+""".replace("ACROSS",world_dir("flag_across")).replace("OUT",world_dir("flag_out"))
+prop(m,snip(m,cloth,{"UV":uv,"Clock":node(m,u.MaterialExpressionTime)},v3),mp.MP_WORLD_POSITION_OFFSET)
+fabric=snip(m,"""
+float3 white=float3(.88,.86,.80);
+float stripe=13*UV.y, aa=max(fwidth(stripe),.001);
+float band=smoothstep(.5-aa*.5,.5+aa*.5,abs(fmod(stripe+.5,2)-1));
+float3 color=lerp(float3(.46,.018,.036),white,band);
+if(UV.x<.4 && UV.y<7./13.) {
+    float2 cell=float2(.4/12.,7./130.), grid=UV/cell;
+    float row=clamp(floor(grid.y+.5),1.,9.), first=1+fmod(row+1,2);
+    float col=clamp(first+2*floor((grid.x-first)*.5+.5),first,12-first);
+    float2 d=(grid-float2(col,row))*cell*float2(1.9,1.);
+    float wedge=abs(frac((atan2(d.x,-d.y)+.628319)/1.256637)*1.256637-.628319);
+    float dist=length(d)-.022*cos(1.256637)/cos(1.256637-wedge);
+    float edge=max(fwidth(dist),.0004);
+    color=lerp(white,float3(.018,.041,.13),smoothstep(-edge,edge,dist));
+}
+return color;
+""",{"UV":uv},v3)
+prop(m,fabric,mp.MP_BASE_COLOR)
+prop(m,snip(m,"return .92;",{},v1),mp.MP_ROUGHNESS)
 finish(m)
 for name,stock in [("M_Buff","BuffBrick"),("M_OfficePanel","OfficePanel"),("M_Limestone","IndianaStone")]:
     m=material(name)

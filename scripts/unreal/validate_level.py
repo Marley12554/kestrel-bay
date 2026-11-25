@@ -15,7 +15,10 @@ require(len(by(u.AvenueDoor))==6,"Interactive doors")
 require(len(by(u.AvenueCoffee))==1,"Coffee order counter")
 people=by(u.AvenueTraveller)
 require(sum(bool(a.get_editor_property("traffic")) for a in people)==2,"Traffic routes")
-require(sum(a.get_editor_property("gait") is not None for a in people)==25,"Skinned civilians and barista")
+require(sum(a.get_editor_property("gait") is not None for a in people if not a.get_editor_property("traffic"))==25,"Skinned civilians and barista")
+require(all(a.get_editor_property("gait") and len(a.get_editor_property("wheel_models"))==4 and
+            len(a.get_editor_property("wheel_centers"))==4 for a in people if a.get_editor_property("traffic")),
+        "Traffic seat poses or rolling wheels missing")
 require(all(len(a.get_editor_property("route"))>=2 for a in people if a.get_actor_label()!="Barista"),"Empty route")
 car=by(u.AvenueCar)[0]
 wheels=[c for c in car.get_components_by_class(u.StaticMeshComponent) if c.get_name().startswith("Wheel")]
@@ -47,6 +50,17 @@ require(len(leaf.get_materials())>=3,"Door glass and hardware collapsed to one m
 hull=next(c.static_mesh for c in car.get_components_by_class(u.StaticMeshComponent) if c.get_name()=="Sedan")
 require(not hull.get_editor_property("nanite_settings").enabled,"Lossy fallback on the Tesla hull")
 require(any(a.actor_has_tag("NightLamp") and isinstance(a,u.SpotLight) for a in actors),"Street lamp cones missing")
+require(any(a.actor_has_tag("NightLamp") and a.light_component.get_editor_property("cast_shadows") for a in by(u.SpotLight)),"Primary streetlight shadow missing")
+signs={m.get_name() for m in by_label["AvenueStreet"].static_mesh_component.get_materials() if m}
+require({f"M_Traffic{a}{s}" for a in (0,1) for s in range(3)}|{"M_Pedestrian0","M_Pedestrian1","M_AvenueFlagCloth"} <= signs,"Missing live signal or flag assignment")
+require("M_StreetLampGlass" in {m.get_name() for m in by_label["WinterStreet"].static_mesh_component.get_materials() if m},"Unlit streetlamp lens")
+cup=by(u.AvenueCoffee)[0]
+server=cup.get_editor_property("barista")
+require(server and (cup.get_actor_location()-server.get_actor_location()).dot(server.get_actor_forward_vector())>100,"Barista faces away from the customer")
+require((cup.get_actor_location()-cup.get_editor_property("brew_start")).length()>75 and cup.get_editor_property("grip").translation.x>40,"Handoff path or grip missing")
+require(all(p.get_editor_property("idle") and len(p.get_editor_property("crossing_groups"))==len(p.get_editor_property("route"))
+    for p in people if not p.get_editor_property("traffic") and p!=server),"Crossing wait/idle missing")
+require(sorted(len(p.get_editor_property("stop_lines")) for p in people if p.get_editor_property("traffic"))==[1,2],"Vehicle stop lines missing")
 u.log("FIFTH AUTHORED MATERIALS AND COLLISION VERIFIED")
 
 # A headless Godot dummy renderer once returned identity for every MultiMesh transform.

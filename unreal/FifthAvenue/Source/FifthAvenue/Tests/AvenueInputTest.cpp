@@ -131,13 +131,20 @@ struct FInputCheck {
             break;
         }
         case 9: {
+            const FGeometry& G=Slider->GetCachedGeometry();
+            // 100% is two thirds of the logarithmic track, inside the thumb travel.
+            const float Width=G.GetLocalSize().X;
+            const FVector2D Unity=G.LocalToAbsolute(FVector2D(8.f+(Width-16.f)*2.f/3.f,G.GetLocalSize().Y*.5f));
+            App.RoutePointerMoveEvent(FWidgetPath(),FPointerEvent(FSlateApplicationBase::CursorPointerIndex,Unity,Pointer,{EKeys::LeftMouseButton},EKeys::Invalid,0,FModifierKeysState()),false);
+            Pointer=Unity;
+            Require(P->LookSensitivity==1.f,TEXT("the actual slider could not select exactly 100%"));
             App.RoutePointerUpEvent(FWidgetPath(), FPointerEvent(FSlateApplicationBase::CursorPointerIndex,Pointer,Pointer,{},EKeys::LeftMouseButton,0,FModifierKeysState()));
             Require(!Slider->HasMouseCapture(), TEXT("slider retained the cursor after release"));
             FConfigFile Saved;
             Saved.Read(FConfigCacheIni::GetDestIniFilename(TEXT("GameUserSettings"),nullptr,*FPaths::GeneratedConfigDir()));
             float SavedScale = 0;
             Require(Saved.GetFloat(TEXT("FifthAvenue"),TEXT("LookSensitivity"),SavedScale)
-                && FMath::IsNearlyEqual(SavedScale,P->MaxLookSensitivity), TEXT("released slider did not persist"));
+                && SavedScale==1.f, TEXT("released slider did not persist 100%"));
             App.ProcessKeyDownEvent(FKeyEvent(EKeys::Escape,FModifierKeysState(),0,false,0,0));
             App.ProcessKeyUpEvent(FKeyEvent(EKeys::Escape,FModifierKeysState(),0,false,0,0));
             Require(!P->MenuOpen, TEXT("Escape did not close the focused menu"));
