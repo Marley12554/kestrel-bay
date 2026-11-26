@@ -289,6 +289,17 @@ void AAvenueCar::MoveOnTires(float Dt, float Throttle, float InputSteer, bool Ha
         const bool Found = GetWorld()->SweepSingleByObjectType(Hit, Hub + Up * (Bump + 23), Hub - Up * (Droop + 6),
             FQuat::Identity, Pavement, FCollisionShape::MakeSphere(Radius), Query);
         Contact[I] = Found && !Hit.bStartPenetrating && Hit.ImpactNormal.Z >= MinGroundNormalZ && Hit.Location.Z >= Hub.Z - Droop;
+        if (Found && !Contact[I]) {
+            // The tire's sidewall can touch a curb or wall before the tread
+            // reaches the street. Check directly underneath before losing grip.
+            Contact[I] = GetWorld()->LineTraceSingleByObjectType(Hit, Hub + Up * Bump,
+                Hub - Up * (Radius + Droop), Pavement, Query) && !Hit.bStartPenetrating &&
+                Hit.ImpactNormal.Z >= MinGroundNormalZ;
+            if (Contact[I]) {
+                Hit.Location.Z = Hit.ImpactPoint.Z + Radius / Hit.ImpactNormal.Z;
+                Contact[I] = Hit.Location.Z >= Hub.Z - Droop && Hit.Location.Z <= Hub.Z + Bump;
+            }
+        }
         StreetTires[I]=Contact[I] && Hit.GetActor() && Hit.GetActor()->ActorHasTag(TEXT("CitySkin"));
         Height[I] = Contact[I] ? Hit.Location.Z : Hub.Z - Droop;
         Deflection[I] = Height[I] - Hub.Z;
@@ -322,7 +333,7 @@ void AAvenueCar::MoveOnTires(float Dt, float Throttle, float InputSteer, bool Ha
     if (ContactCount == 0) YawRate *= FMath::Exp(-.28f * Dt);
     VerticalSpeed += AccelZ * Dt;
     float Lift = VerticalSpeed * Dt;
-    if (ContactCount) Lift = FMath::Max(Lift, SupportSum / ContactCount - Bump);
+    if (ContactCount >= 2) Lift = FMath::Max(Lift, SupportSum / ContactCount - Bump);
     FVector Travel = VelocityXY * Dt + Up * Lift;
     FHitResult Hit;
     const FQuat Before = GetActorQuat();
@@ -1053,6 +1064,11 @@ void AAvenueWalker::CheckStreet(float Dt) {
         TActorIterator<AAvenueCar> Car(GetWorld());
         if(!Car) { Fail(TEXT("sedan missing")); return; }
         const FVector Along(-.487933,.872881,0), Across(.872881,.487933,0);
+        // Isolate the painted crossing from the traffic light cycle. The block
+        // test exercises sustained vehicle contact separately with a real sedan.
+        for (TActorIterator<AAvenueTraveller> It(GetWorld()); It; ++It) {
+            if (It->Traffic) { It->SetActorTickEnabled(false); It->SetActorEnableCollision(false); }
+        }
         const FVector Road=FVector(-20809.9,57389.1,0)+8350*Across+1900*Along;
         FHitResult Floor;
         if(!FloorAt(GetWorld(),Road+FVector(0,0,280),Road-FVector(0,0,200),Floor,this)) { Fail(TEXT("crossing has no pavement")); return; }
@@ -1067,7 +1083,7 @@ void AAvenueWalker::CheckStreet(float Dt) {
         Forward=1;
         if(TestTime>6) {
             const float Travel=FVector::DotProduct(Driven->GetActorLocation()-TestStart,FVector(-.487933,.872881,0));
-            if(Travel<3600 || FMath::Abs(Driven->Speed())<500) { UE_LOG(LogTemp,Error,TEXT("Crossing travel %.1f cm speed %.1f"),Travel,Driven->Speed()); Fail(TEXT("stalled on crossing")); return; }
+            if(Travel<3600 || FMath::Abs(Driven->Speed())<500) { UE_LOG(LogTemp,Error,TEXT("Crossing travel %.1f cm speed %.1f, supported %d, start %s end %s"),Travel,Driven->Speed(),Driven->HasTireContact(),*TestStart.ToCompactString(),*Driven->GetActorLocation().ToCompactString()); Fail(TEXT("stalled on crossing")); return; }
             UE_LOG(LogTemp,Display,TEXT("Avenue road test passed: J round trip and %.1f feet across the painted crossing"),Travel/30.48f);
             FScreenshotRequest::RequestScreenshot(TEXT("CrossingDay.png"),false,false);
             RoadStage=6;

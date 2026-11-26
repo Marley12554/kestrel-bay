@@ -269,7 +269,7 @@ void AAvenueTraveller::Tick(float Dt) {
             }
         }
         FHitResult Hit;
-        if(GetWorld()->LineTraceSingleByChannel(Hit,Desired+FVector(0,0,120),Desired-FVector(0,0,180),ECC_Visibility,FCollisionQueryParams(TEXT("Pavement"),true,this)))
+        if(GetWorld()->LineTraceSingleByObjectType(Hit,Desired+FVector(0,0,120),Desired-FVector(0,0,180),FCollisionObjectQueryParams(ECC_WorldStatic),FCollisionQueryParams(TEXT("Pavement"),true,this)) && Hit.ImpactNormal.Z >= .65f)
             Desired.Z=Hit.ImpactPoint.Z+2;
     }
     FRotator Facing=Direction.Rotation();
