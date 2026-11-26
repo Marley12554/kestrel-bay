@@ -2,6 +2,10 @@
 #include "AvenueInputTest.h"
 #include "../AvenueGameMode.h"
 #include "../AvenueStreet.h"
+#include "../AvenueSnow.h"
+#include "Components/AudioComponent.h"
+#include "Components/BoxComponent.h"
+#include "Sound/SoundBase.h"
 #include "Camera/CameraComponent.h"
 #include "Components/PoseableMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -57,6 +61,59 @@ struct FVisit {
     }
     void SetSwingStart() {
         Place(InShop(1555,165),-Out); Next(EVisit::Closed);
+    }
+    void CheckWallAndAirflow(UWorld& World) {
+        // A straight elevated approach ends just before a slanted facade.
+        // The lower street continues beneath the car while its bumper hits the wall.
+        const FVector Origin(500000, 500000, 20000);
+        auto Box = [&](FVector Offset, FVector HalfSize, FRotator Rotation) {
+            auto* Actor = World.SpawnActor<AActor>();
+            auto* Shape = NewObject<UBoxComponent>(Actor);
+            Actor->SetRootComponent(Shape);
+            Shape->SetBoxExtent(HalfSize);
+            Shape->SetCollisionProfileName(TEXT("BlockAll"));
+            Shape->SetWorldLocationAndRotation(Origin + Offset, Rotation);
+            Shape->RegisterComponent();
+            return Actor;
+        };
+        auto* Approach = Box(FVector(700,0,-50), FVector(1700,1000,50), FRotator::ZeroRotator);
+        auto* Street = Box(FVector(2500,0,-550), FVector(4000,4000,50), FRotator::ZeroRotator);
+        auto* Wall = Box(FVector(3050,0,0), FVector(35,3000,1100), FRotator(-20,8,0));
+        auto* Snow = Player->FindComponentByClass<UAvenueSnow>();
+        auto* Wind = CastChecked<UAudioComponent>(Car->GetDefaultSubobjectByName(TEXT("Airflow")));
+        auto* Road = CastChecked<UAudioComponent>(Car->GetDefaultSubobjectByName(TEXT("sedan_road")));
+        auto* Motor = CastChecked<UAudioComponent>(Car->GetDefaultSubobjectByName(TEXT("tesla_forward")));
+        Require(Motor->Sound && Motor->Sound->GetFName()==TEXT("tesla_forward") &&
+            Road->Sound && Road->Sound->GetFName()==TEXT("sedan_road"), TEXT("original Tesla or road recording is missing"));
+        for (int Fps : {30,120}) {
+            Car->Silence();
+            Car->SetActorLocationAndRotation(Origin + FVector(0,0,62),FRotator::ZeroRotator);
+            bool Cruise=false, Flight=false, WallHit=false;
+            float Highest=0, GroundWind=0, FlightWind=0;
+            for (int Frame=0; Frame<6*Fps; ++Frame) {
+                Car->Drive(1.f/Fps,1,0,false,*Snow,0);
+                const FVector P=Car->GetActorLocation()-Origin;
+                Highest=FMath::Max(Highest,float(P.Z));
+                if (P.X>1000 && P.X<2000) {
+                    Cruise |= Car->Speed()>900 && Road->VolumeMultiplier>.20f && Road->IsPlaying();
+                    GroundWind=FMath::Max(GroundWind,Wind->VolumeMultiplier);
+                    Require(FMath::Abs(P.Y)<1 && FMath::Abs(Car->GetActorRotation().Yaw)<.1f,TEXT("uncommanded turn on straight approach"));
+                }
+                if (!Car->HasTireContact()) {
+                    Flight=true;
+                    FlightWind=FMath::Max(FlightWind,Wind->VolumeMultiplier);
+                }
+                WallHit |= Car->LastDriveBlocker.Get()==Wall;
+            }
+            const double FinalHeight=Car->GetActorLocation().Z-Origin.Z;
+            UE_LOG(LogTemp,Display,TEXT("Tesla drop at %d fps: wall %d, highest %.1f, final %.1f, cruise wind %.4f, flight wind %.4f"),
+                Fps,WallHit,Highest,FinalHeight,GroundWind,FlightWind);
+            Require(Cruise && GroundWind<.001f,TEXT("grounded cruise is missing rolling audio or has wind noise"));
+            Require(Flight && FlightWind>.01f && Wind->VolumeMultiplier<.001f,TEXT("airflow failed to crossfade on flight and landing"));
+            Require(WallHit && Highest<85 && FMath::Abs(FinalHeight+438)<12 && Car->HasTireContact(),
+                TEXT("car climbed the facade or hung above the lower street"));
+        }
+        Wall->Destroy(); Street->Destroy(); Approach->Destroy();
     }
     void Tick(UWorld* W,ELevelTick,float Dt) {
         if(Player->GetWorld()!=W || W->GetTimeSeconds()<1.5f) return;
@@ -216,7 +273,7 @@ struct FVisit {
                     UE_LOG(LogTemp,Display,TEXT("Avenue Tesla contact: %d frames p99 %.2f ms worst %.2f ms"),ContactFrames.Num(),
                         ContactFrames[FMath::FloorToInt((ContactFrames.Num()-1)*.99)],ContactFrames.Last());
                 }
-                Key(EKeys::W,false); ResetPending=true; Next(EVisit::Reset);Tap(EKeys::R);
+                Key(EKeys::W,false); CheckWallAndAirflow(*W); ResetPending=true; Next(EVisit::Reset);Tap(EKeys::R);
             }
             break;
         }

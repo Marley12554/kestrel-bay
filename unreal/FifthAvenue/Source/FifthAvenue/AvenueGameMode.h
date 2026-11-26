@@ -58,8 +58,7 @@ private:
     int32 NextPuff=0;
     bool Backing=false, SignalLit=false, SignalTurned=false, Occupied=false;
     float SignedSpeed=0, ShiftWait=0, SlipAngle=0, SteerHold=0, PreviousSteer=0;
-    float PreviousSupport=0, SignalYaw=0;
-    bool HadSupport=false;
+    float AirTime=0, SignalYaw=0;
     int32 ContactCount=0;
     bool StreetTires[4]={};
     float ScuffAge=0, ScuffDuration=0, ScuffGain=0;

@@ -120,6 +120,7 @@ AAvenueCar::AAvenueCar() {
     Wind=CreateDefaultSubobject<UAudioComponent>("Airflow");
     Wind->SetupAttachment(Chassis);
     Wind->bAutoActivate=false;
+    Wind->SetVolumeMultiplier(0.f);
     IndicatorClick=CreateDefaultSubobject<UAudioComponent>("IndicatorClick");
     IndicatorClick->SetupAttachment(Chassis);
     IndicatorClick->bAutoActivate=false;
@@ -180,8 +181,7 @@ void AAvenueCar::ShowDriver(bool Visible) {
     Occupied=Visible;
     SeatedDriver->SetVisibility(Visible);
     for (auto& Lamp:Headlights) Lamp->SetVisibility(Visible);
-    if (Visible && Wind->Sound) { Wind->SetVolumeMultiplier(.00025f); Wind->Play(); }
-    else Wind->Stop();
+    if (!Visible) Wind->Stop();
     UpdateLamps(false);
 }
 void AAvenueCar::UpdateLamps(bool Braking) {
@@ -201,7 +201,7 @@ void AAvenueCar::Silence() {
     VelocityXY=FVector::ZeroVector;
     SignalSide=0;
     SignedSpeed=ShiftWait=SlipAngle=YawRate=Steering=SteerHold=PreviousSteer=ScuffDuration=ScuffGain=0;
-    VerticalSpeed=0; HadSupport=false;
+    VerticalSpeed=0; ContactCount=0; AirTime=0; Wind->SetVolumeMultiplier(0.f);
     Backing=SignalLit=SignalTurned=false;
 }
 void AAvenueCar::Drive(float Delta, float Throttle, float InputSteer, bool Handbrake, UAvenueSnow& Surface, int Quality)
@@ -279,24 +279,31 @@ void AAvenueCar::MoveOnTires(float Dt, float Throttle, float InputSteer, bool Ha
     float Height[4], Deflection[4];
     bool Contact[4];
     ContactCount = 0;
-    float SupportSum = 0;
+    float SupportSum = 0, GradeSpeedSum = 0;
+    constexpr float MinGroundNormalZ = .65f;
+    const FCollisionObjectQueryParams Pavement(ECC_WorldStatic);
     const FCollisionQueryParams Query(SCENE_QUERY_STAT(AvenueTire), true, this);
     for (int I = 0; I < 4; ++I) {
         const FVector Hub = Exterior->GetComponentTransform().TransformPosition(Hubs[I]) + VelocityXY * Dt;
         FHitResult Hit;
-        const bool Found = GetWorld()->SweepSingleByChannel(Hit, Hub + Up * (Bump + 23), Hub - Up * (Droop + 6),
-            FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(Radius), Query);
-        Contact[I] = Found && !Hit.bStartPenetrating && Hit.ImpactNormal.Z > .42 && Hit.Location.Z >= Hub.Z - Droop;
+        const bool Found = GetWorld()->SweepSingleByObjectType(Hit, Hub + Up * (Bump + 23), Hub - Up * (Droop + 6),
+            FQuat::Identity, Pavement, FCollisionShape::MakeSphere(Radius), Query);
+        Contact[I] = Found && !Hit.bStartPenetrating && Hit.ImpactNormal.Z >= MinGroundNormalZ && Hit.Location.Z >= Hub.Z - Droop;
         StreetTires[I]=Contact[I] && Hit.GetActor() && Hit.GetActor()->ActorHasTag(TEXT("CitySkin"));
         Height[I] = Contact[I] ? Hit.Location.Z : Hub.Z - Droop;
         Deflection[I] = Height[I] - Hub.Z;
-        if (Contact[I]) { ++ContactCount; SupportSum += Deflection[I]; }
+        if (Contact[I]) {
+            ++ContactCount;
+            SupportSum += Deflection[I];
+            // Vertical road speed along this tire's path. Changing the set of
+            // supporting wheels at a curb must not act like a moving platform.
+            GradeSpeedSum -= FVector::DotProduct(VelocityXY, Hit.ImpactNormal) / Hit.ImpactNormal.Z;
+        }
     }
     float AccelZ = -980.f;
     if (ContactCount > 0) {
         const float Support = Center.Z + SupportSum / ContactCount;
-        const float SupportSpeed = HadSupport ? FMath::Clamp((Support - PreviousSupport) / Dt, -1700.f, 1700.f) : 0.f;
-        PreviousSupport = Support;
+        const float SupportSpeed = GradeSpeedSum / ContactCount;
         const float Load = ContactCount * .25f;
         AccelZ = FMath::Clamp(-980.f + Load * (980.f + 155.f * (Support - Center.Z) + 20.f * (SupportSpeed - VerticalSpeed)), -980.f, 3200.f);
         const float OldSpeed = SignedSpeed;
@@ -311,7 +318,7 @@ void AAvenueCar::MoveOnTires(float Dt, float Throttle, float InputSteer, bool Ha
             YawRate = 0;
         }
     }
-    HadSupport = ContactCount > 0;
+    AirTime = ContactCount ? 0.f : AirTime + Dt;
     if (ContactCount == 0) YawRate *= FMath::Exp(-.28f * Dt);
     VerticalSpeed += AccelZ * Dt;
     float Lift = VerticalSpeed * Dt;
@@ -332,19 +339,34 @@ void AAvenueCar::MoveOnTires(float Dt, float Throttle, float InputSteer, bool Ha
     }
     SetActorLocationAndRotation(Center + Travel, Orientation, true, &Hit);
     if (Hit.bBlockingHit) {
+        const FVector SurfaceNormal = Hit.ImpactNormal.GetSafeNormal();
+        const bool Wall = FMath::Abs(SurfaceNormal.Z) < MinGroundNormalZ;
+        const FVector Normal = Wall ? SurfaceNormal.GetSafeNormal2D() : SurfaceNormal;
         if (Hit.bStartPenetrating) {
             SetActorRotation(Before);
-            AddActorWorldOffset(Hit.Normal * (Hit.PenetrationDepth + .15), true);
+            AddActorWorldOffset(Normal * (Hit.PenetrationDepth + .15), true);
         }
-        if (Hit.Normal.Z < .50) {
+        const FVector Remaining = Travel * (1.f - Hit.Time);
+        if (Wall) {
 #if !UE_BUILD_SHIPPING
             LastDriveBlocker=Hit.GetActor();
 #endif
-            const FVector Normal = Hit.Normal.GetSafeNormal2D();
             VelocityXY -= Normal * FMath::Min(0., FVector::DotProduct(VelocityXY, Normal));
             YawRate *= .65f;
-        } else if (VerticalSpeed < 0) VerticalSpeed = 0;
-        AddActorWorldOffset(FVector::VectorPlaneProject(Travel * (1.f - Hit.Time), Hit.Normal), true);
+            const FVector AlongWall = FVector::VectorPlaneProject(FVector(Remaining.X, Remaining.Y, 0), Normal);
+            AddActorWorldOffset(AlongWall, true);
+            // A facade can block the bumper while the wheels are in midair.
+            // Sweep gravity independently so sliding along trim cannot lift the car.
+            FHitResult VerticalHit;
+            const FVector Vertical = Up * Remaining.Z;
+            const FVector DownWall = Vertical - SurfaceNormal * FMath::Min(0., FVector::DotProduct(Vertical, SurfaceNormal));
+            AddActorWorldOffset(DownWall, true, &VerticalHit);
+            if (VerticalHit.bBlockingHit && VerticalHit.ImpactNormal.Z * VerticalSpeed < 0 &&
+                FMath::Abs(VerticalHit.ImpactNormal.Z) >= MinGroundNormalZ) VerticalSpeed = 0;
+        } else {
+            if (SurfaceNormal.Z * VerticalSpeed < 0) VerticalSpeed = 0;
+            AddActorWorldOffset(Remaining - Normal * FMath::Min(0., FVector::DotProduct(Remaining, Normal)), true);
+        }
     }
     const FVector Heading = GetActorForwardVector().GetSafeNormal2D();
     SignedSpeed = FVector::DotProduct(VelocityXY, Heading) * .01f;
@@ -425,7 +447,12 @@ void AAvenueCar::UpdateAudio(float Dt,float Speed,float Slip,float Corner,bool C
             if(i!=ScuffVoice && ScuffAge>=.55f) Voice->Stop();
         }
     } else if(ScuffDuration>0) { AudioLayers[3]->Stop(); AudioLayers[4]->Stop(); ScuffDuration=0; }
-    Wind->SetVolumeMultiplier(FMath::Lerp(Wind->VolumeMultiplier,.50f*FMath::SmoothStep(3.f,45.f,Speed),Blend));
+    const float AirSpeed = FMath::Sqrt(Speed * Speed + FMath::Square(VerticalSpeed * .01f));
+    const float WindTarget = .26f * FMath::SmoothStep(.045f,.22f,AirTime) * FMath::SmoothStep(3.f,32.f,AirSpeed);
+    const float WindGain = FMath::Lerp(Wind->VolumeMultiplier, WindTarget, Blend);
+    Wind->SetVolumeMultiplier(WindGain);
+    if (WindTarget > .001f && !Wind->IsPlaying() && Wind->Sound) Wind->Play();
+    else if (WindGain < .001f && WindTarget == 0.f && Wind->IsPlaying()) Wind->Stop();
     Wind->SetPitchMultiplier(.82f+.27f*FMath::Min(1.f,Speed/45.f));
     SignalTurned |= SignalSide && !Backing && SignalSide*FMath::FindDeltaAngleDegrees(SignalYaw,GetActorRotation().Yaw)>28.f;
     if (SignalTurned && FMath::Abs(Steering)<.035f && FMath::Abs(PreviousSteer)<.1f) {SignalSide=0; SignalTurned=SignalLit=false;}
@@ -659,7 +686,7 @@ void AAvenueWalker::Tick(float Dt) {
     if(Freecam) Fly(Dt);
     const float Inside=Reserve && !Driven && Reserve->Indoors(Camera->GetComponentLocation())?1.f:0.f;
     RoomMix=FMath::FInterpTo(RoomMix,Inside,Dt,2.5f);
-    if(OutdoorBed) OutdoorBed->SetVolumeMultiplier((Driven?.16f:.22f)*FMath::Lerp(1.f,.20f,RoomMix));
+    if(OutdoorBed) OutdoorBed->SetVolumeMultiplier((Driven?.055f:.22f)*FMath::Lerp(1.f,.20f,RoomMix));
     if(IndoorBed) IndoorBed->SetVolumeMultiplier(FMath::Lerp(.001f,.20f,RoomMix));
     if(Driven) {
         const float LastYaw=Driven->GetActorRotation().Yaw;
